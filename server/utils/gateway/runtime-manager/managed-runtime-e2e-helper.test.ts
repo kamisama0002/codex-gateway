@@ -1,14 +1,31 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  loginGatewayUser,
   listManagedRuntimeThreads,
   materializeManagedRuntimeThread,
+  readManagedRuntimeStatus,
+  restartGateway,
+  restartManagedRuntimeAsAdmin,
+  startManagedRuntime,
 } from "../../../../tests/e2e/helpers/managed-runtime";
 
 const pinnedSectionId = "01984de2-8f74-7c91-a3b2-5c5e937cf999";
 const sectionListResponse = {
   data: [{ id: pinnedSectionId, name: "Pinned", appearance: null }],
   nextCursor: null,
+};
+const readyRuntimeStatus = {
+  userId: 7,
+  hostId: 2_000_000_000,
+  runtimeType: "codex-app-server",
+  imageVersion: "0.151.0",
+  runtimeVersion: "0.151.0",
+  schemaHash: "e2e-schema",
+  status: "ready",
+  lastError: null,
+  createdAt: "2026-09-01T00:00:00.000Z",
+  updatedAt: "2026-09-01T00:00:01.000Z",
 };
 
 describe("managed Runtime E2E helper", () => {
@@ -107,5 +124,64 @@ describe("managed Runtime E2E helper", () => {
         "thread-a",
       ),
     ).rejects.toMatchObject({ name: "ZodError" });
+  });
+
+  it("uses the managed loopback origin for every Gateway request including restart polling", async () => {
+    const urls: string[] = [];
+    let bootReadCount = 0;
+    const response = (value: unknown, status = 200) => ({
+      ok: () => status >= 200 && status < 400,
+      status: () => status,
+      json: async () => value,
+    });
+    const request = {
+      async get(url: string) {
+        urls.push(url);
+        if (url.endsWith("/api/runtime/me")) return response(readyRuntimeStatus);
+        if (url.endsWith("/api/e2e/gateway-process")) {
+          bootReadCount += 1;
+          return response({
+            bootId:
+              bootReadCount === 1
+                ? "01991c80-4000-7000-8000-000000000001"
+                : "01991c80-4000-7000-8000-000000000002",
+          });
+        }
+        throw new Error(`Unexpected GET ${url}`);
+      },
+      async post(url: string) {
+        urls.push(url);
+        if (url.endsWith("/api/auth/login")) {
+          return response({
+            token: "gateway-session-token",
+            expiresAt: "2026-10-01T00:00:00.000Z",
+            user: { id: 7, username: "runtime-a", role: "admin" },
+          });
+        }
+        if (url.endsWith("/api/runtime/start")) return response(readyRuntimeStatus);
+        if (url.endsWith("/api/admin/runtimes/7/restart")) {
+          return response(readyRuntimeStatus);
+        }
+        if (url.endsWith("/api/e2e/gateway-restart")) return response({}, 202);
+        throw new Error(`Unexpected POST ${url}`);
+      },
+    };
+
+    const session = await loginGatewayUser(request, "runtime-a", "runtime-password");
+    await startManagedRuntime(request, session);
+    await readManagedRuntimeStatus(request, session);
+    await restartManagedRuntimeAsAdmin(request, session, session);
+    await restartGateway(request, session);
+
+    expect(urls).toEqual([
+      "http://127.0.0.1:3100/api/auth/login",
+      "http://127.0.0.1:3100/api/runtime/start",
+      "http://127.0.0.1:3100/api/runtime/me",
+      "http://127.0.0.1:3100/api/admin/runtimes/7/restart",
+      "http://127.0.0.1:3100/api/runtime/start",
+      "http://127.0.0.1:3100/api/e2e/gateway-process",
+      "http://127.0.0.1:3100/api/e2e/gateway-restart",
+      "http://127.0.0.1:3100/api/e2e/gateway-process",
+    ]);
   });
 });

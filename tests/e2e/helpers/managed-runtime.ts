@@ -54,6 +54,8 @@ const threadSectionListResponseSchema = z
   .strict();
 const threadSectionMoveResponseSchema = z.object({}).strict();
 const BUILT_IN_PINNED_SECTION_NAME = "Pinned";
+const MANAGED_RUNTIME_GATEWAY_ORIGIN =
+  process.env.E2E_MANAGED_RUNTIME_GATEWAY_URL ?? "http://127.0.0.1:3100";
 const ALL_THREAD_SOURCE_KINDS = [
   "cli",
   "vscode",
@@ -69,6 +71,23 @@ const ALL_THREAD_SOURCE_KINDS = [
 
 interface ManagedRuntimeRpcClient {
   request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown>;
+}
+
+interface ManagedGatewayApiResponse {
+  ok(): boolean;
+  status(): number;
+  json(): Promise<unknown>;
+}
+
+interface ManagedGatewayRequestContext {
+  get(
+    url: string,
+    options?: Parameters<APIRequestContext["get"]>[1],
+  ): Promise<ManagedGatewayApiResponse>;
+  post(
+    url: string,
+    options?: Parameters<APIRequestContext["post"]>[1],
+  ): Promise<ManagedGatewayApiResponse>;
 }
 
 export type GatewaySession = z.infer<typeof authSessionSchema>;
@@ -180,17 +199,22 @@ async function discoverPinnedSectionId(client: ManagedRuntimeRpcClient) {
 }
 
 export async function loginGatewayUser(
-  request: APIRequestContext,
+  request: ManagedGatewayRequestContext,
   username: string,
   password: string,
 ) {
-  const response = await request.post("/api/auth/login", { data: { username, password } });
+  const response = await request.post(managedRuntimeGatewayUrl("/api/auth/login"), {
+    data: { username, password },
+  });
   return authSessionSchema.parse(await successfulJson(response, "Gateway login"));
 }
 
-export async function startManagedRuntime(request: APIRequestContext, session: GatewaySession) {
+export async function startManagedRuntime(
+  request: ManagedGatewayRequestContext,
+  session: GatewaySession,
+) {
   return await eventually(async () => {
-    const response = await request.post("/api/runtime/start", {
+    const response = await request.post(managedRuntimeGatewayUrl("/api/runtime/start"), {
       headers: bearerHeaders(session),
     });
     if (!response.ok()) throw new RetryableE2eError(`Runtime start returned ${response.status()}`);
@@ -203,26 +227,29 @@ export async function startManagedRuntime(request: APIRequestContext, session: G
 }
 
 export async function readManagedRuntimeStatus(
-  request: APIRequestContext,
+  request: ManagedGatewayRequestContext,
   session: GatewaySession,
 ) {
-  const response = await request.get("/api/runtime/me", { headers: bearerHeaders(session) });
+  const response = await request.get(managedRuntimeGatewayUrl("/api/runtime/me"), {
+    headers: bearerHeaders(session),
+  });
   return managedRuntimeStatusSchema
     .nullable()
     .parse(await successfulJson(response, "Runtime status"));
 }
 
 export async function restartManagedRuntimeAsAdmin(
-  request: APIRequestContext,
+  request: ManagedGatewayRequestContext,
   admin: GatewaySession,
   target: GatewaySession,
 ) {
   // Docker restart returns when the process is running, before App Server necessarily accepts its
   // first WebSocket. A failed compatibility probe leaves the one real restart in degraded state;
   // the user's idempotent start endpoint completes readiness once that same Agent is listening.
-  await request.post(`/api/admin/runtimes/${target.user.id}/restart`, {
-    headers: bearerHeaders(admin),
-  });
+  await request.post(
+    managedRuntimeGatewayUrl(`/api/admin/runtimes/${target.user.id}/restart`),
+    { headers: bearerHeaders(admin) },
+  );
   return await startManagedRuntime(request, target);
 }
 
@@ -263,14 +290,19 @@ export async function isManagedRuntimeTokenRejected(
   }
 }
 
-export async function restartGateway(request: APIRequestContext, admin: GatewaySession) {
+export async function restartGateway(
+  request: ManagedGatewayRequestContext,
+  admin: GatewaySession,
+) {
   const before = gatewayProcessSchema.parse(
     await successfulJson(
-      await request.get("/api/e2e/gateway-process", { headers: bearerHeaders(admin) }),
+      await request.get(managedRuntimeGatewayUrl("/api/e2e/gateway-process"), {
+        headers: bearerHeaders(admin),
+      }),
       "Gateway process identity",
     ),
   );
-  const response = await request.post("/api/e2e/gateway-restart", {
+  const response = await request.post(managedRuntimeGatewayUrl("/api/e2e/gateway-restart"), {
     headers: bearerHeaders(admin),
   });
   if (response.status() !== 202) {
@@ -279,9 +311,10 @@ export async function restartGateway(request: APIRequestContext, admin: GatewayS
 
   return await eventually(async () => {
     try {
-      const currentResponse = await request.get("/api/e2e/gateway-process", {
-        headers: bearerHeaders(admin),
-      });
+      const currentResponse = await request.get(
+        managedRuntimeGatewayUrl("/api/e2e/gateway-process"),
+        { headers: bearerHeaders(admin) },
+      );
       if (!currentResponse.ok()) {
         throw new RetryableE2eError(`Gateway recovery returned ${currentResponse.status()}`);
       }
@@ -302,11 +335,11 @@ function bearerHeaders(session: GatewaySession) {
 }
 
 async function successfulJson(
-  response: Awaited<ReturnType<APIRequestContext["get"]>>,
+  response: ManagedGatewayApiResponse,
   operation: string,
 ) {
   if (!response.ok()) throw new Error(`${operation} returned ${response.status()}`);
-  return (await response.json()) as unknown;
+  return await response.json();
 }
 
 async function eventually<T>(operation: () => Promise<T>, timeoutMs = 60_000): Promise<T> {
@@ -324,6 +357,10 @@ async function eventually<T>(operation: () => Promise<T>, timeoutMs = 60_000): P
 }
 
 class RetryableE2eError extends Error {}
+
+function managedRuntimeGatewayUrl(path: string) {
+  return new URL(path, MANAGED_RUNTIME_GATEWAY_ORIGIN).toString();
+}
 
 function requiredEnvironment(name: string) {
   const value = process.env[name];
