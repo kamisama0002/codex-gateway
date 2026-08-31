@@ -9,6 +9,9 @@ const policyPath = fileURLToPath(
 const managerDockerfilePath = fileURLToPath(
   new URL("../../../docker/runtime-manager.Dockerfile", import.meta.url),
 );
+const runnerDockerfilePath = fileURLToPath(
+  new URL("../../../tests/e2e/runner.Dockerfile", import.meta.url),
+);
 const contractsPackagePath = fileURLToPath(
   new URL("../../agent-runtime-contracts/package.json", import.meta.url),
 );
@@ -72,5 +75,18 @@ describe("Agent runtime image policy", () => {
     };
     expect(isolatedTsconfig.files).toEqual(["src/index.ts"]);
     expect(isolatedTsconfig.include).toEqual([]);
+  });
+
+  it("copies the Contracts root dependency before the cached E2E runner install", () => {
+    const dockerfile = readFileSync(runnerDockerfilePath, "utf8");
+    const packageSources = dockerfile.indexOf("COPY packages ./packages");
+    const sharedSources = dockerfile.indexOf("COPY shared ./shared");
+    const frozenInstall = dockerfile.indexOf("pnpm install --frozen-lockfile");
+    const mutableSources = dockerfile.indexOf("COPY . /workspace/source");
+
+    expect(packageSources).toBeGreaterThanOrEqual(0);
+    expect(sharedSources).toBeGreaterThan(packageSources);
+    expect(sharedSources).toBeLessThan(frozenInstall);
+    expect(mutableSources).toBeGreaterThan(frozenInstall);
   });
 });
