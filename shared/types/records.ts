@@ -1,7 +1,10 @@
 export type HostAuthMode = "agent" | "privateKey" | "password";
+export type HostConnectionKind = "ssh" | "managed";
 
 export interface HostRecord {
   id: number;
+  /** Missing on persisted legacy hosts, which are treated as SSH connections. */
+  connectionKind?: HostConnectionKind;
   name: string;
   sshHost: string;
   username: string | null;

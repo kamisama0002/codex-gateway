@@ -1,5 +1,6 @@
 export type {
   HostAuthMode,
+  HostConnectionKind,
   HostCreateInput,
   HostRecord,
   HostUpdateInput,
@@ -10,6 +11,7 @@ export type {
   RpcEnvelope,
   GatewayEvent,
 } from "./types/records";
+export { MANAGED_RUNTIME_HOST_ID } from "./runtime/managed-runtime";
 export type {
   ApprovalPolicy,
   AppServerSessionSource,

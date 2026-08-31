@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const MANAGED_RUNTIME_HOST_ID = 2_000_000_000;
+import { MANAGED_RUNTIME_HOST_ID } from "../../../../shared/runtime/managed-runtime.ts";
 
 interface DatabaseMigration {
   version: number;
@@ -78,7 +78,9 @@ const migrations: DatabaseMigration[] = [
   {
     version: 2,
     up(db) {
-      db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user'))");
+      db.exec(
+        "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user'))",
+      );
       const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get();
       if (admin === undefined) {
         db.prepare(

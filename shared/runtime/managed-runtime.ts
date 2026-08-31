@@ -1,0 +1,1 @@
+export const MANAGED_RUNTIME_HOST_ID = 2_000_000_000;

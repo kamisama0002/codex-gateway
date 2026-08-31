@@ -1,4 +1,5 @@
 import type { HostRecord } from "~~/shared/types";
+import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import { currentGatewayUserId, runWithGatewayUser } from "../state/memory";
 import { activeMainThreadMonitor } from "./active-main-thread-monitor";
 import { HostRpcSession } from "./host-rpc-session";
@@ -274,6 +275,7 @@ export class ControllerRegistry {
   }
 
   private async getHostClientForUser(userId: number, host: HostRecord) {
+    assertGatewayHostConnectionIdentity(host);
     const key = this.hostKey(userId, host.id);
     let session = this.hostSessions.get(key);
     if (!session) {
@@ -458,5 +460,15 @@ export class ControllerRegistry {
       throw new Error("Gateway runtime requires an authenticated user scope");
     }
     return userId;
+  }
+}
+
+export function assertGatewayHostConnectionIdentity(host: HostRecord): void {
+  const connectionKind = host.connectionKind ?? "ssh";
+  if (connectionKind === "managed" && host.id !== MANAGED_RUNTIME_HOST_ID) {
+    throw new Error("Managed connections must use the reserved managed runtime host ID");
+  }
+  if (connectionKind === "ssh" && host.id === MANAGED_RUNTIME_HOST_ID) {
+    throw new Error("The reserved managed runtime host ID cannot use SSH");
   }
 }

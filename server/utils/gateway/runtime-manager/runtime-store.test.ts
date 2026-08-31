@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
-import { MANAGED_RUNTIME_HOST_ID, migrateGatewayDatabase } from "../storage/migrations";
+import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
+import { migrateGatewayDatabase } from "../storage/migrations";
 import { describe, expect, it } from "vitest";
 import {
   serializeManagedRuntimeStatus,
@@ -15,6 +16,15 @@ describe("runtimeStore", () => {
     store.upsert(runtimeFor(1, "container-a"));
 
     expect(store.getByUserId(2)).toBeNull();
+  });
+
+  it("lists all managed runtimes in stable user order for administration", () => {
+    const db = migratedDatabase();
+    const store = createRuntimeStore(db);
+    store.upsert(runtimeFor(2, "container-2"));
+    store.upsert(runtimeFor(1, "container-1"));
+
+    expect(store.list().map((runtime) => runtime.userId)).toEqual([1, 2]);
   });
 
   it("updates the requested user's status without changing another user's runtime", () => {

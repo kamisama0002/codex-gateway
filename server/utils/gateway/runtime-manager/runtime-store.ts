@@ -6,7 +6,7 @@ import {
   type UserAgentRuntimeRecord,
 } from "@codex-gateway/agent-runtime-contracts";
 import { gatewayDatabase } from "../storage/database";
-import { MANAGED_RUNTIME_HOST_ID } from "../storage/migrations";
+import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 
 export function createRuntimeStore(db: DatabaseSync) {
   return {
@@ -15,6 +15,13 @@ export function createRuntimeStore(db: DatabaseSync) {
         .prepare("SELECT * FROM user_agent_runtimes WHERE user_id = ?")
         .get(positiveUserId(userId));
       return row === undefined ? null : rowToRuntime(row);
+    },
+
+    list(): UserAgentRuntimeRecord[] {
+      return db
+        .prepare("SELECT * FROM user_agent_runtimes ORDER BY user_id ASC")
+        .all()
+        .map(rowToRuntime);
     },
 
     upsert(input: UserAgentRuntimeRecord): UserAgentRuntimeRecord {
@@ -97,6 +104,9 @@ export function createRuntimeStore(db: DatabaseSync) {
 export const runtimeStore = {
   getByUserId(userId: number) {
     return createRuntimeStore(gatewayDatabase()).getByUserId(userId);
+  },
+  list() {
+    return createRuntimeStore(gatewayDatabase()).list();
   },
   upsert(input: UserAgentRuntimeRecord) {
     return createRuntimeStore(gatewayDatabase()).upsert(input);
