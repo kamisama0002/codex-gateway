@@ -7,4 +7,7 @@ export default defineConfig({
       "~~": fileURLToPath(new URL("./", import.meta.url)),
     },
   },
+  test: {
+    include: ["{server,shared,packages,scripts,tests/unit}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+  },
 });

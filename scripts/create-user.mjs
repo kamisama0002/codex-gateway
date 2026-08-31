@@ -47,10 +47,10 @@ db.prepare(
     ON CONFLICT(username) DO UPDATE SET
       password_hash = excluded.password_hash,
       is_active = 1,
-      role = excluded.role,
+      role = CASE WHEN ? THEN excluded.role ELSE role END,
       updated_at = excluded.updated_at
   `,
-).run(username, hashPassword(password), role, now, now);
+).run(username, hashPassword(password), role, now, now, explicitRole !== null ? 1 : 0);
 
 console.log(`User ${username} is ready in ${dbPath} with role ${role}`);
 
