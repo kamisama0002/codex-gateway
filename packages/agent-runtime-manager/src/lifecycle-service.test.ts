@@ -174,7 +174,7 @@ describe("RuntimeLifecycleService", () => {
         "com.codex-gateway.user-hash": userHash,
       },
       mounts: [
-        expect.objectContaining({ containerPath: "/home/codex/.codex", kind: "codex-home" }),
+        expect.objectContaining({ containerPath: "/codex-home", kind: "codex-home" }),
         expect.objectContaining({ containerPath: "/workspace", kind: "workspace" }),
       ],
       networkName: "agent-runtime",
@@ -187,6 +187,7 @@ describe("RuntimeLifecycleService", () => {
         Privileged: false,
         ReadonlyRootfs: true,
         SecurityOpt: ["no-new-privileges:true"],
+        Tmpfs: { "/tmp": "rw,nosuid,nodev,noexec,size=64m" },
         User: "10001:10001",
       },
       serviceToken: "generated-service-token",

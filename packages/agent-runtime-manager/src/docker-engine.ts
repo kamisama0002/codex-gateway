@@ -15,6 +15,7 @@ export interface DockerSecurityPolicy {
   ReadonlyRootfs: true;
   CapDrop: ["ALL"];
   SecurityOpt: ["no-new-privileges:true"];
+  Tmpfs: Record<"/tmp", string>;
   PidsLimit: number;
   Memory: number;
   NanoCpus: number;
@@ -93,10 +94,10 @@ export class DockerodeEngine implements DockerEngine {
       User: spec.security.User,
       Labels: spec.labels,
       Env: [
-        "CODEX_HOME=/home/codex/.codex",
+        "CODEX_HOME=/codex-home",
         "CODEX_WORKSPACE=/workspace",
         `CODEX_APP_SERVER_PORT=${spec.internalPort}`,
-        `CODEX_APP_SERVER_TOKEN=${spec.serviceToken}`,
+        `CODEX_REMOTE_TOKEN=${spec.serviceToken}`,
         `CODEX_RUNTIME_IMAGE_ALIAS=${spec.imageAlias}`,
       ],
       ExposedPorts: { [exposedPort]: {} },
@@ -110,6 +111,7 @@ export class DockerodeEngine implements DockerEngine {
         Privileged: spec.security.Privileged,
         ReadonlyRootfs: spec.security.ReadonlyRootfs,
         SecurityOpt: spec.security.SecurityOpt,
+        Tmpfs: spec.security.Tmpfs,
       },
       NetworkingConfig: { EndpointsConfig: { [spec.networkName]: {} } },
     });
@@ -183,7 +185,7 @@ export class DockerodeEngine implements DockerEngine {
       running: inspected.State.Running,
       runtimeId,
       runtimeType: runtimeTypeSchema.parse(required(labels[runtimeResourceLabels.runtimeType])),
-      serviceToken: required(environment.get("CODEX_APP_SERVER_TOKEN")),
+      serviceToken: required(environment.get("CODEX_REMOTE_TOKEN")),
       userHash: required(labels[runtimeResourceLabels.userHash]),
     };
   }

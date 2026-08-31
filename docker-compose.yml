@@ -23,6 +23,9 @@ services:
       BROWSER_PREVIEW_DOMAIN: ${BROWSER_PREVIEW_DOMAIN:-cloudawn.top}
       CODEX_GATEWAY_DB_PATH: /data/codex-gateway.db
       CODEX_GATEWAY_CONFIG_SECRET: ${CODEX_GATEWAY_CONFIG_SECRET:?CODEX_GATEWAY_CONFIG_SECRET is required}
+      RUNTIME_MANAGER_BASE_URL: ${RUNTIME_MANAGER_BASE_URL:-http://agent-runtime-manager:8787}
+      RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS: ${RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS:-stable}
+      RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:?RUNTIME_MANAGER_SHARED_SECRET is required}
     volumes:
       - ./data:/data
     # Keep liveness probes side-effect free. Nitro owns periodic GC so probe retries or Docker
@@ -41,7 +44,44 @@ services:
       start_period: 20s
     networks:
       - web-common
+      - runtime-manager
+      - agent-runtime
+
+  agent-runtime-manager:
+    build:
+      context: .
+      dockerfile: docker/runtime-manager.Dockerfile
+    image: ${RUNTIME_MANAGER_IMAGE:-codex-runtime-manager:0.151.0}
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${RUNTIME_MANAGER_MEM_LIMIT:-512m}
+    memswap_limit: ${RUNTIME_MANAGER_MEMSWAP_LIMIT:-512m}
+    pids_limit: ${RUNTIME_MANAGER_PIDS_LIMIT:-128}
+    cpus: ${RUNTIME_MANAGER_CPU_LIMIT:-1.0}
+    expose:
+      - "8787"
+    environment:
+      NODE_ENV: production
+      RUNTIME_MANAGER_AGENT_NETWORK: ${RUNTIME_MANAGER_AGENT_NETWORK:-agent-runtime}
+      RUNTIME_MANAGER_AGENT_PORT: ${RUNTIME_MANAGER_AGENT_PORT:-4500}
+      RUNTIME_MANAGER_IMAGE_ALIASES: ${RUNTIME_MANAGER_IMAGE_ALIASES:?RUNTIME_MANAGER_IMAGE_ALIASES is required}
+      RUNTIME_MANAGER_PORT: 8787
+      RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:?RUNTIME_MANAGER_SHARED_SECRET is required}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runtime-manager-data:/data
+    networks:
+      - runtime-manager
 
 networks:
   web-common:
     external: true
+  runtime-manager:
+    name: ${RUNTIME_MANAGER_NETWORK_NAME:-runtime-manager}
+    internal: true
+  agent-runtime:
+    name: ${RUNTIME_MANAGER_AGENT_NETWORK:-agent-runtime}
+    internal: true
+
+volumes:
+  runtime-manager-data:

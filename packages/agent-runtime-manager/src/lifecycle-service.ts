@@ -41,6 +41,7 @@ const securityPolicy: DockerSecurityPolicy = {
   ReadonlyRootfs: true,
   CapDrop: ["ALL"],
   SecurityOpt: ["no-new-privileges:true"],
+  Tmpfs: { "/tmp": "rw,nosuid,nodev,noexec,size=64m" },
   PidsLimit: 256,
   Memory: 2 * 1024 * 1024 * 1024,
   NanoCpus: 2_000_000_000,
@@ -142,7 +143,7 @@ export class RuntimeLifecycleService {
       labels,
       mounts: [
         {
-          containerPath: "/home/codex/.codex",
+          containerPath: "/codex-home",
           kind: "codex-home",
           labels,
           volumeName: `codex-home-${userHashPrefix}-${runtimeHash}`,
