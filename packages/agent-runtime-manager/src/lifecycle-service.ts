@@ -21,6 +21,7 @@ export interface RuntimeManagerPolicy {
   images: Record<string, { image: string; imageVersion: string }>;
   internalPort: number;
   networkName: string;
+  resourceLabels?: Record<string, string>;
 }
 
 interface RuntimeLifecycleServiceOptions {
@@ -128,6 +129,7 @@ export class RuntimeLifecycleService {
     const runtimeHash = createHash("sha256").update(request.runtimeId).digest("hex").slice(0, 12);
     const userHashPrefix = request.userHash.slice(0, 16);
     const labels = {
+      ...this.policy.resourceLabels,
       [runtimeResourceLabels.imageVersion]: image.imageVersion,
       [runtimeResourceLabels.managed]: "true",
       [runtimeResourceLabels.runtimeId]: request.runtimeId,

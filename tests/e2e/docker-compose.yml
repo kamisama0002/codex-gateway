@@ -5,6 +5,44 @@ x-ssh-target: &ssh-target
     - ../..:/workspace/codex-gateway
 
 services:
+  agent-runtime-image:
+    profiles: ["image-build"]
+    image: codex-agent-runtime:0.151.0
+    build:
+      context: ../..
+      dockerfile: docker/agent-runtime.Dockerfile
+
+  agent-runtime-manager:
+    image: codex-runtime-manager-e2e:0.151.0
+    build:
+      context: ../..
+      dockerfile: docker/runtime-manager.Dockerfile
+    environment:
+      NODE_ENV: test
+      RUNTIME_MANAGER_AGENT_NETWORK: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
+      RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"codex-agent-runtime:0.151.0","imageVersion":"0.151.0"}}'
+      RUNTIME_MANAGER_PORT: "8787"
+      RUNTIME_MANAGER_RESOURCE_LABELS: '{"com.codex-gateway.e2e-managed":"${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}"}'
+      RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
+    expose:
+      - "8787"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runtime-manager-data:/data
+    networks:
+      - runtime-manager
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8787,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
   bark-target:
     image: node:22-bookworm
     command: ["node", "/app/bark-server.ts"]
@@ -63,17 +101,27 @@ services:
   gateway-under-test:
     image: codex-gateway-e2e-runner
     mem_limit: 2g
+    restart: unless-stopped
     depends_on:
-      - ssh-target
-      - ssh-target-legacy-node
-      - ssh-target-legacy-codex
-      - bark-target
+      agent-runtime-manager:
+        condition: service_healthy
+      bark-target:
+        condition: service_started
+      ssh-target:
+        condition: service_started
+      ssh-target-legacy-node:
+        condition: service_started
+      ssh-target-legacy-codex:
+        condition: service_started
     environment:
       HOST: 0.0.0.0
       PORT: "3100"
       CODEX_GATEWAY_CONFIG_SECRET: e2e-config-secret
       CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
       NUXT_IGNORE_LOCK: "1"
+      RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
+      RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS: stable
+      RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
       # Preview origins enter through the nginx sidecar below. This mirrors production so remote
       # /_nuxt/* assets cannot be intercepted as Gateway public assets before reaching the proxy.
       BROWSER_PREVIEW_PUBLIC_PORT: "3200"
@@ -85,6 +133,10 @@ services:
     # Exercise the same V8 memory policy as production; the wider 2 GiB cgroup remains available
     # to Playwright's shared test topology and native browser/runtime allocations.
     command: ["node", "--expose-gc", "--max-old-space-size=512", "/e2e-output/server/index.mjs"]
+    networks:
+      - default
+      - runtime-manager
+      - agent-runtime
     healthcheck:
       test:
         [
@@ -137,7 +189,11 @@ services:
       E2E_CODEX_MODEL: ${E2E_CODEX_MODEL:-gpt-5.6-luna}
       E2E_BARK_SERVER_URL: http://bark-target:8080
       E2E_BARK_REQUEST_LOG: /bark-requests/requests.jsonl
+      E2E_MANAGED_LABEL_VALUE: ${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}
+      E2E_MANAGED_RUNTIME_ENABLED: "1"
       PLAYWRIGHT_BASE_URL: http://codex.127.0.0.1.nip.io:3100
+      RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
+      RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
       HOME: /home/pwuser
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     volumes:
@@ -152,4 +208,13 @@ volumes:
   bark-requests:
   build-output:
   e2e-data:
+  runtime-manager-data:
   runner-home:
+
+networks:
+  runtime-manager:
+    name: ${E2E_RUNTIME_MANAGER_NETWORK_NAME:-codex-gateway-e2e-runtime-manager}
+    internal: true
+  agent-runtime:
+    name: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
+    internal: true

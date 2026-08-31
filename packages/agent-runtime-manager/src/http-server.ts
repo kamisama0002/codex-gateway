@@ -154,10 +154,12 @@ export function loadRuntimeManagerPolicy(
   const images = JSON.parse(
     requiredEnvironment(environment, "RUNTIME_MANAGER_IMAGE_ALIASES"),
   ) as unknown;
+  const resourceLabels = JSON.parse(environment.RUNTIME_MANAGER_RESOURCE_LABELS ?? "{}") as unknown;
   return runtimeManagerPolicySchema.parse({
     images,
     internalPort: CODEX_APP_SERVER_PORT,
     networkName: requiredEnvironment(environment, "RUNTIME_MANAGER_AGENT_NETWORK"),
+    resourceLabels,
   });
 }
 

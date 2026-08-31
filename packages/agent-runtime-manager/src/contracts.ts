@@ -66,6 +66,7 @@ export const runtimeManagerPolicySchema = z
     images: z.record(imageAliasSchema, runtimeImagePolicySchema),
     internalPort: z.number().int().min(1).max(65_535),
     networkName: z.string().min(1),
+    resourceLabels: z.record(z.string().min(1).max(128), z.string().max(256)).default({}),
   })
   .strict()
   .refine(

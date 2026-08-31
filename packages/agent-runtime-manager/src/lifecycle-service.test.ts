@@ -144,6 +144,9 @@ describe("RuntimeLifecycleService", () => {
       RUNTIME_MANAGER_AGENT_NETWORK: "agent-runtime",
       RUNTIME_MANAGER_AGENT_PORT: "1234",
       RUNTIME_MANAGER_IMAGE_ALIASES: JSON.stringify(testPolicy.images),
+      RUNTIME_MANAGER_RESOURCE_LABELS: JSON.stringify({
+        "com.codex-gateway.e2e-managed": "isolated-test-run",
+      }),
     });
     const engine = new RecordingDockerEngine();
     const service = new RuntimeLifecycleService(engine, policy, {
@@ -153,6 +156,9 @@ describe("RuntimeLifecycleService", () => {
     const result = await service.provision(requestFor("runtime-fixed-port"));
 
     expect(policy.internalPort).toBe(4500);
+    expect(policy.resourceLabels).toEqual({
+      "com.codex-gateway.e2e-managed": "isolated-test-run",
+    });
     expect(engine.createCalls[0]?.internalPort).toBe(4500);
     expect(result.endpoint?.websocketUrl).toMatch(/^ws:\/\/codex-runtime-[a-f0-9-]+:4500$/);
   });
@@ -211,6 +217,34 @@ describe("RuntimeLifecycleService", () => {
       serviceToken: "generated-service-token",
       userHash,
     });
+  });
+
+  it("adds configured deployment labels to each managed container and volume", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(
+      engine,
+      {
+        ...testPolicy,
+        resourceLabels: {
+          "com.codex-gateway.e2e-managed": "isolated-test-run",
+        },
+      },
+      { randomToken: () => "generated-service-token" },
+    );
+
+    await service.provision(requestFor("runtime-e2e-label"));
+
+    expect(engine.createCalls[0]?.labels).toMatchObject({
+      "com.codex-gateway.e2e-managed": "isolated-test-run",
+      "com.codex-gateway.managed": "true",
+    });
+    expect(engine.createCalls[0]?.mounts).toHaveLength(2);
+    for (const mount of engine.createCalls[0]?.mounts ?? []) {
+      expect(mount.labels).toMatchObject({
+        "com.codex-gateway.e2e-managed": "isolated-test-run",
+        "com.codex-gateway.managed": "true",
+      });
+    }
   });
 
   it("rejects an unknown image alias before calling the engine", async () => {
