@@ -26,6 +26,39 @@ describe("durable Runtime Manager nonce storage", () => {
     }
   });
 
+  it("binds a signature to its uppercase method and normalized path", () => {
+    const store = new SqliteNonceStore(":memory:");
+    const body = Buffer.from('{"runtimeId":"runtime_01"}');
+    const headers = createSignedHeaders({
+      body,
+      method: "POST",
+      path: "/v1/runtimes/start",
+      nonce: "nonce-target-bound",
+      secret,
+      timestamp: initialTime,
+    });
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: store,
+      now: () => initialTime,
+      secret,
+    });
+
+    expect(() => authenticator.authenticate(headers, body, "POST", "/v1/runtimes/stop")).toThrow(
+      new RuntimeAuthenticationError(),
+    );
+    expect(() => authenticator.authenticate(headers, body, "POST", "/v1/runtimes/remove")).toThrow(
+      new RuntimeAuthenticationError(),
+    );
+    expect(() => authenticator.authenticate(headers, body, "GET", "/v1/runtimes/start")).toThrow(
+      new RuntimeAuthenticationError(),
+    );
+    expect(authenticator.authenticate(headers, body, "post", "/v1/runtimes/./start")).toEqual({
+      nonce: "nonce-target-bound",
+      timestamp: initialTime,
+    });
+    store.close();
+  });
+
   function nonceStorePath(): string {
     const directory = mkdtempSync(join(tmpdir(), "runtime-manager-nonces-"));
     temporaryDirectories.push(directory);
@@ -37,6 +70,8 @@ describe("durable Runtime Manager nonce storage", () => {
     const body = Buffer.alloc(0);
     const headers = createSignedHeaders({
       body,
+      method: "POST",
+      path: "/v1/runtimes/start",
       nonce: "nonce-persisted",
       secret,
       timestamp: initialTime,
@@ -48,7 +83,7 @@ describe("durable Runtime Manager nonce storage", () => {
       secret,
     });
 
-    firstAuthenticator.authenticate(headers, body);
+    firstAuthenticator.authenticate(headers, body, "POST", "/v1/runtimes/start");
     firstStore.close();
 
     const secondStore = new SqliteNonceStore(path);
@@ -57,9 +92,9 @@ describe("durable Runtime Manager nonce storage", () => {
       now: () => initialTime,
       secret,
     });
-    expect(() => secondAuthenticator.authenticate(headers, body)).toThrow(
-      new RuntimeAuthenticationError(),
-    );
+    expect(() =>
+      secondAuthenticator.authenticate(headers, body, "POST", "/v1/runtimes/start"),
+    ).toThrow(new RuntimeAuthenticationError());
     secondStore.close();
   });
 
@@ -75,25 +110,29 @@ describe("durable Runtime Manager nonce storage", () => {
     });
     const firstHeaders = createSignedHeaders({
       body,
+      method: "POST",
+      path: "/v1/runtimes/start",
       nonce: "nonce-pruned",
       secret,
       timestamp: initialTime,
     });
 
-    authenticator.authenticate(firstHeaders, body);
+    authenticator.authenticate(firstHeaders, body, "POST", "/v1/runtimes/start");
     currentTime = initialTime + maxClockSkewMs;
-    expect(() => authenticator.authenticate(firstHeaders, body)).toThrow(
-      new RuntimeAuthenticationError(),
-    );
+    expect(() =>
+      authenticator.authenticate(firstHeaders, body, "POST", "/v1/runtimes/start"),
+    ).toThrow(new RuntimeAuthenticationError());
 
     currentTime += 1;
     const newHeaders = createSignedHeaders({
       body,
+      method: "POST",
+      path: "/v1/runtimes/start",
       nonce: "nonce-pruned",
       secret,
       timestamp: currentTime,
     });
-    expect(authenticator.authenticate(newHeaders, body)).toEqual({
+    expect(authenticator.authenticate(newHeaders, body, "POST", "/v1/runtimes/start")).toEqual({
       nonce: "nonce-pruned",
       timestamp: currentTime,
     });

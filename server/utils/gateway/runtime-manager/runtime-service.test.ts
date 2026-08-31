@@ -165,6 +165,90 @@ describe("ManagedRuntimeService", () => {
       userId: 7,
     });
   });
+
+  it("persists a failed stop as degraded and audits the updated safe record", async () => {
+    const fixture = runtimeFixture();
+    await fixture.service.start(7);
+    fixture.audit.splice(0);
+    fixture.manager.stop.mockRejectedValueOnce(
+      new Error("secret-token ws://sensitive-runtime:4500"),
+    );
+
+    await expect(fixture.service.stop(7)).rejects.toEqual(
+      expect.objectContaining({ code: "runtime_operation_failed" }),
+    );
+
+    expect(fixture.store.getByUserId(7)).toMatchObject({
+      status: "degraded",
+      lastError: "runtime_operation_failed",
+    });
+    expect(fixture.audit).toHaveLength(1);
+    expect(fixture.audit[0]).toMatchObject({
+      actorUserId: 7,
+      userId: 7,
+      action: "runtime.stop",
+      outcome: "failure",
+      errorCode: "runtime_operation_failed",
+    });
+    expect(fixture.audit[0]?.metadata).toMatchObject({
+      userId: 7,
+      runtimeStatus: "degraded",
+    });
+    expect(JSON.stringify(fixture.audit)).not.toContain("secret-token");
+    expect(JSON.stringify(fixture.audit)).not.toContain("sensitive-runtime");
+  });
+
+  it("persists a failed removal as degraded and audits the updated safe record", async () => {
+    const fixture = runtimeFixture();
+    await fixture.service.start(7);
+    fixture.audit.splice(0);
+    fixture.manager.remove.mockRejectedValueOnce(
+      new Error("secret-token ws://sensitive-runtime:4500"),
+    );
+
+    await expect(fixture.service.remove(7, 1)).rejects.toEqual(
+      expect.objectContaining({ code: "runtime_operation_failed" }),
+    );
+
+    expect(fixture.store.getByUserId(7)).toMatchObject({
+      status: "degraded",
+      lastError: "runtime_operation_failed",
+    });
+    expect(fixture.audit).toHaveLength(1);
+    expect(fixture.audit[0]).toMatchObject({
+      actorUserId: 1,
+      userId: 7,
+      action: "runtime.remove",
+      outcome: "failure",
+      errorCode: "runtime_operation_failed",
+    });
+    expect(fixture.audit[0]?.metadata).toMatchObject({
+      userId: 7,
+      runtimeStatus: "degraded",
+    });
+    expect(JSON.stringify(fixture.audit)).not.toContain("secret-token");
+    expect(JSON.stringify(fixture.audit)).not.toContain("sensitive-runtime");
+  });
+
+  it("releases the per-user mutex after a timed-out lifecycle request", async () => {
+    const fixture = runtimeFixture();
+    fixture.manager.provision.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      throw Object.assign(new Error("manager request timed out"), {
+        code: "runtime_manager_timeout",
+      });
+    });
+
+    const timedOut = fixture.service.start(7);
+    const queued = fixture.service.start(7);
+
+    await expect(timedOut).rejects.toEqual(
+      expect.objectContaining({ code: "runtime_manager_timeout" }),
+    );
+    await expect(queued).resolves.toMatchObject({ status: "ready", userId: 7 });
+    expect(fixture.manager.provision).toHaveBeenCalledTimes(2);
+    expect(fixture.manager.start).toHaveBeenCalledOnce();
+  });
 });
 
 function runtimeFixture(options: { runtimeVersion?: string } = {}) {

@@ -48,6 +48,7 @@ const runtimeLifecycleResultSchema = z
   })
   .strict();
 const managerErrorSchema = z.object({ error: z.string().min(1) }).strict();
+const DEFAULT_RUNTIME_MANAGER_TIMEOUT_MS = 30_000;
 
 export interface ProvisionRuntimeRequest {
   runtimeId: string;
@@ -71,6 +72,7 @@ interface RuntimeManagerClientOptions {
   fetch?: typeof globalThis.fetch;
   now?: () => number;
   nonce?: () => string;
+  timeoutMs?: number;
 }
 
 export class RuntimeManagerClientError extends Error {
@@ -90,6 +92,7 @@ export class RuntimeManagerClient {
   private readonly nonce: () => string;
   private readonly now: () => number;
   private readonly secret: string;
+  private readonly timeoutMs: number;
 
   constructor(options: RuntimeManagerClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
@@ -98,6 +101,10 @@ export class RuntimeManagerClient {
     this.fetch = options.fetch ?? globalThis.fetch;
     this.now = options.now ?? Date.now;
     this.nonce = options.nonce ?? randomUUID;
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_RUNTIME_MANAGER_TIMEOUT_MS;
+    if (!Number.isInteger(this.timeoutMs) || this.timeoutMs <= 0) {
+      throw new Error("Runtime Manager timeout must be a positive integer");
+    }
   }
 
   inspect(runtimeId: string): Promise<RuntimeLifecycleResult> {
@@ -158,38 +165,48 @@ export class RuntimeManagerClient {
       "x-runtime-body-sha256": bodySha256,
       "x-runtime-nonce": nonce,
       "x-runtime-signature": createHmac("sha256", this.secret)
-        .update(`${timestamp}\n${nonce}\n${bodySha256}`, "utf8")
+        .update(
+          `${method}\n${normalizeRequestPath(path)}\n${timestamp}\n${nonce}\n${bodySha256}`,
+          "utf8",
+        )
         .digest("hex"),
       "x-runtime-timestamp": String(timestamp),
     };
     if (payload !== undefined) headers["content-type"] = "application/json";
 
-    let response: Response;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      response = await this.fetch(`${this.baseUrl}${path}`, {
+      const response = await this.fetch(`${this.baseUrl}${path}`, {
         method,
         headers,
+        signal: controller.signal,
         ...(payload === undefined ? {} : { body }),
       });
+      const value = await parseJsonResponse(response);
+      if (!response.ok) {
+        const parsedError = managerErrorSchema.safeParse(value);
+        throw new RuntimeManagerClientError(
+          parsedError.success ? parsedError.data.error : "runtime_manager_request_failed",
+          response.status,
+        );
+      }
+      const parsed = runtimeLifecycleResultSchema.safeParse(value);
+      if (!parsed.success) {
+        throw new RuntimeManagerClientError("runtime_manager_invalid_response", response.status, {
+          cause: parsed.error,
+        });
+      }
+      return parsed.data;
     } catch (cause) {
+      if (controller.signal.aborted) {
+        throw new RuntimeManagerClientError("runtime_manager_timeout");
+      }
+      if (cause instanceof RuntimeManagerClientError) throw cause;
       throw new RuntimeManagerClientError("runtime_manager_unavailable", null, { cause });
+    } finally {
+      clearTimeout(deadline);
     }
-
-    const value = await parseJsonResponse(response);
-    if (!response.ok) {
-      const parsedError = managerErrorSchema.safeParse(value);
-      throw new RuntimeManagerClientError(
-        parsedError.success ? parsedError.data.error : "runtime_manager_request_failed",
-        response.status,
-      );
-    }
-    const parsed = runtimeLifecycleResultSchema.safeParse(value);
-    if (!parsed.success) {
-      throw new RuntimeManagerClientError("runtime_manager_invalid_response", response.status, {
-        cause: parsed.error,
-      });
-    }
-    return parsed.data;
   }
 }
 
@@ -217,4 +234,13 @@ function normalizeBaseUrl(value: string): string {
     throw new Error("Runtime Manager base URL must be an HTTP origin");
   }
   return url.origin;
+}
+
+function normalizeRequestPath(path: string): string {
+  const origin = new URL("http://runtime-manager.internal");
+  const normalized = new URL(path, origin);
+  if (normalized.origin !== origin.origin || normalized.search !== "" || normalized.hash !== "") {
+    throw new Error("Runtime Manager request path is invalid");
+  }
+  return normalized.pathname;
 }

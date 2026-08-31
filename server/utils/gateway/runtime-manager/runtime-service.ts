@@ -69,7 +69,9 @@ const safeManagerErrorCodes = new Set([
   "runtime_identity_conflict",
   "runtime_manager_invalid_response",
   "runtime_manager_request_failed",
+  "runtime_manager_timeout",
   "runtime_manager_unavailable",
+  "managed_rpc_handshake_timeout",
   "runtime_not_found",
   "unauthorized",
   "unknown_image_alias",
@@ -116,23 +118,25 @@ export class ManagedRuntimeService {
     return this.lockFor(targetUserId).runExclusive(async () => {
       const runtime = this.requiredRuntime(targetUserId);
       const identity = this.identity(targetUserId);
+      let result: RuntimeLifecycleResult;
       try {
         this.options.closeConnections?.(targetUserId);
-        const result = await this.options.manager.stop(identity.runtimeId);
+        result = await this.options.manager.stop(identity.runtimeId);
         this.assertRuntimeResult(identity.runtimeId, result, "stopped");
-        const stopped = this.persist(runtime, "degraded", {
-          containerId: result.containerId,
-          imageVersion: requiredImageVersion(result),
-          lastError: "runtime_stopped",
-        });
-        this.auditSuccess("runtime.stop", actor, targetUserId, stopped, identity.runtimeId);
-        return serializeManagedRuntimeStatus(stopped);
+        requiredImageVersion(result);
       } catch (error) {
         const code = safeErrorCode(error);
-        this.persist(runtime, "degraded", { lastError: code });
-        this.auditFailure("runtime.stop", actor, targetUserId, runtime, identity.runtimeId, code);
+        const degraded = this.persist(runtime, "degraded", { lastError: code });
+        this.auditFailure("runtime.stop", actor, targetUserId, degraded, identity.runtimeId, code);
         throw new ManagedRuntimeServiceError(code);
       }
+      const stopped = this.persist(runtime, "degraded", {
+        containerId: result.containerId,
+        imageVersion: requiredImageVersion(result),
+        lastError: "runtime_stopped",
+      });
+      this.auditSuccess("runtime.stop", actor, targetUserId, stopped, identity.runtimeId);
+      return serializeManagedRuntimeStatus(stopped);
     });
   }
 
@@ -181,31 +185,41 @@ export class ManagedRuntimeService {
     return this.lockFor(targetUserId).runExclusive(async () => {
       const runtime = this.options.store.getByUserId(targetUserId);
       const identity = this.identity(targetUserId);
+      let result: RuntimeLifecycleResult;
       try {
         this.options.closeConnections?.(targetUserId);
-        const result = await this.options.manager.remove(identity.runtimeId);
+        result = await this.options.manager.remove(identity.runtimeId);
         this.assertRuntimeResult(identity.runtimeId, result, "absent");
-        if (runtime !== null && runtime.status !== "absent") {
-          this.persistTransition(runtime, "remove", {
-            containerId: null,
-            lastError: null,
-          });
-        }
-        this.options.store.deleteForUser(targetUserId);
-        this.auditSuccess(
+      } catch (error) {
+        const code = safeErrorCode(error);
+        const basis = runtime ?? this.createRuntime(targetUserId, "degraded");
+        const degraded = this.persist(basis, "degraded", { lastError: code });
+        this.auditFailure(
           "runtime.remove",
           actor,
           targetUserId,
-          runtime,
+          degraded,
           identity.runtimeId,
-          "absent",
+          code,
         );
-        return null;
-      } catch (error) {
-        const code = safeErrorCode(error);
-        this.auditFailure("runtime.remove", actor, targetUserId, runtime, identity.runtimeId, code);
         throw new ManagedRuntimeServiceError(code);
       }
+      if (runtime !== null && runtime.status !== "absent") {
+        this.persistTransition(runtime, "remove", {
+          containerId: null,
+          lastError: null,
+        });
+      }
+      this.options.store.deleteForUser(targetUserId);
+      this.auditSuccess(
+        "runtime.remove",
+        actor,
+        targetUserId,
+        runtime,
+        identity.runtimeId,
+        "absent",
+      );
+      return null;
     });
   }
 

@@ -1,4 +1,5 @@
 import { once } from "node:events";
+import { createServer as createTcpServer, type Socket } from "node:net";
 import { WebSocketServer, type RawData } from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostRecord } from "~~/shared/types";
@@ -118,6 +119,46 @@ describe("ManagedCodexRpcTransport", () => {
     expect(ensureVersion).not.toHaveBeenCalled();
     client.close();
     ensureVersion.mockRestore();
+  });
+
+  it("terminates a stalled websocket handshake at the injected deadline with a safe error", async () => {
+    const sockets = new Set<Socket>();
+    const server = createTcpServer((socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Test TCP server did not bind a port");
+    }
+    const endpoint = {
+      runtimeId: "runtime_01",
+      websocketUrl: `ws://127.0.0.1:${address.port}/rpc?token=secret-query-token`,
+      serviceToken: "runtime-token",
+    };
+    const host = createManagedRuntimeHost(7, runtimeRecordTimes(), endpoint);
+    const transport = new ManagedCodexRpcTransport(host, endpoint, transportOptions(), 10);
+
+    try {
+      const error: unknown = await Promise.race([
+        transport.connect().catch((cause: unknown) => cause),
+        new Promise<Error>((resolve) =>
+          setTimeout(() => resolve(new Error("outer test deadline expired")), 100),
+        ),
+      ]);
+      expect(error).toMatchObject({
+        code: "managed_rpc_handshake_timeout",
+        message: "managed_rpc_handshake_timeout",
+      });
+      expect(JSON.stringify(error)).not.toContain("secret-query-token");
+      expect(JSON.stringify(error)).not.toContain("runtime-token");
+      expect(JSON.stringify(error)).not.toContain("127.0.0.1");
+    } finally {
+      transport.close();
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });
 

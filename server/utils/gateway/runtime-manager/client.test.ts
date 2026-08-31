@@ -17,7 +17,7 @@ describe("RuntimeManagerClient", () => {
     });
     const bodySha256 = createHash("sha256").update(requestBody).digest("hex");
     const signature = createHmac("sha256", secret)
-      .update(`${timestamp}\n${nonce}\n${bodySha256}`)
+      .update(`POST\n/v1/runtimes/provision\n${timestamp}\n${nonce}\n${bodySha256}`)
       .digest("hex");
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
       Response.json({
@@ -110,6 +110,35 @@ describe("RuntimeManagerClient", () => {
     await expect(client.inspect("runtime_01")).rejects.toEqual(
       expect.objectContaining({ code: "runtime_manager_invalid_response" }),
     );
+  });
+
+  it("aborts a lifecycle request at the injected deadline with a fixed safe error", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+      const signal = init?.signal;
+      if (signal === null || signal === undefined) throw new Error("fetch received no AbortSignal");
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => {
+          reject(new Error("abort from ws://sensitive-runtime:4500?token=secret-token"));
+        });
+      });
+    });
+    const client = new RuntimeManagerClient({
+      baseUrl: "http://runtime-manager:8787",
+      secret: "manager-shared-secret",
+      timeoutMs: 5,
+      fetch,
+      nonce: () => "fixed-nonce",
+    });
+
+    const error: unknown = await client.inspect("runtime_01").catch((cause: unknown) => cause);
+
+    expect(error).toMatchObject({
+      code: "runtime_manager_timeout",
+      message: "runtime_manager_timeout",
+    });
+    expect(fetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    expect(JSON.stringify(error)).not.toContain("sensitive-runtime");
+    expect(JSON.stringify(error)).not.toContain("secret-token");
   });
 });
 

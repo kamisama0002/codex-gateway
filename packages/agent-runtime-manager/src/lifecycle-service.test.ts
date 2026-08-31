@@ -281,12 +281,17 @@ describe("HmacRequestAuthenticator", () => {
     });
     const headers = createSignedHeaders({
       body,
+      method: "POST",
+      path: "/v1/runtimes/start",
       nonce: "nonce-1",
       secret: "shared-secret",
       timestamp: now,
     });
 
-    expect(authenticator.authenticate(headers, body)).toEqual({ nonce: "nonce-1", timestamp: now });
+    expect(authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start")).toEqual({
+      nonce: "nonce-1",
+      timestamp: now,
+    });
   });
 
   it("rejects timestamps outside the five-minute window with a fixed error", () => {
@@ -298,12 +303,14 @@ describe("HmacRequestAuthenticator", () => {
     });
     const headers = createSignedHeaders({
       body,
+      method: "POST",
+      path: "/v1/runtimes/start",
       nonce: "nonce-old",
       secret: "shared-secret",
       timestamp: now - 300_001,
     });
 
-    expect(() => authenticator.authenticate(headers, body)).toThrow(
+    expect(() => authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start")).toThrow(
       new RuntimeAuthenticationError(),
     );
   });
@@ -317,13 +324,15 @@ describe("HmacRequestAuthenticator", () => {
     });
     const headers = createSignedHeaders({
       body,
+      method: "POST",
+      path: "/v1/runtimes/start",
       nonce: "nonce-replayed",
       secret: "shared-secret",
       timestamp: now,
     });
 
-    authenticator.authenticate(headers, body);
-    expect(() => authenticator.authenticate(headers, body)).toThrow(
+    authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start");
+    expect(() => authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start")).toThrow(
       new RuntimeAuthenticationError(),
     );
   });
@@ -339,15 +348,17 @@ describe("HmacRequestAuthenticator", () => {
     });
     const headers = createSignedHeaders({
       body,
+      method: "POST",
+      path: "/v1/runtimes/start",
       nonce: "nonce-future",
       secret: "shared-secret",
       timestamp: signedTimestamp,
     });
 
-    authenticator.authenticate(headers, body);
+    authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start");
     currentTime = now + 300_001;
 
-    expect(() => authenticator.authenticate(headers, body)).toThrow(
+    expect(() => authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start")).toThrow(
       new RuntimeAuthenticationError(),
     );
   });
@@ -361,20 +372,31 @@ describe("HmacRequestAuthenticator", () => {
     });
     const headers = createSignedHeaders({
       body,
+      method: "POST",
+      path: "/v1/runtimes/start",
       nonce: "nonce-tampered",
       secret: "shared-secret",
       timestamp: now,
     });
 
     for (const candidate of [
-      () => authenticator.authenticate(headers, Buffer.from("changed")),
-      () => authenticator.authenticate({ ...headers, "x-runtime-signature": "not-hex" }, body),
+      () =>
+        authenticator.authenticate(headers, Buffer.from("changed"), "POST", "/v1/runtimes/start"),
+      () =>
+        authenticator.authenticate(
+          { ...headers, "x-runtime-signature": "not-hex" },
+          body,
+          "POST",
+          "/v1/runtimes/start",
+        ),
     ]) {
       expect(candidate).toThrow(new RuntimeAuthenticationError());
     }
     expect(
       createRequestSignature(
         "shared-secret",
+        "POST",
+        "/v1/runtimes/start",
         now,
         "nonce-tampered",
         headers["x-runtime-body-sha256"],
@@ -420,7 +442,14 @@ describe("Runtime Manager HTTP API", () => {
       body,
       headers: {
         "content-type": "application/json",
-        ...createSignedHeaders({ body, nonce: "http-1", secret: "shared-secret", timestamp: now }),
+        ...createSignedHeaders({
+          body,
+          method: "POST",
+          path: "/v1/runtimes/provision",
+          nonce: "http-1",
+          secret: "shared-secret",
+          timestamp: now,
+        }),
       },
       method: "POST",
     });
@@ -428,6 +457,8 @@ describe("Runtime Manager HTTP API", () => {
     const inspectResponse = await fetch(`${baseUrl}/v1/runtimes/runtime-http`, {
       headers: createSignedHeaders({
         body: inspectBody,
+        method: "GET",
+        path: "/v1/runtimes/runtime-http",
         nonce: "http-2",
         secret: "shared-secret",
         timestamp: now,
@@ -459,6 +490,8 @@ describe("Runtime Manager HTTP API", () => {
     const body = Buffer.alloc(0);
     const headers = createSignedHeaders({
       body,
+      method: "GET",
+      path: "/v1/runtimes/runtime-a",
       nonce: "http-replay",
       secret: "shared-secret",
       timestamp: now,
@@ -489,6 +522,8 @@ describe("Runtime Manager HTTP API", () => {
         "content-type": "application/json",
         ...createSignedHeaders({
           body,
+          method: "POST",
+          path: "/v1/runtimes/provision",
           nonce: "http-strict",
           secret: "shared-secret",
           timestamp: now,
@@ -507,6 +542,8 @@ describe("Runtime Manager HTTP API", () => {
     const response = await fetch(`${baseUrl}/v1/runtimes/%`, {
       headers: createSignedHeaders({
         body,
+        method: "GET",
+        path: "/v1/runtimes/%",
         nonce: "http-malformed-path",
         secret: "shared-secret",
         timestamp: now,

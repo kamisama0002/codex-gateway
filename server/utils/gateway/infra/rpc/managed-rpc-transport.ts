@@ -6,6 +6,7 @@ import { createRpcTransportError, type RpcTransportCloseDetail } from "./rpc-err
 import type { CodexRpcTransportOptions, RpcTransport } from "./rpc-transport";
 
 const managedEndpoints = new WeakMap<HostRecord, ManagedRuntimeEndpoint>();
+const DEFAULT_MANAGED_RPC_HANDSHAKE_TIMEOUT_MS = 30_000;
 
 export function createManagedRuntimeHost(
   userId: number,
@@ -42,7 +43,12 @@ export class ManagedCodexRpcTransport implements RpcTransport {
     private readonly host: HostRecord,
     private readonly endpoint: ManagedRuntimeEndpoint,
     private readonly options: CodexRpcTransportOptions,
-  ) {}
+    private readonly handshakeTimeoutMs = DEFAULT_MANAGED_RPC_HANDSHAKE_TIMEOUT_MS,
+  ) {
+    if (!Number.isInteger(this.handshakeTimeoutMs) || this.handshakeTimeoutMs <= 0) {
+      throw new Error("Managed Codex RPC handshake timeout must be a positive integer");
+    }
+  }
 
   async connect(): Promise<void> {
     this.closed = false;
@@ -54,10 +60,19 @@ export class ManagedCodexRpcTransport implements RpcTransport {
         perMessageDeflate: false,
       });
       this.ws = ws;
+      const deadline = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        this.closed = true;
+        this.ws = null;
+        ws.terminate();
+        reject(new ManagedCodexRpcHandshakeTimeoutError());
+      }, this.handshakeTimeoutMs);
       ws.on("open", () => {
         if (settled) return;
         settled = true;
         opened = true;
+        clearTimeout(deadline);
         resolve();
       });
       ws.on("message", (data) => this.options.onMessage(rawWebSocketDataToString(data)));
@@ -67,6 +82,7 @@ export class ManagedCodexRpcTransport implements RpcTransport {
         if (!settled) {
           settled = true;
           this.closed = true;
+          clearTimeout(deadline);
           reject(error);
           return;
         }
@@ -78,6 +94,7 @@ export class ManagedCodexRpcTransport implements RpcTransport {
         if (!settled) {
           settled = true;
           this.closed = true;
+          clearTimeout(deadline);
           reject(error);
           return;
         }
@@ -108,6 +125,15 @@ export class ManagedCodexRpcTransport implements RpcTransport {
     this.closed = true;
     this.ws = null;
     this.options.onClose(error, detail);
+  }
+}
+
+export class ManagedCodexRpcHandshakeTimeoutError extends Error {
+  readonly code = "managed_rpc_handshake_timeout";
+
+  constructor() {
+    super("managed_rpc_handshake_timeout");
+    this.name = "ManagedCodexRpcHandshakeTimeoutError";
   }
 }
 

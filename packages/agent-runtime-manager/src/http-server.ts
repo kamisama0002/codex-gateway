@@ -47,8 +47,8 @@ async function handleRequest(
 ): Promise<void> {
   try {
     const body = await readBody(request);
-    options.authenticator.authenticate(request.headers, body);
     const url = new URL(request.url ?? "/", "http://runtime-manager.internal");
+    options.authenticator.authenticate(request.headers, body, request.method ?? "", url.pathname);
     if (url.search) return sendJson(response, 404, { error: "not_found" });
 
     if (request.method === "GET") {

@@ -81,17 +81,23 @@ export function createBodySha256(body: Uint8Array): string {
 
 export function createRequestSignature(
   secret: string,
+  method: string,
+  path: string,
   timestamp: number,
   nonce: string,
   bodySha256: string,
 ): string {
+  const canonicalMethod = normalizeRuntimeRequestMethod(method);
+  const canonicalPath = normalizeRuntimeRequestPath(path);
   return createHmac("sha256", secret)
-    .update(`${timestamp}\n${nonce}\n${bodySha256}`, "utf8")
+    .update(`${canonicalMethod}\n${canonicalPath}\n${timestamp}\n${nonce}\n${bodySha256}`, "utf8")
     .digest("hex");
 }
 
 export function createSignedHeaders(options: {
   secret: string;
+  method: string;
+  path: string;
   timestamp: number;
   nonce: string;
   body: Uint8Array;
@@ -102,6 +108,8 @@ export function createSignedHeaders(options: {
     "x-runtime-nonce": options.nonce,
     "x-runtime-signature": createRequestSignature(
       options.secret,
+      options.method,
+      options.path,
       options.timestamp,
       options.nonce,
       bodySha256,
@@ -125,6 +133,8 @@ export class HmacRequestAuthenticator {
   authenticate(
     headers: RuntimeAuthHeaders,
     body: Uint8Array,
+    method: string,
+    path: string,
   ): { timestamp: number; nonce: string } {
     try {
       const currentTime = this.now();
@@ -147,7 +157,14 @@ export class HmacRequestAuthenticator {
       }
 
       const actualBodySha256 = createBodySha256(body);
-      const expectedSignature = createRequestSignature(this.secret, timestamp, nonce, bodySha256);
+      const expectedSignature = createRequestSignature(
+        this.secret,
+        method,
+        path,
+        timestamp,
+        nonce,
+        bodySha256,
+      );
       if (
         !safeEqualHex(bodySha256, actualBodySha256) ||
         !safeEqualHex(signature, expectedSignature)
@@ -162,6 +179,26 @@ export class HmacRequestAuthenticator {
       if (error instanceof RuntimeAuthenticationError) throw error;
       throw new RuntimeAuthenticationError();
     }
+  }
+}
+
+export function normalizeRuntimeRequestMethod(method: string): string {
+  const normalized = method.toUpperCase();
+  if (!/^[A-Z]+$/.test(normalized)) throw new RuntimeAuthenticationError();
+  return normalized;
+}
+
+export function normalizeRuntimeRequestPath(path: string): string {
+  try {
+    const origin = new URL("http://runtime-manager.internal");
+    const normalized = new URL(path, origin);
+    if (normalized.origin !== origin.origin || normalized.search !== "" || normalized.hash !== "") {
+      throw new RuntimeAuthenticationError();
+    }
+    return normalized.pathname;
+  } catch (error) {
+    if (error instanceof RuntimeAuthenticationError) throw error;
+    throw new RuntimeAuthenticationError();
   }
 }
 
