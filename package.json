@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "nuxt build",
-    "build:dependencies": "turbo run build --filter=@codex-gateway/browser-runtime --filter=@codex-gateway/ui --filter=@codex-gateway/ai-elements",
+    "build:dependencies": "turbo run build --filter=@codex-gateway/browser-runtime --filter=@codex-gateway/ui --filter=@codex-gateway/ai-elements --filter=@codex-gateway/agent-runtime-manager",
     "prebuild": "pnpm build:dependencies",
     "predev": "pnpm build:dependencies",
     "dev": "nuxt dev",
@@ -13,7 +13,7 @@
     "lint:fix": "oxlint app scripts server shared tests nuxt.config.ts playwright.config.ts tailwind.config.ts --ignore-pattern 'third_party/**' --fix && oxfmt --write app scripts server shared tests nuxt.config.ts playwright.config.ts tailwind.config.ts '!third_party/**'",
     "lint:ox": "oxlint app scripts server shared tests nuxt.config.ts playwright.config.ts tailwind.config.ts --ignore-pattern 'third_party/**'",
     "typecheck": "nuxt typecheck && vue-tsc -p tests/e2e/tsconfig.json --noEmit",
-    "typecheck:dependencies": "pnpm --filter '@codex-gateway/*' --recursive typecheck",
+    "typecheck:dependencies": "pnpm --filter \"@codex-gateway/*\" --recursive typecheck",
     "user:create": "node scripts/create-user.mjs",
     "test:e2e": "tests/e2e/run-in-containers.sh",
     "test:unit": "vitest run",
