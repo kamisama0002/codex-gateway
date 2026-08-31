@@ -12,7 +12,7 @@ const sectionListResponse = {
 };
 
 describe("managed Runtime E2E helper", () => {
-  it("lists App Server-created threads explicitly instead of relying on interactive defaults", async () => {
+  it("lists pre-turn App Server threads across every recognized source kind", async () => {
     const requests: Array<{ method: string; params: unknown }> = [];
     const threads = await listManagedRuntimeThreads({
       async request(method, params) {
@@ -35,7 +35,18 @@ describe("managed Runtime E2E helper", () => {
           limit: 100,
           sectionId: pinnedSectionId,
           sortDirection: "desc",
-          sourceKinds: ["appServer"],
+          sourceKinds: [
+            "cli",
+            "vscode",
+            "exec",
+            "appServer",
+            "subAgent",
+            "subAgentReview",
+            "subAgentCompact",
+            "subAgentThreadSpawn",
+            "subAgentOther",
+            "unknown",
+          ],
           useStateDbOnly: true,
         },
       },

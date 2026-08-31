@@ -54,6 +54,18 @@ const threadSectionListResponseSchema = z
   .strict();
 const threadSectionMoveResponseSchema = z.object({}).strict();
 const BUILT_IN_PINNED_SECTION_NAME = "Pinned";
+const ALL_THREAD_SOURCE_KINDS = [
+  "cli",
+  "vscode",
+  "exec",
+  "appServer",
+  "subAgent",
+  "subAgentReview",
+  "subAgentCompact",
+  "subAgentThreadSpawn",
+  "subAgentOther",
+  "unknown",
+] as const;
 
 interface ManagedRuntimeRpcClient {
   request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown>;
@@ -115,7 +127,10 @@ export async function listManagedRuntimeThreads(client: ManagedRuntimeRpcClient)
       limit: 100,
       sectionId,
       sortDirection: "desc",
-      sourceKinds: ["appServer"],
+      // Before its first turn, a Section move materializes the state-DB row before source metadata
+      // is reliable enough for appServer-only post-filtering. Send every recognized kind to avoid
+      // both that false exclusion and thread/list's omitted-filter interactive-only default.
+      sourceKinds: [...ALL_THREAD_SOURCE_KINDS],
       useStateDbOnly: true,
     }),
   );
