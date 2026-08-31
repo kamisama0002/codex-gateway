@@ -14,8 +14,12 @@ COPY packages/agent-runtime-contracts ./packages/agent-runtime-contracts
 COPY packages/agent-runtime-manager ./packages/agent-runtime-manager
 
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile --filter @codex-gateway/agent-runtime-manager...
-RUN pnpm --filter @codex-gateway/agent-runtime-manager build
+    pnpm install --frozen-lockfile --ignore-scripts --filter @codex-gateway/agent-runtime-manager...
+RUN pnpm --filter @codex-gateway/agent-runtime-manager rebuild esbuild \
+    && pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild --version \
+    && pnpm --filter @codex-gateway/agent-runtime-contracts typecheck \
+    && pnpm --filter @codex-gateway/agent-runtime-manager build \
+    && node --input-type=module -e "await import('./packages/agent-runtime-manager/dist/http-server.js')"
 
 FROM node:24-bookworm-slim
 

@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 const policyPath = fileURLToPath(
   new URL("../../../docker/agent-runtime-policy.json", import.meta.url),
 );
+const managerDockerfilePath = fileURLToPath(
+  new URL("../../../docker/runtime-manager.Dockerfile", import.meta.url),
+);
 
 describe("Agent runtime image policy", () => {
   it("keeps the Agent image isolated and pinned", () => {
@@ -22,5 +25,23 @@ describe("Agent runtime image policy", () => {
         },
       },
     });
+  });
+
+  it("builds only the Runtime Manager package graph after suppressing root lifecycle scripts", () => {
+    const dockerfile = readFileSync(managerDockerfilePath, "utf8").replaceAll("\\\n", " ");
+
+    expect(dockerfile).toContain(
+      "pnpm install --frozen-lockfile --ignore-scripts --filter @codex-gateway/agent-runtime-manager...",
+    );
+    expect(dockerfile).toContain(
+      "pnpm --filter @codex-gateway/agent-runtime-manager rebuild esbuild",
+    );
+    expect(dockerfile).toContain(
+      "pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild --version",
+    );
+    expect(dockerfile).toContain(
+      "pnpm --filter @codex-gateway/agent-runtime-contracts typecheck",
+    );
+    expect(dockerfile).toContain("pnpm --filter @codex-gateway/agent-runtime-manager build");
   });
 });
