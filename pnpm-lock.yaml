@@ -65,6 +65,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.9
         version: 6.43.9
+      '@codex-gateway/agent-runtime-contracts':
+        specifier: workspace:*
+        version: link:packages/agent-runtime-contracts
       '@codex-gateway/ai-elements':
         specifier: workspace:*
         version: link:packages/gateway-ai-elements
@@ -324,6 +327,16 @@ importers:
       vue-tsc:
         specifier: ^3.3.11
         version: 3.3.11(typescript@6.0.3)
+
+  packages/agent-runtime-contracts:
+    dependencies:
+      zod:
+        specifier: ^4.5.2
+        version: 4.5.2
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/gateway-ai-elements:
     dependencies:
