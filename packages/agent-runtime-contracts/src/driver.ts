@@ -48,6 +48,11 @@ export interface StartTurnInput {
   input: PlatformConversationItem[];
 }
 
+export interface ReadConversationInput {
+  userId: number;
+  conversationId: string;
+}
+
 export interface InterruptTurnInput {
   userId: number;
   conversationId: string;
@@ -66,7 +71,7 @@ export interface AgentRuntimeDriver {
   ensureReady(userId: number): Promise<RuntimeHandle>;
   getCapabilities(handle: RuntimeHandle): Promise<RuntimeCapabilitySnapshot>;
   startConversation(input: StartConversationInput): Promise<PlatformConversation>;
-  readConversation(conversationId: string): Promise<PlatformConversationSnapshot>;
+  readConversation(input: ReadConversationInput): Promise<PlatformConversationSnapshot>;
   startTurn(input: StartTurnInput): Promise<PlatformTurn>;
   interruptTurn(input: InterruptTurnInput): Promise<void>;
   respondToApproval(input: ApprovalResponseInput): Promise<void>;

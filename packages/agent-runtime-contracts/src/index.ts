@@ -6,6 +6,7 @@ export type {
   PlatformConversationItem,
   PlatformConversationSnapshot,
   PlatformTurn,
+  ReadConversationInput,
   RuntimeCapabilitySnapshot,
   RuntimeHandle,
   StartConversationInput,
