@@ -16,6 +16,7 @@ import { sessionActivityTracker } from "./session-activity-tracker";
 export interface AuthenticatedUser {
   id: number;
   username: string;
+  role: "admin" | "user";
 }
 
 export interface AuthSession {
@@ -38,7 +39,10 @@ export const userStore = {
     const now = new Date().toISOString();
     gatewayDatabase()
       .prepare(
-        "INSERT INTO users (username, password_hash, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)",
+        `
+          INSERT INTO users (username, password_hash, is_active, role, created_at, updated_at)
+          VALUES (?, ?, 1, CASE WHEN EXISTS (SELECT 1 FROM users WHERE role = 'admin') THEN 'user' ELSE 'admin' END, ?, ?)
+        `,
       )
       .run(normalized, hashPassword(password), now, now);
     return this.findByUsername(normalized);
@@ -46,7 +50,7 @@ export const userStore = {
 
   findByUsername(username: string) {
     const row = gatewayDatabase()
-      .prepare("SELECT id, username, password_hash, is_active FROM users WHERE username = ?")
+      .prepare("SELECT id, username, password_hash, is_active, role FROM users WHERE username = ?")
       .get(normalizeUsername(username));
     return row
       ? {
@@ -54,6 +58,7 @@ export const userStore = {
           username: String(row.username),
           passwordHash: String(row.password_hash),
           isActive: Number(row.is_active) === 1,
+          role: databaseUserRole(row.role),
         }
       : null;
   },
@@ -74,7 +79,7 @@ export const userStore = {
     return {
       token,
       expiresAt,
-      user: { id: user.id, username: user.username },
+      user: { id: user.id, username: user.username, role: user.role },
     };
   },
 
@@ -86,7 +91,7 @@ export const userStore = {
     const row = gatewayDatabase()
       .prepare(
         `
-          SELECT users.id, users.username, users.is_active, sessions.expires_at
+          SELECT users.id, users.username, users.role, users.is_active, sessions.expires_at
           FROM sessions
           JOIN users ON users.id = sessions.user_id
           WHERE sessions.token_hash = ?
@@ -101,7 +106,11 @@ export const userStore = {
       return null;
     }
     sessionActivityTracker.touch(tokenHash);
-    return { id: Number(row.id), username: String(row.username) };
+    return {
+      id: Number(row.id),
+      username: String(row.username),
+      role: databaseUserRole(row.role),
+    };
   },
 
   deleteToken(token: string) {
@@ -171,7 +180,7 @@ export const userStore = {
     const rows = gatewayDatabase()
       .prepare(
         `
-          SELECT users.id, users.username, user_configs.encrypted_config_json
+          SELECT users.id, users.username, users.role, user_configs.encrypted_config_json
           FROM users
           JOIN user_configs ON user_configs.user_id = users.id
           WHERE users.is_active = 1
@@ -183,6 +192,7 @@ export const userStore = {
       user: {
         id: Number(row.id),
         username: String(row.username),
+        role: databaseUserRole(row.role),
       },
       config: {
         ...defaultGatewayConfig(),
@@ -194,4 +204,9 @@ export const userStore = {
 
 function normalizeUsername(username: string) {
   return username.trim().toLowerCase();
+}
+
+function databaseUserRole(value: unknown): AuthenticatedUser["role"] {
+  if (value === "admin" || value === "user") return value;
+  throw new Error("Stored user role is invalid");
 }
