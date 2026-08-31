@@ -30,3 +30,4 @@ test-results
 .data-e2e
 .e2e-runtime
 .data
+.worktrees
