@@ -1,14 +1,69 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1_000;
 const SHA_256_HEX = /^[a-f0-9]{64}$/;
 const NONCE = /^[A-Za-z0-9_-]{1,128}$/;
 
+export const DEFAULT_RUNTIME_MANAGER_NONCE_STORE_PATH = "/data/runtime-manager-nonces.sqlite";
+
 export type RuntimeAuthHeaders = Record<string, string | string[] | undefined>;
 
 export interface HmacRequestAuthenticatorOptions {
   secret: string;
+  nonceStore: NonceStore;
   now?: () => number;
+}
+
+export interface NonceStore {
+  claim(nonce: string, expiresAt: number, currentTime: number): boolean;
+}
+
+export class SqliteNonceStore implements NonceStore {
+  private readonly database: DatabaseSync;
+  private readonly insertStatement: StatementSync;
+  private readonly pruneStatement: StatementSync;
+
+  constructor(path: string = DEFAULT_RUNTIME_MANAGER_NONCE_STORE_PATH) {
+    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+    this.database = new DatabaseSync(path);
+    this.database.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = FULL;
+      PRAGMA busy_timeout = 5000;
+      CREATE TABLE IF NOT EXISTS runtime_manager_nonces (
+        nonce TEXT PRIMARY KEY NOT NULL,
+        expires_at_ms INTEGER NOT NULL
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS runtime_manager_nonces_expiry
+        ON runtime_manager_nonces (expires_at_ms);
+    `);
+    this.pruneStatement = this.database.prepare(
+      "DELETE FROM runtime_manager_nonces WHERE expires_at_ms < ?",
+    );
+    this.insertStatement = this.database.prepare(
+      "INSERT OR IGNORE INTO runtime_manager_nonces (nonce, expires_at_ms) VALUES (?, ?)",
+    );
+  }
+
+  claim(nonce: string, expiresAt: number, currentTime: number): boolean {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.pruneStatement.run(currentTime);
+      const result = this.insertStatement.run(nonce, expiresAt);
+      this.database.exec("COMMIT");
+      return result.changes === 1 || result.changes === 1n;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  close(): void {
+    this.database.close();
+  }
 }
 
 export class RuntimeAuthenticationError extends Error {
@@ -56,13 +111,14 @@ export function createSignedHeaders(options: {
 }
 
 export class HmacRequestAuthenticator {
-  private readonly nonces = new Map<string, number>();
+  private readonly nonceStore: NonceStore;
   private readonly now: () => number;
   private readonly secret: string;
 
   constructor(options: HmacRequestAuthenticatorOptions) {
     if (!options.secret) throw new Error("RUNTIME_MANAGER_SHARED_SECRET is required");
     this.secret = options.secret;
+    this.nonceStore = options.nonceStore;
     this.now = options.now ?? Date.now;
   }
 
@@ -72,7 +128,6 @@ export class HmacRequestAuthenticator {
   ): { timestamp: number; nonce: string } {
     try {
       const currentTime = this.now();
-      this.pruneExpiredNonces(currentTime);
 
       const timestampHeader = readHeader(headers, "x-runtime-timestamp");
       const nonce = readHeader(headers, "x-runtime-nonce");
@@ -82,11 +137,11 @@ export class HmacRequestAuthenticator {
 
       if (
         !Number.isSafeInteger(timestamp) ||
+        timestamp > Number.MAX_SAFE_INTEGER - MAX_CLOCK_SKEW_MS ||
         Math.abs(currentTime - timestamp) > MAX_CLOCK_SKEW_MS ||
         !NONCE.test(nonce) ||
         !SHA_256_HEX.test(bodySha256) ||
-        !SHA_256_HEX.test(signature) ||
-        this.nonces.has(nonce)
+        !SHA_256_HEX.test(signature)
       ) {
         throw new RuntimeAuthenticationError();
       }
@@ -100,19 +155,21 @@ export class HmacRequestAuthenticator {
         throw new RuntimeAuthenticationError();
       }
 
-      this.nonces.set(nonce, currentTime + MAX_CLOCK_SKEW_MS);
+      const claimed = this.nonceStore.claim(nonce, timestamp + MAX_CLOCK_SKEW_MS, currentTime);
+      if (!claimed) throw new RuntimeAuthenticationError();
       return { timestamp, nonce };
     } catch (error) {
       if (error instanceof RuntimeAuthenticationError) throw error;
       throw new RuntimeAuthenticationError();
     }
   }
+}
 
-  private pruneExpiredNonces(currentTime: number): void {
-    for (const [nonce, expiresAt] of this.nonces) {
-      if (expiresAt < currentTime) this.nonces.delete(nonce);
-    }
-  }
+export function resolveRuntimeManagerNonceStorePath(environment: NodeJS.ProcessEnv): string {
+  const configuredPath = environment.RUNTIME_MANAGER_NONCE_STORE_PATH;
+  return configuredPath === undefined || configuredPath.length === 0
+    ? DEFAULT_RUNTIME_MANAGER_NONCE_STORE_PATH
+    : configuredPath;
 }
 
 function readHeader(headers: RuntimeAuthHeaders, name: string): string {

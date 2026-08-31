@@ -6,6 +6,7 @@ import {
   createRequestSignature,
   createSignedHeaders,
   HmacRequestAuthenticator,
+  type NonceStore,
   RuntimeAuthenticationError,
 } from "./auth.js";
 import type {
@@ -44,6 +45,19 @@ function requestFor(runtimeId: string) {
     runtimeType: "codex-app-server" as const,
     userHash,
   };
+}
+
+class MemoryNonceStore implements NonceStore {
+  private readonly nonces = new Map<string, number>();
+
+  claim(nonce: string, expiresAt: number, currentTime: number): boolean {
+    for (const [storedNonce, storedExpiry] of this.nonces) {
+      if (storedExpiry < currentTime) this.nonces.delete(storedNonce);
+    }
+    if (this.nonces.has(nonce)) return false;
+    this.nonces.set(nonce, expiresAt);
+    return true;
+  }
 }
 
 class RecordingDockerEngine implements DockerEngine {
@@ -242,6 +256,7 @@ describe("HmacRequestAuthenticator", () => {
   it("accepts a matching timestamp, nonce, body digest, and signature", () => {
     const body = Buffer.from('{"runtimeId":"runtime-a"}');
     const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
       now: () => now,
       secret: "shared-secret",
     });
@@ -258,6 +273,7 @@ describe("HmacRequestAuthenticator", () => {
   it("rejects timestamps outside the five-minute window with a fixed error", () => {
     const body = Buffer.alloc(0);
     const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
       now: () => now,
       secret: "shared-secret",
     });
@@ -276,6 +292,7 @@ describe("HmacRequestAuthenticator", () => {
   it("rejects a replayed nonce", () => {
     const body = Buffer.alloc(0);
     const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
       now: () => now,
       secret: "shared-secret",
     });
@@ -292,9 +309,34 @@ describe("HmacRequestAuthenticator", () => {
     );
   });
 
+  it("blocks a future-dated nonce through the signed timestamp validity window", () => {
+    const body = Buffer.alloc(0);
+    let currentTime = now;
+    const signedTimestamp = now + 300_000;
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => currentTime,
+      secret: "shared-secret",
+    });
+    const headers = createSignedHeaders({
+      body,
+      nonce: "nonce-future",
+      secret: "shared-secret",
+      timestamp: signedTimestamp,
+    });
+
+    authenticator.authenticate(headers, body);
+    currentTime = now + 300_001;
+
+    expect(() => authenticator.authenticate(headers, body)).toThrow(
+      new RuntimeAuthenticationError(),
+    );
+  });
+
   it("rejects body tampering and malformed signatures without revealing the reason", () => {
     const body = Buffer.from("original");
     const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
       now: () => now,
       secret: "shared-secret",
     });
@@ -337,7 +379,11 @@ describe("Runtime Manager HTTP API", () => {
     const service = new RuntimeLifecycleService(new RecordingDockerEngine(), testPolicy, {
       randomToken: () => "http-service-token",
     });
-    const authenticator = new HmacRequestAuthenticator({ now: () => now, secret: "shared-secret" });
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
     const server = createServer(createRuntimeManagerRequestHandler({ authenticator, service }));
     servers.push(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -387,6 +433,23 @@ describe("Runtime Manager HTTP API", () => {
 
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("rejects a replay with the same safe fixed response", async () => {
+    const baseUrl = await startTestServer();
+    const body = Buffer.alloc(0);
+    const headers = createSignedHeaders({
+      body,
+      nonce: "http-replay",
+      secret: "shared-secret",
+      timestamp: now,
+    });
+    const firstResponse = await fetch(`${baseUrl}/v1/runtimes/runtime-a`, { headers });
+    const replayResponse = await fetch(`${baseUrl}/v1/runtimes/runtime-a`, { headers });
+
+    expect(firstResponse.status).toBe(200);
+    expect(replayResponse.status).toBe(401);
+    expect(await replayResponse.json()).toEqual({ error: "unauthorized" });
   });
 
   it("rejects arbitrary Docker options in strict request payloads", async () => {

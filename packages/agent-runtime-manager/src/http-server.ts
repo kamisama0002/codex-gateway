@@ -9,7 +9,12 @@ import { resolve } from "node:path";
 
 import { ZodError } from "zod";
 
-import { HmacRequestAuthenticator, RuntimeAuthenticationError } from "./auth.js";
+import {
+  HmacRequestAuthenticator,
+  resolveRuntimeManagerNonceStorePath,
+  RuntimeAuthenticationError,
+  SqliteNonceStore,
+} from "./auth.js";
 import {
   provisionRuntimeRequestSchema,
   runtimeActionRequestSchema,
@@ -156,8 +161,10 @@ export function loadRuntimeManagerPolicy(
 }
 
 export function startRuntimeManager(environment: NodeJS.ProcessEnv = process.env): void {
+  const secret = requiredEnvironment(environment, "RUNTIME_MANAGER_SHARED_SECRET");
   const authenticator = new HmacRequestAuthenticator({
-    secret: requiredEnvironment(environment, "RUNTIME_MANAGER_SHARED_SECRET"),
+    nonceStore: new SqliteNonceStore(resolveRuntimeManagerNonceStorePath(environment)),
+    secret,
   });
   const service = new RuntimeLifecycleService(
     new DockerodeEngine(),
