@@ -72,15 +72,25 @@ export class ManagedRuntimeRpcSession {
   }
 
   async listThreads() {
-    const page = parseThreadListPage(
-      await this.client.request("thread/list", { limit: 100, sortDirection: "desc" }),
-    );
-    return page.data;
+    return await listManagedRuntimeThreads(this.client);
   }
 
   close() {
     this.client.close();
   }
+}
+
+export async function listManagedRuntimeThreads(client: {
+  request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown>;
+}) {
+  const page = parseThreadListPage(
+    await client.request("thread/list", {
+      limit: 100,
+      sortDirection: "desc",
+      sourceKinds: ["appServer"],
+    }),
+  );
+  return page.data;
 }
 
 export async function loginGatewayUser(
