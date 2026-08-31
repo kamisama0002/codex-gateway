@@ -14,7 +14,7 @@ import type {
   DockerEngine,
   EngineContainerState,
 } from "./docker-engine.js";
-import { createRuntimeManagerRequestHandler } from "./http-server.js";
+import { createRuntimeManagerRequestHandler, loadRuntimeManagerPolicy } from "./http-server.js";
 import {
   RuntimeLifecycleError,
   RuntimeLifecycleService,
@@ -139,6 +139,24 @@ class RecordingDockerEngine implements DockerEngine {
 }
 
 describe("RuntimeLifecycleService", () => {
+  it("uses the fixed 4500 endpoint when production environment attempts to override it", async () => {
+    const policy = loadRuntimeManagerPolicy({
+      RUNTIME_MANAGER_AGENT_NETWORK: "agent-runtime",
+      RUNTIME_MANAGER_AGENT_PORT: "1234",
+      RUNTIME_MANAGER_IMAGE_ALIASES: JSON.stringify(testPolicy.images),
+    });
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, policy, {
+      randomToken: () => "generated-service-token",
+    });
+
+    const result = await service.provision(requestFor("runtime-fixed-port"));
+
+    expect(policy.internalPort).toBe(4500);
+    expect(engine.createCalls[0]?.internalPort).toBe(4500);
+    expect(result.endpoint?.websocketUrl).toMatch(/^ws:\/\/codex-runtime-[a-f0-9-]+:4500$/);
+  });
+
   it("reuses the existing labeled container for the same runtime id", async () => {
     const engine = new RecordingDockerEngine({ existingContainerId: "container-a" });
     const service = new RuntimeLifecycleService(engine, testPolicy);

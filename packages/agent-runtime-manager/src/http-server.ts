@@ -26,6 +26,7 @@ import { DockerodeEngine } from "./docker-engine.js";
 import { RuntimeLifecycleError, RuntimeLifecycleService } from "./lifecycle-service.js";
 
 const MAX_BODY_BYTES = 64 * 1024;
+export const CODEX_APP_SERVER_PORT = 4500;
 
 export function createRuntimeManagerRequestHandler(options: {
   authenticator: HmacRequestAuthenticator;
@@ -155,7 +156,7 @@ export function loadRuntimeManagerPolicy(
   ) as unknown;
   return runtimeManagerPolicySchema.parse({
     images,
-    internalPort: Number(environment.RUNTIME_MANAGER_AGENT_PORT ?? "4555"),
+    internalPort: CODEX_APP_SERVER_PORT,
     networkName: requiredEnvironment(environment, "RUNTIME_MANAGER_AGENT_NETWORK"),
   });
 }
