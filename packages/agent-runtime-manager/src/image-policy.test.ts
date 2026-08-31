@@ -9,6 +9,15 @@ const policyPath = fileURLToPath(
 const managerDockerfilePath = fileURLToPath(
   new URL("../../../docker/runtime-manager.Dockerfile", import.meta.url),
 );
+const contractsPackagePath = fileURLToPath(
+  new URL("../../agent-runtime-contracts/package.json", import.meta.url),
+);
+const contractsTsconfigPath = fileURLToPath(
+  new URL("../../agent-runtime-contracts/tsconfig.json", import.meta.url),
+);
+const isolatedContractsTsconfigPath = fileURLToPath(
+  new URL("../../agent-runtime-contracts/tsconfig.runtime-manager.json", import.meta.url),
+);
 
 describe("Agent runtime image policy", () => {
   it("keeps the Agent image isolated and pinned", () => {
@@ -29,7 +38,20 @@ describe("Agent runtime image policy", () => {
 
   it("builds only the Runtime Manager package graph after suppressing root lifecycle scripts", () => {
     const dockerfile = readFileSync(managerDockerfilePath, "utf8").replaceAll("\\\n", " ");
+    const contractsPackage = JSON.parse(readFileSync(contractsPackagePath, "utf8")) as {
+      scripts?: Record<string, string>;
+    };
 
+    expect(contractsPackage.scripts?.typecheck).toBe("tsc --noEmit");
+    expect(contractsPackage.scripts?.["typecheck:runtime-manager"]).toBe(
+      "tsc --noEmit -p tsconfig.runtime-manager.json",
+    );
+    const fullTsconfig = JSON.parse(readFileSync(contractsTsconfigPath, "utf8")) as {
+      exclude?: string[];
+      include?: string[];
+    };
+    expect(fullTsconfig.include).toEqual(["src/**/*.ts"]);
+    expect(fullTsconfig.exclude).toBeUndefined();
     expect(dockerfile).toContain(
       "pnpm install --frozen-lockfile --ignore-scripts --filter @codex-gateway/agent-runtime-manager...",
     );
@@ -40,8 +62,15 @@ describe("Agent runtime image policy", () => {
       "pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild --version",
     );
     expect(dockerfile).toContain(
-      "pnpm --filter @codex-gateway/agent-runtime-contracts typecheck",
+      "pnpm --filter @codex-gateway/agent-runtime-contracts typecheck:runtime-manager",
     );
     expect(dockerfile).toContain("pnpm --filter @codex-gateway/agent-runtime-manager build");
+
+    const isolatedTsconfig = JSON.parse(readFileSync(isolatedContractsTsconfigPath, "utf8")) as {
+      files?: string[];
+      include?: string[];
+    };
+    expect(isolatedTsconfig.files).toEqual(["src/index.ts"]);
+    expect(isolatedTsconfig.include).toEqual([]);
   });
 });

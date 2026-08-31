@@ -17,7 +17,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts --filter @codex-gateway/agent-runtime-manager...
 RUN pnpm --filter @codex-gateway/agent-runtime-manager rebuild esbuild \
     && pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild --version \
-    && pnpm --filter @codex-gateway/agent-runtime-contracts typecheck \
+    && pnpm --filter @codex-gateway/agent-runtime-contracts typecheck:runtime-manager \
     && pnpm --filter @codex-gateway/agent-runtime-manager build \
     && node --input-type=module -e "await import('./packages/agent-runtime-manager/dist/http-server.js')"
 

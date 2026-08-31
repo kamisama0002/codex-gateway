@@ -9,7 +9,8 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:runtime-manager": "tsc --noEmit -p tsconfig.runtime-manager.json"
   },
   "dependencies": {
     "zod": "^4.5.2"
