@@ -32,6 +32,32 @@ const authSessionSchema = z
   .strict();
 
 const gatewayProcessSchema = z.object({ bootId: z.uuid() }).strict();
+const threadSectionSchema = z
+  .object({
+    id: z.uuid(),
+    name: z.string().min(1),
+    appearance: z
+      .object({
+        icon: z.string().nullable().optional(),
+        color: z.string().nullable().optional(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+  })
+  .strict();
+const threadSectionListResponseSchema = z
+  .object({
+    data: z.array(threadSectionSchema),
+    nextCursor: z.string().nullable().optional(),
+  })
+  .strict();
+const threadSectionMoveResponseSchema = z.object({}).strict();
+const BUILT_IN_PINNED_SECTION_NAME = "Pinned";
+
+interface ManagedRuntimeRpcClient {
+  request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown>;
+}
 
 export type GatewaySession = z.infer<typeof authSessionSchema>;
 
@@ -68,7 +94,9 @@ export class ManagedRuntimeRpcSession {
         historyMode: "paginated",
       }),
     );
-    return result.thread.id;
+    const threadId = result.thread.id;
+    await materializeManagedRuntimeThread(this.client, threadId);
+    return threadId;
   }
 
   async listThreads() {
@@ -80,17 +108,60 @@ export class ManagedRuntimeRpcSession {
   }
 }
 
-export async function listManagedRuntimeThreads(client: {
-  request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown>;
-}) {
+export async function listManagedRuntimeThreads(client: ManagedRuntimeRpcClient) {
+  const sectionId = await discoverPinnedSectionId(client);
   const page = parseThreadListPage(
     await client.request("thread/list", {
       limit: 100,
+      sectionId,
       sortDirection: "desc",
       sourceKinds: ["appServer"],
+      useStateDbOnly: true,
     }),
   );
   return page.data;
+}
+
+export async function materializeManagedRuntimeThread(
+  client: ManagedRuntimeRpcClient,
+  threadId: string,
+) {
+  const sectionId = await discoverPinnedSectionId(client);
+  threadSectionMoveResponseSchema.parse(
+    await client.request("thread/section/move", {
+      beforeThreadId: null,
+      sectionId,
+      threadId,
+    }),
+  );
+  return sectionId;
+}
+
+async function discoverPinnedSectionId(client: ManagedRuntimeRpcClient) {
+  let cursor: string | undefined;
+  const matches: string[] = [];
+  do {
+    const page = threadSectionListResponseSchema.parse(
+      await client.request("threadSection/list", {
+        limit: 100,
+        ...(cursor === undefined ? {} : { cursor }),
+      }),
+    );
+    matches.push(
+      ...page.data
+        .filter(
+          (section) =>
+            section.name === BUILT_IN_PINNED_SECTION_NAME &&
+            (section.appearance === null || section.appearance === undefined),
+        )
+        .map((section) => section.id),
+    );
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  if (matches.length !== 1) {
+    throw new Error("Expected exactly one built-in pinned Thread section");
+  }
+  return matches[0]!;
 }
 
 export async function loginGatewayUser(
