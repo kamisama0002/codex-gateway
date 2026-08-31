@@ -126,7 +126,7 @@ describe("managed Runtime E2E helper", () => {
     ).rejects.toMatchObject({ name: "ZodError" });
   });
 
-  it("uses the managed loopback origin for every Gateway request including restart polling", async () => {
+  it("uses restart-stable Gateway service DNS for every request including restart polling", async () => {
     const urls: string[] = [];
     let bootReadCount = 0;
     const response = (value: unknown, status = 200) => ({
@@ -174,14 +174,14 @@ describe("managed Runtime E2E helper", () => {
     await restartGateway(request, session);
 
     expect(urls).toEqual([
-      "http://127.0.0.1:3100/api/auth/login",
-      "http://127.0.0.1:3100/api/runtime/start",
-      "http://127.0.0.1:3100/api/runtime/me",
-      "http://127.0.0.1:3100/api/admin/runtimes/7/restart",
-      "http://127.0.0.1:3100/api/runtime/start",
-      "http://127.0.0.1:3100/api/e2e/gateway-process",
-      "http://127.0.0.1:3100/api/e2e/gateway-restart",
-      "http://127.0.0.1:3100/api/e2e/gateway-process",
+      "http://gateway-under-test:3100/api/auth/login",
+      "http://gateway-under-test:3100/api/runtime/start",
+      "http://gateway-under-test:3100/api/runtime/me",
+      "http://gateway-under-test:3100/api/admin/runtimes/7/restart",
+      "http://gateway-under-test:3100/api/runtime/start",
+      "http://gateway-under-test:3100/api/e2e/gateway-process",
+      "http://gateway-under-test:3100/api/e2e/gateway-restart",
+      "http://gateway-under-test:3100/api/e2e/gateway-process",
     ]);
   });
 });

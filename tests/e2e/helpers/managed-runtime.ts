@@ -54,8 +54,11 @@ const threadSectionListResponseSchema = z
   .strict();
 const threadSectionMoveResponseSchema = z.object({}).strict();
 const BUILT_IN_PINNED_SECTION_NAME = "Pinned";
+// The runner shares Gateway's original network namespace for browser-preview loopback routing.
+// After the Gateway container restarts, that old namespace cannot reach the new process on 127.0.0.1,
+// but Compose service DNS resolves the restarted container's current address on the default network.
 const MANAGED_RUNTIME_GATEWAY_ORIGIN =
-  process.env.E2E_MANAGED_RUNTIME_GATEWAY_URL ?? "http://127.0.0.1:3100";
+  process.env.E2E_MANAGED_RUNTIME_GATEWAY_URL ?? "http://gateway-under-test:3100";
 const ALL_THREAD_SOURCE_KINDS = [
   "cli",
   "vscode",
