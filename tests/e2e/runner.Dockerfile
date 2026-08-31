@@ -25,6 +25,8 @@ RUN --mount=type=cache,id=codex-gateway-e2e-pnpm-store,target=/pnpm/store \
 COPY . /workspace/source
 
 COPY tests/e2e/runner-entrypoint.sh /usr/local/bin/codex-gateway-e2e-runner
-RUN chmod +x /usr/local/bin/codex-gateway-e2e-runner
+COPY tests/e2e/gateway-supervisor.sh /usr/local/bin/codex-gateway-e2e-supervisor
+RUN chmod +x /usr/local/bin/codex-gateway-e2e-runner \
+  /usr/local/bin/codex-gateway-e2e-supervisor
 
 ENTRYPOINT ["codex-gateway-e2e-runner"]

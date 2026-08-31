@@ -132,7 +132,7 @@ services:
       - e2e-data:/workspace/codex-gateway/.data-e2e
     # Exercise the same V8 memory policy as production; the wider 2 GiB cgroup remains available
     # to Playwright's shared test topology and native browser/runtime allocations.
-    command: ["node", "--expose-gc", "--max-old-space-size=512", "/e2e-output/server/index.mjs"]
+    command: ["/usr/local/bin/codex-gateway-e2e-supervisor", "node", "--expose-gc", "--max-old-space-size=512", "/e2e-output/server/index.mjs"]
     networks:
       - default
       - runtime-manager
