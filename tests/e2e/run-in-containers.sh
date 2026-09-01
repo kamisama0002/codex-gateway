@@ -193,7 +193,7 @@ cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
     docker compose -p "$project_name" -f "$compose_file" logs --no-color \
-      agent-runtime-manager gateway-under-test ssh-target >&2 || true
+      agent-runtime-manager gateway-under-test model-target ssh-target >&2 || true
   fi
   cleanup_managed_resources
   docker compose -p "$project_name" -f "$compose_file" down --volumes --remove-orphans >/dev/null 2>&1 || true
@@ -220,4 +220,6 @@ docker compose -p "$project_name" -f "$compose_file" up -d --wait \
 docker compose -p "$project_name" -f "$compose_file" run --rm test-runner \
   bash -lc 'if [ -e /var/run/docker.sock ]; then echo "test-runner must not receive the Docker socket" >&2; exit 1; fi; exec pnpm exec playwright test "$@"' \
   e2e "$@"
-verify_managed_runtime_docker_state
+if [ "${E2E_EXPECT_MANAGED_RUNTIME:-1}" = "1" ]; then
+  verify_managed_runtime_docker_state
+fi
