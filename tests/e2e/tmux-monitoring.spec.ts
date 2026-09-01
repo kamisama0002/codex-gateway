@@ -22,13 +22,20 @@ test("monitors a real tmux pane, persists it, and notifies once when it returns 
     remote,
     `
 tmux kill-server >/dev/null 2>&1 || true
-tmux new-session -d -s ${shellQuote(sessionName)} -n model
+tmux_new_session() {
+  for attempt in $(seq 1 20); do
+    tmux new-session "$@" && return 0
+    sleep 0.1
+  done
+  return 1
+}
+tmux_new_session -d -s ${shellQuote(sessionName)} -n model
 tmux send-keys -t ${shellQuote(`${sessionName}:0.0`)} ${shellQuote(`for i in $(seq 1 200); do printf 'training-line-%s\\n' "$i"; done; printf '${outputMarker}\\n'; sleep 300`)} Enter
-tmux new-session -d -s ${shellQuote(idleSessionName)} -n shell
-tmux new-session -d -s ${shellQuote(backgroundSessionName)} -n model
+tmux_new_session -d -s ${shellQuote(idleSessionName)} -n shell
+tmux_new_session -d -s ${shellQuote(backgroundSessionName)} -n model
 tmux send-keys -t ${shellQuote(`${backgroundSessionName}:0.0`)} ${shellQuote("sleep 300 &")} Enter
-tmux new-session -d -s ${shellQuote(directSessionName)} -n proxy ${shellQuote("sleep 300")}
-tmux new-session -d -s ${shellQuote(explicitShellSessionName)} -n shell /bin/bash
+tmux_new_session -d -s ${shellQuote(directSessionName)} -n proxy ${shellQuote("sleep 300")}
+tmux_new_session -d -s ${shellQuote(explicitShellSessionName)} -n shell /bin/bash
 for i in $(seq 1 50); do
   [ "$(tmux display-message -p -t ${shellQuote(`${sessionName}:0.0`)} '#{pane_current_command}')" = sleep ] && break
   sleep 0.1
@@ -210,7 +217,11 @@ test("permanently monitors repeated runs and reattaches to the same logical pane
   await execRemoteSsh(
     remote,
     `tmux kill-server >/dev/null 2>&1 || true
-tmux new-session -d -s ${shellQuote(sessionName)} -n train`,
+for attempt in $(seq 1 20); do
+  tmux new-session -d -s ${shellQuote(sessionName)} -n train && break
+  sleep 0.1
+done
+tmux has-session -t ${shellQuote(sessionName)}`,
   );
 
   await openApp(page);

@@ -11,6 +11,15 @@ import type {
 } from "../types";
 
 const rpcIdSchema = z.union([z.string(), z.number()]);
+
+// App Server thread identifiers are UUID-shaped (optionally prefixed with `urn:uuid:`). Keep this
+// small protocol predicate at the shared boundary so UI-only fixture ids are never sent to an
+// upstream RPC method that validates the identifier before dispatching.
+const appServerThreadIdPattern = /^(?:urn:uuid:)?[0-9a-fA-F-]+$/;
+
+export function isAppServerThreadId(value: unknown): value is string {
+  return typeof value === "string" && appServerThreadIdPattern.test(value);
+}
 const rpcErrorSchema = z
   .object({
     code: z.number(),

@@ -60,6 +60,8 @@ export function requestStartThread(options: ComposerTurnOptions) {
       approvalPolicy: options.approvalPolicy ?? undefined,
     }),
     expectThreadStarted,
-    { timeoutMs: 30_000 },
+    // A new SSH host can still be running the real remote Codex/Node upgrade when the user
+    // creates the first thread. Use the realtime broker's long operation deadline instead of
+    // abandoning the request after 30 seconds, before the backend can return the App Server id.
   );
 }

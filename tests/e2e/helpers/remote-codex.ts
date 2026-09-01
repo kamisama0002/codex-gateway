@@ -6,6 +6,11 @@ import { connectTestSsh, execTestSsh } from "./ssh-client";
 
 export type RemoteRuntimeFixture = "empty-runtime" | "legacy-node" | "legacy-codex";
 
+// A first connection to an empty SSH fixture performs the same real Codex/Node installation as
+// production. The upgrader's total operation budget is ten minutes, so a shorter UI wait reports a
+// disconnected host while the remote install is still progressing.
+const REMOTE_HOST_READY_TIMEOUT_MS = 10 * 60_000;
+
 const remoteCodexEnvSchema = z
   .object({
     host: z.string().min(1),
@@ -161,7 +166,9 @@ export async function addRemoteHost(
   await hostForm.getByTestId("add-host-button").click();
   const host = uiHostSchema.parse(await (await hostResponsePromise).json());
   await closeSettings(page);
-  await expect(hostConnectedIndicator(page, host.id)).toBeVisible({ timeout: 120_000 });
+  await expect(hostConnectedIndicator(page, host.id)).toBeVisible({
+    timeout: REMOTE_HOST_READY_TIMEOUT_MS,
+  });
   if (
     remote.initialCodexVersion !== undefined &&
     remote.initialCodexVersion !== null &&
