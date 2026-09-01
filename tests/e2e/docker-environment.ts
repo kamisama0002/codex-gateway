@@ -169,7 +169,7 @@ fi
 if [ -n "$model_base_url" ] && [ -f "$config_file" ]; then
   awk -v replacement="$model_base_url" '
     !done && $0 ~ /^[[:space:]]*base_url[[:space:]]*=/ {
-      print "base_url = \\\"" replacement "\\\"";
+      print "base_url = \\"" replacement "\\"";
       done = 1;
       next;
     }

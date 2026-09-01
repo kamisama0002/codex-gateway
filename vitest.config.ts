@@ -8,6 +8,9 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["{server,shared,packages,scripts,tests/unit}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+    include: [
+      "{server,shared,packages,scripts,tests/unit}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}",
+    ],
+    setupFiles: ["./tests/unit/setup.ts"],
   },
 });
