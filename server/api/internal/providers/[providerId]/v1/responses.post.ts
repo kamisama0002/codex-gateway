@@ -1,4 +1,4 @@
-import { getRouterParam, readRawBody, type H3Event } from "h3";
+import { getRequestURL, getRouterParam, readRawBody, type H3Event } from "h3";
 import { defineGatewayEventHandler } from "../../../../../utils/gateway/http/errors";
 import { handleProviderResponses } from "../../../../../utils/gateway/providers/provider-proxy";
 
@@ -11,7 +11,10 @@ export default defineGatewayEventHandler(async (event: H3Event) => {
     if (typeof value === "string") headers.set(key, value);
     else if (Array.isArray(value)) headers.set(key, value.join(", "));
   }
-  return handleProviderResponses(new Request(event.node.req.url ?? "http://gateway.internal", {
+  // Node's IncomingMessage URL is commonly relative (for example `/api/...`).
+  // The Fetch Request constructor requires an absolute URL, so use h3's trusted
+  // request URL resolver instead of passing the raw path through unchanged.
+  return handleProviderResponses(new Request(getRequestURL(event), {
     method: event.method,
     headers,
     body: body === undefined ? undefined : body.toString("utf8"),
