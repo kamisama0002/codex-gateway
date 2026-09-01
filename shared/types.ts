@@ -44,6 +44,15 @@ export type {
   McpServerEvent,
 } from "./types/mcp";
 export type { ModelListResult, ModelRecord } from "./types/models";
+export type {
+  ModelCapabilities,
+  ModelProviderDefinition,
+  ProviderModelDefinition,
+  PublicModelProviderDefinition,
+  UpstreamWireApi,
+  UserModelGrant,
+  UserProviderModel,
+} from "./types/providers";
 export type { TerminalOpenTarget, TerminalScope, TerminalSessionSnapshot } from "./types/terminal";
 export type {
   BrowserPreviewResourceFailure,

@@ -46,7 +46,7 @@ describe("migrateGatewayDatabase", () => {
       host_id: MANAGED_RUNTIME_HOST_ID,
     });
     expect(db.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({
-      count: 4,
+      count: 7,
     });
     expect(MANAGED_RUNTIME_HOST_ID).toBe(2_000_000_000);
   });

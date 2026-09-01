@@ -141,6 +141,63 @@ const migrations: DatabaseMigration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    up(db) {
+      db.exec(`
+        CREATE TABLE model_providers (
+          id TEXT PRIMARY KEY NOT NULL,
+          name TEXT NOT NULL,
+          base_url TEXT NOT NULL,
+          wire_api TEXT NOT NULL CHECK (wire_api IN ('responses', 'chat_completions')),
+          encrypted_api_key TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          request_timeout_ms INTEGER NOT NULL CHECK (request_timeout_ms BETWEEN 1000 AND 300000),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE TABLE provider_models (
+          provider_id TEXT NOT NULL REFERENCES model_providers(id) ON DELETE CASCADE,
+          model_id TEXT NOT NULL,
+          display_name TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          capabilities_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (provider_id, model_id)
+        ) STRICT;
+
+        CREATE INDEX idx_provider_models_enabled
+          ON provider_models(provider_id, enabled, model_id);
+      `);
+    },
+  },
+  {
+    version: 6,
+    up(db) {
+      db.exec(`
+        CREATE TABLE user_model_grants (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          provider_id TEXT NOT NULL,
+          model_id TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, provider_id, model_id),
+          FOREIGN KEY (provider_id, model_id)
+            REFERENCES provider_models(provider_id, model_id) ON DELETE CASCADE
+        ) STRICT;
+
+        CREATE INDEX idx_user_model_grants_model
+          ON user_model_grants(provider_id, model_id, user_id);
+      `);
+    },
+  },
+  {
+    version: 7,
+    up(db) {
+      db.exec("CREATE INDEX idx_model_providers_enabled ON model_providers(enabled, name)");
+    },
+  },
 ];
 
 export function migrateGatewayDatabase(db: DatabaseSync): void {
