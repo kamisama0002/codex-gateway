@@ -10,6 +10,7 @@ import type {
   ThreadTokenUsageState,
   TerminalSessionSnapshot,
   GatewayConfig,
+  GatewayThread,
   HostGpuProcessSnapshot,
   HostMetricsCollectorStatus,
   HostMetricsSample,
@@ -29,6 +30,12 @@ export type GatewayDomainEventMap = {
   "gateway-config-applied": { config: GatewayConfig };
   "host-removed": { hostId: number };
   "pinned-threads-invalidated": Record<never, never>;
+  "thread-catalog-updated": {
+    hostId: number;
+    threadId: string;
+    action: "archived" | "unarchived" | "deleted";
+    thread: GatewayThread | null;
+  };
   "realtime-reconnected": Record<never, never>;
   "realtime-error-reported": {
     message: string;

@@ -68,6 +68,9 @@ export function applyStartedThreadResult(result: ThreadOpenResult) {
   views.currentThread = result.thread;
   views.history = result.history;
   views.timelineTurns = result.history.thread.turns;
+  if (result.projectId !== null && result.projectId !== undefined) {
+    navigation.selectedProjectId = result.projectId;
+  }
   navigation.selectedThreadId = threadId;
   applyCommonThreadResult(threadId, result, result.lastEventId);
   return threadId;

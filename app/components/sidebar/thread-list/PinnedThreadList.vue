@@ -18,12 +18,8 @@ const emit = defineEmits<{
   open: [thread: PinnedThreadRecord];
   unpin: [thread: PinnedThreadRecord];
   rename: [thread: PinnedThreadRecord];
+  archive: [thread: PinnedThreadRecord];
 }>();
-
-function subtitleForPinnedThread(thread: PinnedThreadRecord) {
-  const hostName = props.hosts.find((host) => host.id === thread.hostId)?.name;
-  return [hostName, thread.projectName].filter(Boolean).join(" / ");
-}
 
 function isSelectedPinnedThread(thread: PinnedThreadRecord) {
   return (
@@ -34,27 +30,29 @@ function isSelectedPinnedThread(thread: PinnedThreadRecord) {
 </script>
 
 <template>
-  <section class="flex min-w-0 max-w-full flex-col overflow-hidden">
-    <div class="flex h-8 items-center justify-between gap-2 px-2 pb-2 text-sm text-ink-muted">
+  <section v-if="threads.length" class="flex min-w-0 max-w-full flex-col overflow-hidden">
+    <div class="flex h-8 items-center justify-between gap-2 px-1 text-sm text-ink-muted">
       <span>{{ $t("app.pinned") }}</span>
       <slot name="header-action" />
     </div>
-    <div v-if="threads.length" class="space-y-1">
+    <div v-if="threads.length" class="space-y-0.5">
       <ThreadRow
         v-for="thread in threads"
         :key="pinnedThreadKey(thread)"
+        compact
         :thread="thread"
         :test-id="`pinned-thread-button-${pinnedThreadId(thread)}`"
         :selected="isSelectedPinnedThread(thread)"
         :status="runtimeStatus(thread)"
         :completion-attention="completionAttention(thread)"
-        :subtitle="subtitleForPinnedThread(thread) || formatRelative(thread.updatedAt)"
+        :subtitle="formatRelative(thread.updatedAt)"
         :pin-label="$t('app.unpinThread')"
         :long-press-handlers="longPressHandlers"
         show-pinned-icon
         @open="emit('open', thread)"
         @toggle-pin="emit('unpin', thread)"
         @rename="emit('rename', thread)"
+        @archive="emit('archive', thread)"
       />
     </div>
   </section>

@@ -39,14 +39,14 @@ async function copyText() {
   <!-- The parent mounts actions only after the existing intermediate-process disclosure closes. -->
   <MessageActions
     data-testid="agent-message-actions"
-    class="mt-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+    class="mt-1.5 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
   >
     <TurnDurationLabel v-if="turnTiming" :timing="turnTiming" />
     <TurnUsageAmountLabel :usage="responseUsage" />
     <MessageAction
       :tooltip="t('app.copyAgentOutput')"
       size="sm"
-      class="size-8 p-0 text-ink-muted hover:bg-canvas-soft hover:text-ink"
+      class="size-7 p-0 text-ink-muted hover:bg-canvas-soft hover:text-ink"
       @click="copyText"
     >
       <CheckIcon v-if="copied" class="size-4 text-accent-green" />

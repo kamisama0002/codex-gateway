@@ -53,7 +53,7 @@ function open(agent: (typeof agents.value)[number]) {
 <template>
   <div
     v-if="agents.length"
-    class="flex min-h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-hairline bg-canvas-soft/55 px-3"
+    class="flex min-h-8 shrink-0 items-center gap-2 overflow-x-auto border-b border-hairline px-3"
     data-testid="active-subagents"
   >
     <div class="flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink-muted">

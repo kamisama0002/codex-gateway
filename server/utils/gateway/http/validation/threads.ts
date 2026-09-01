@@ -2,6 +2,14 @@ import { z } from "zod";
 import { INITIAL_TURN_PAGE_LIMIT, OLDER_TURN_PAGE_LIMIT } from "~~/shared/config";
 import { optionalPositiveInt } from "./common";
 
+const optionalQueryBoolean = z
+  .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+  .optional()
+  .transform((value) => {
+    if (value === undefined) return undefined;
+    return value === true || value === "true" || value === "1";
+  });
+
 export const threadListSchema = z.object({
   hostId: z.coerce.number().int().positive(),
   projectId: optionalPositiveInt,
@@ -10,6 +18,12 @@ export const threadListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
   cursor: z.string().trim().nullable().optional(),
   useRemoteStateIndexOnly: z.coerce.boolean().optional(),
+  archived: optionalQueryBoolean,
+});
+
+export const threadLifecycleSchema = z.object({
+  hostId: z.coerce.number().int().positive(),
+  threadId: z.string().trim().min(1),
 });
 
 export const threadOpenSchema = z.object({

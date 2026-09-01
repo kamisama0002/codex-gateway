@@ -156,15 +156,26 @@ function tabContextMenu({ panel, api }: GetTabContextMenuItemsParams) {
 
 <style scoped>
 .gateway-dockview {
-  --dv-background-color: var(--canvas);
-  --dv-paneview-active-outline-color: var(--primary);
-  --dv-tabs-and-actions-container-background-color: var(--canvas-soft);
-  --dv-activegroup-visiblepanel-tab-background-color: var(--surface);
-  --dv-activegroup-hiddenpanel-tab-background-color: var(--canvas-soft);
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--surface);
-  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--canvas-soft);
+  --dv-background-color: var(--surface);
+  --dv-paneview-active-outline-color: transparent;
+  --dv-tabs-and-actions-container-background-color: var(--surface);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--canvas-soft);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--surface);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--canvas-soft);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--surface);
   --dv-tab-divider-color: var(--hairline);
   --dv-separator-border: var(--hairline);
-  --dv-active-sash-color: var(--primary);
+  --dv-active-sash-color: var(--hairline);
+  --dv-tabs-and-actions-container-height: 2rem;
+}
+
+.gateway-dockview :deep(.dv-tabs-and-actions-container) {
+  height: 2rem;
+  min-height: 2rem;
+}
+
+.gateway-dockview :deep(.dv-tab) {
+  margin: 0;
+  padding-inline: 0.125rem;
 }
 </style>

@@ -1,6 +1,7 @@
 import type { GatewayEvent } from "./records";
 import type {
   ComposerTurnOptions,
+  GatewayThread,
   ThreadGoal,
   ThreadGoalStatus,
   ThreadItemsPageResult,
@@ -297,6 +298,13 @@ export type RealtimeServerMessage =
     }
   | {
       type: "config.pinnedThreads.changed";
+    }
+  | {
+      type: "thread.catalog.updated";
+      hostId: number;
+      threadId: string;
+      action: "archived" | "unarchived" | "deleted";
+      thread: GatewayThread | null;
     }
   | {
       type: "thread.runtime.snapshot";

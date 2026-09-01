@@ -42,36 +42,36 @@ function popout() {
 </script>
 
 <template>
-  <div class="flex h-full items-center gap-0.5 px-1">
+  <div class="flex h-full items-center gap-px px-0.5">
     <Button
       variant="ghost"
-      size="icon-sm"
-      class="size-7"
+      size="icon-xs"
+      class="size-6"
       :aria-label="$t('app.maximizePanel')"
       @click="toggleMaximize"
     >
-      <Maximize2Icon class="size-3.5" />
+      <Maximize2Icon class="size-3" />
     </Button>
     <Button
       variant="ghost"
-      size="icon-sm"
-      class="size-7"
+      size="icon-xs"
+      class="size-6"
       :aria-label="$t('app.floatPanel')"
       @click="toggleFloating"
     >
-      <Rows3Icon v-if="location === 'floating' || location === 'popout'" class="size-3.5" />
-      <PictureInPicture2Icon v-else class="size-3.5" />
+      <Rows3Icon v-if="location === 'floating' || location === 'popout'" class="size-3" />
+      <PictureInPicture2Icon v-else class="size-3" />
     </Button>
     <Button
       v-if="location !== 'popout'"
       data-testid="dock-popout-group"
       variant="ghost"
-      size="icon-sm"
-      class="size-7"
+      size="icon-xs"
+      class="size-6"
       :aria-label="$t('app.popoutPanel')"
       @click="popout"
     >
-      <ArrowDownToLineIcon class="size-3.5" />
+      <ArrowDownToLineIcon class="size-3" />
     </Button>
   </div>
 </template>

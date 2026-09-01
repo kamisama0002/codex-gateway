@@ -16,6 +16,7 @@ export interface RealtimePeerState {
   terminalUnsubscribe?: () => void;
   notificationUnsubscribe?: () => void;
   pinnedThreadsUnsubscribe?: () => void;
+  threadCatalogUnsubscribe?: () => void;
   threadRuntimeStatusUnsubscribe?: () => void;
   browserPreviewUnsubscribe?: () => void;
   browserOwnerId?: string;

@@ -39,8 +39,8 @@
 | 3 | `thread/start` | 已显式适配 |
 | 4 | `thread/resume` | 已显式适配 |
 | 5 | `thread/fork` | 缺少（未显式适配） |
-| 6 | `thread/archive` | 缺少（未显式适配） |
-| 7 | `thread/delete` | 缺少（未显式适配） |
+| 6 | `thread/archive` | 已显式适配 |
+| 7 | `thread/delete` | 已显式适配 |
 | 8 | `thread/unsubscribe` | 已显式适配 |
 | 9 | `thread/increment_elicitation` | 缺少（未显式适配） |
 | 10 | `thread/decrement_elicitation` | 缺少（未显式适配） |
@@ -59,7 +59,7 @@
 | 23 | `thread/settings/update` | 已显式适配 |
 | 24 | `thread/memoryMode/set` | 缺少（未显式适配） |
 | 25 | `memory/reset` | 缺少（未显式适配） |
-| 26 | `thread/unarchive` | 缺少（未显式适配） |
+| 26 | `thread/unarchive` | 已显式适配 |
 | 27 | `thread/compact/start` | 缺少（未显式适配） |
 | 28 | `thread/shellCommand` | 缺少（未显式适配） |
 | 29 | `thread/approveGuardianDeniedAction` | 缺少（未显式适配） |

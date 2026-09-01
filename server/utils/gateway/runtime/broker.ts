@@ -7,6 +7,7 @@ import { ThreadTurnCommandService } from "./turn-commands";
 import { ThreadGoalService } from "./thread-goals";
 import { ThreadSettingsService } from "./thread-settings";
 import { ThreadCatalogService } from "./thread-catalog";
+import { ThreadLifecycleService } from "./thread-lifecycle";
 import { ThreadHistoryReader } from "./thread-history-reader";
 import { McpRuntimeService } from "./mcp-runtime";
 import { AppServerFileService } from "./app-server-files";
@@ -19,6 +20,7 @@ class ThreadBroker {
   private readonly goals = new ThreadGoalService(this.registry);
   private readonly settings = new ThreadSettingsService(this.registry);
   private readonly catalog = new ThreadCatalogService(this.registry);
+  private readonly lifecycle = new ThreadLifecycleService(this.registry);
   private readonly mcp = new McpRuntimeService(this.registry);
   private readonly files = new AppServerFileService(this.registry);
 
@@ -116,6 +118,18 @@ class ThreadBroker {
 
   async renameThread(host: HostRecord, threadId: string, name: string) {
     return this.settings.renameThread(host, threadId, name);
+  }
+
+  async archiveThread(host: HostRecord, threadId: string, userId: number) {
+    return this.lifecycle.archive(host, threadId, userId);
+  }
+
+  async unarchiveThread(host: HostRecord, threadId: string, userId: number) {
+    return this.lifecycle.unarchive(host, threadId, userId);
+  }
+
+  async deleteThread(host: HostRecord, threadId: string, userId: number) {
+    return this.lifecycle.delete(host, threadId, userId);
   }
 
   async listThreadTurns(

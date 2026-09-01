@@ -42,6 +42,11 @@ export function createThreadPinningActions() {
           String(item.id) === threadId ? { ...item, pinned } : item,
         ),
       );
+      navigation.hostThreads = sortThreads(
+        navigation.hostThreads.map((item) =>
+          String(item.id) === threadId ? { ...item, pinned } : item,
+        ),
+      );
       await gateway.setPinnedThread(nextPinnedThread, pinned);
     },
 
@@ -56,6 +61,11 @@ export function createThreadPinningActions() {
       if (thread.hostId === navigation.selectedHostId) {
         navigation.threads = sortThreads(
           navigation.threads.map((candidate) =>
+            String(candidate.id) === thread.threadId ? { ...candidate, pinned } : candidate,
+          ),
+        );
+        navigation.hostThreads = sortThreads(
+          navigation.hostThreads.map((candidate) =>
             String(candidate.id) === thread.threadId ? { ...candidate, pinned } : candidate,
           ),
         );
@@ -122,6 +132,9 @@ export function createThreadPinningActions() {
       if (!sessionIsCurrent()) return;
       if (hostId === navigation.selectedHostId) {
         navigation.threads = navigation.threads.map((thread) =>
+          String(thread.id) === threadId ? { ...thread, name } : thread,
+        );
+        navigation.hostThreads = navigation.hostThreads.map((thread) =>
           String(thread.id) === threadId ? { ...thread, name } : thread,
         );
       }

@@ -132,6 +132,21 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
     };
   }
 
+  function remove(hostId: number, threadId: string) {
+    const key = pinnedKey(hostId, threadId);
+    if (summariesByKey.value[key] === undefined) {
+      observedRunningThreadKeys.value = observedRunningThreadKeys.value.filter(
+        (candidate) => candidate !== key,
+      );
+      return;
+    }
+    const { [key]: _removed, ...remaining } = summariesByKey.value;
+    summariesByKey.value = remaining;
+    observedRunningThreadKeys.value = observedRunningThreadKeys.value.filter(
+      (candidate) => candidate !== key,
+    );
+  }
+
   function resetState() {
     summariesByKey.value = {};
     observedRunningThreadKeys.value = [];
@@ -146,6 +161,7 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
     upsertAppServerThread,
     recordRuntimeStatus,
     updateTitle,
+    remove,
     resetState,
   };
 });

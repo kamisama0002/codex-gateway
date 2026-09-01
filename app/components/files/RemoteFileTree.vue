@@ -123,12 +123,12 @@ function fileTreeNode(value: unknown) {
 
 <template>
   <section
-    class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-canvas-soft/45"
+    class="flex min-h-0 flex-1 flex-col overflow-hidden bg-canvas-soft/30"
     data-testid="remote-file-tree"
   >
-    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-hairline px-3">
-      <FolderIcon class="size-4 shrink-0 text-ink-muted" />
-      <span class="min-w-0 flex-1 truncate text-sm font-semibold" :title="rootPath">
+    <div class="flex h-8 shrink-0 items-center gap-1.5 border-b border-hairline px-2">
+      <FolderIcon class="size-3.5 shrink-0 text-ink-muted" />
+      <span class="min-w-0 flex-1 truncate text-xs font-medium" :title="rootPath">
         {{ rootPath || $t("app.loadingFileTree") }}
       </span>
       <Button
@@ -155,7 +155,7 @@ function fileTreeNode(value: unknown) {
       <Loader2Icon class="mr-2 size-4 animate-spin" />
       {{ $t("app.loadingFileTree") }}
     </div>
-    <div v-else ref="treeViewport" class="min-h-0 flex-1 overflow-hidden py-2">
+    <div v-else ref="treeViewport" class="min-h-0 flex-1 overflow-hidden py-1">
       <TreeRoot
         v-slot="{ flattenItems }"
         data-testid="remote-file-tree-scroll"

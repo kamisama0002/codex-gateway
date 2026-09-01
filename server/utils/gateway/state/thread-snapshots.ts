@@ -15,6 +15,12 @@ export const threadSnapshotStore = {
     );
   },
 
+  delete(hostId: number, threadId: string) {
+    gatewayMemoryState.threadSnapshots = gatewayMemoryState.threadSnapshots.filter(
+      (record) => record.hostId !== hostId || record.threadId !== threadId,
+    );
+  },
+
   get(hostId: number, threadId: string): ThreadOpenSnapshot | null {
     const record = gatewayMemoryState.threadSnapshots.find(
       (candidate) => candidate.hostId === hostId && candidate.threadId === threadId,

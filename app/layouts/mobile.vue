@@ -65,8 +65,7 @@ watch([selectedHostId, selectedProjectId, selectedThreadId], () => {
           </SheetContent>
         </Sheet>
         <div class="min-w-0 flex-1">
-          <p class="truncate text-[0.9375rem] font-semibold">{{ mobileTitle }}</p>
-          <p class="truncate text-xs text-ink-muted">Codex Gateway</p>
+          <p class="truncate text-sm font-medium">{{ mobileTitle }}</p>
         </div>
       </template>
     </ChatWorkspace>

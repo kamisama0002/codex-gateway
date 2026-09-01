@@ -47,13 +47,12 @@ function formatTokens(value: number) {
         data-testid="context-usage-meter"
         type="button"
         variant="ghost"
-        size="sm"
-        class="shrink-0 gap-2 px-1.5 text-base font-normal text-ink-muted hover:bg-canvas-soft"
+        size="icon"
+        class="size-7 shrink-0 rounded-full p-0 text-ink-muted hover:bg-muted"
         :title="accessibleLabel"
         :aria-label="accessibleLabel"
       >
-        <ContextIcon class="size-6" />
-        <span class="hidden sm:inline">{{ usage.percent }}%</span>
+        <ContextIcon class="size-3.5" />
       </Button>
     </ContextTrigger>
     <ContextContent align="end" class="w-72 border-hairline">

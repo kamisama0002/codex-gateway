@@ -301,7 +301,9 @@ export function createThreadOpenActions() {
       }
       if (navigation.selectedHostId === null) return;
       const sessionIsCurrent = captureSessionEpoch();
-      const result = await requestStartThread(options);
+      const result = await requestStartThread(options, {
+        projectId: navigation.selectedProjectId,
+      });
       if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
       const threadId = applyStartedThreadResult(result);
       cacheSelectedThreadView();

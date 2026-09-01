@@ -3,6 +3,7 @@ import type { RealtimeClientMessage } from "~~/shared/types";
 import { userStore } from "../../auth/users";
 import { notificationRealtimeEvents } from "../../notifications/notification-realtime-events";
 import { pinnedThreadEvents } from "../../config/pinned-thread-events";
+import { threadCatalogEvents } from "../../runtime/thread-catalog-events";
 import { sessionRevocationEvents } from "../../auth/session-events";
 import { hashToken } from "../../storage/crypto";
 import { subscribeTerminalEvents } from "./terminal";
@@ -43,6 +44,9 @@ export function authenticatePeer(
     }),
     pinnedThreadsUnsubscribe: pinnedThreadEvents.subscribe(user.id, () => {
       sendRealtimePeerMessage(peer, { type: "config.pinnedThreads.changed" });
+    }),
+    threadCatalogUnsubscribe: threadCatalogEvents.subscribe(user.id, (update) => {
+      sendRealtimePeerMessage(peer, { type: "thread.catalog.updated", ...update });
     }),
     threadRuntimeStatusUnsubscribe: threadRuntimeStatusHub.subscribe(user.id, (update) => {
       sendRealtimePeerMessage(peer, { type: "thread.runtime.updated", update });

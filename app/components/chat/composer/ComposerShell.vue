@@ -98,7 +98,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
 
 <template>
   <div
-    class="shrink-0 bg-gradient-to-t from-surface via-surface to-surface/75 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] md:px-[clamp(1rem,3vw,2rem)] md:pb-[clamp(0.5rem,1.4vh,1rem)]"
+    class="shrink-0 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] md:px-[clamp(1rem,3vw,2rem)] md:pb-[clamp(0.5rem,1.4vh,0.75rem)]"
   >
     <div class="mx-auto w-full max-w-3xl">
       <ComposerModeStrip
@@ -114,9 +114,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
         @resume-goal="emit('resumeGoal')"
         @clear-goal="emit('clearGoal')"
       />
-      <div
-        class="relative rounded-[1.35rem] border border-hairline bg-surface p-2 shadow-lg shadow-ink/10 md:rounded-3xl md:p-[clamp(0.45rem,1vw,0.7rem)]"
-      >
+      <div class="relative flex flex-col gap-3 rounded-[1.375rem] border border-hairline bg-surface px-3 pb-2.5 pt-2.5 shadow-[0_0.25rem_1rem_rgba(15,17,21,0.06)]">
         <SlashCommandMenu
           :open="slashMenuOpen"
           :commands="filteredSlashCommands"
@@ -140,7 +138,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           :host-id="selectedHostId"
           :project-id="selectedProjectId"
           :disabled="!composerInputEnabled"
-          :placeholder="$t('app.askFollowUp')"
+          :placeholder="selectedThreadId ? $t('app.askFollowUp') : $t('app.askNewThread')"
           :limit-message="$t('app.fileReferenceLimit', { count: 10 })"
           @update:model-value="updateModelValue"
           @update:references="updateFileReferences"

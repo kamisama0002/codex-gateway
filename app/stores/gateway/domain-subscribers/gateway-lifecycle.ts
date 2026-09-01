@@ -47,6 +47,9 @@ export function registerGatewayLifecycleSubscribers() {
         console.warn("[gateway] failed to refresh pinned threads", error);
       });
   });
+  gatewayDomainEvents.on("thread-catalog-updated", (update) => {
+    useGatewayNavigationStore().applyThreadCatalogUpdate(update);
+  });
   gatewayDomainEvents.on("realtime-reconnected", () => {
     useGatewayBrowserStore().resetRuntime();
     // A normal reconnect resumes every thread from its explicit event epoch and cursor. Do not

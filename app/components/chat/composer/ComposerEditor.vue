@@ -341,7 +341,7 @@ function dismissMenu() {
 <style>
 .composer-editor .cm-editor {
   max-height: min(28dvh, 10rem);
-  min-height: 3.25rem;
+  min-height: 2.25rem;
   background: transparent;
 }
 .composer-editor .cm-scroller {
@@ -349,9 +349,9 @@ function dismissMenu() {
   font-family: inherit;
 }
 .composer-editor .cm-content {
-  min-height: 3.25rem;
-  padding: 0.5rem 0.25rem;
-  font-size: 1rem;
+  min-height: 2.25rem;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.875rem;
   line-height: 1.5rem;
   caret-color: var(--ink);
 }
@@ -382,12 +382,12 @@ function dismissMenu() {
 }
 @media (min-width: 48rem) {
   .composer-editor .cm-editor {
-    max-height: min(24vh, 12rem);
-    min-height: clamp(3.75rem, 10vh, 6rem);
+    max-height: min(24vh, 10rem);
+    min-height: clamp(2.25rem, 6vh, 3.5rem);
   }
   .composer-editor .cm-content {
-    min-height: clamp(3.75rem, 10vh, 6rem);
-    line-height: 1.75rem;
+    min-height: clamp(2.25rem, 6vh, 3.5rem);
+    line-height: 1.5rem;
   }
 }
 </style>

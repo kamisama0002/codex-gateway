@@ -86,9 +86,9 @@ async function toggleInsecureTls() {
     :default-url="panel?.targetUrl ?? ''"
     class="h-full min-h-0 overflow-hidden rounded-none border-0 bg-surface"
   >
-    <WebPreviewNavigation class="h-10 shrink-0 gap-2 border-hairline px-2 py-0">
+    <WebPreviewNavigation class="h-8 shrink-0 gap-1 border-hairline px-1.5 py-0">
       <WebPreviewNavigationButton :tooltip="$t('app.reload')" @click="reload">
-        <RefreshCwIcon class="size-4" />
+        <RefreshCwIcon class="size-3.5" />
       </WebPreviewNavigationButton>
       <WebPreviewUrl
         class="min-w-0 bg-canvas-soft text-ink-muted"
@@ -101,7 +101,7 @@ async function toggleInsecureTls() {
         :tooltip="$t('app.allowInsecureTls')"
         @click="toggleInsecureTls"
       >
-        <ShieldAlertIcon class="size-4" />
+        <ShieldAlertIcon class="size-3.5" />
       </WebPreviewNavigationButton>
       <WebPreviewNavigationButton
         v-if="session"
@@ -110,14 +110,14 @@ async function toggleInsecureTls() {
         target="_blank"
         :tooltip="$t('app.openExternally')"
       >
-        <ExternalLinkIcon class="size-4" />
+        <ExternalLinkIcon class="size-3.5" />
       </WebPreviewNavigationButton>
     </WebPreviewNavigation>
     <div
       v-if="warning"
-      class="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-3 py-2 text-sm"
+      class="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-2 py-1.5 text-xs"
     >
-      <ShieldAlertIcon class="size-4 shrink-0" />
+      <ShieldAlertIcon class="size-3.5 shrink-0" />
       <span class="min-w-0 flex-1 truncate">{{ $t("app.browserFrameBlocked") }}</span>
       <a v-if="session" :href="session.previewOrigin" target="_blank" class="font-medium underline">
         {{ $t("app.openExternally") }}

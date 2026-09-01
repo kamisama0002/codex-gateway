@@ -45,19 +45,19 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="flex min-w-0 items-center gap-1.5 pt-1.5 sm:flex-wrap sm:justify-between sm:gap-2">
-    <div class="flex min-w-0 items-center gap-1 text-base text-ink-muted">
+  <div class="flex min-w-0 items-center gap-2 pt-0 sm:flex-wrap sm:justify-between sm:gap-3">
+    <div class="flex min-w-0 items-center gap-2 text-sm text-ink-muted">
       <Button
         type="button"
         variant="ghost"
-        size="icon-lg"
-        class="text-ink-muted hover:bg-canvas-soft hover:text-ink-secondary"
+        size="icon"
+        class="size-7 rounded-full bg-muted text-ink hover:bg-muted hover:text-ink"
         :disabled="uploadingAttachments || !selectedThreadId"
         :aria-label="$t('app.attachFile')"
         @click="emit('attach')"
       >
-        <Loader2Icon v-if="uploadingAttachments" class="size-5 animate-spin" />
-        <PlusIcon v-else class="size-5" />
+        <Loader2Icon v-if="uploadingAttachments" class="size-4 animate-spin" />
+        <PlusIcon v-else class="size-4" />
       </Button>
       <div class="hidden sm:block">
         <ApprovalPolicyPicker
@@ -66,7 +66,7 @@ const emit = defineEmits<{
         />
       </div>
     </div>
-    <div class="ml-auto flex min-w-0 items-center justify-end gap-1.5 sm:gap-2">
+    <div class="ml-auto flex min-w-0 items-center justify-end gap-3">
       <ContextUsageMeter :token-usage="selectedThreadTokenUsage" />
       <div class="min-w-0">
         <ModelEffortPicker
@@ -85,20 +85,20 @@ const emit = defineEmits<{
       </div>
       <Button
         data-testid="send-turn-button"
-        class="size-11 shrink-0 rounded-full bg-primary p-0 text-primary-foreground hover:bg-primary-active"
+        class="size-[2.125rem] shrink-0 -translate-y-0.5 rounded-full bg-primary p-0 text-white hover:bg-primary-active disabled:opacity-40"
         :aria-label="sendButtonLabel"
         :disabled="!canUsePrimaryAction || interruptingTurn"
         @click="emit('primaryAction')"
       >
-        <Loader2Icon v-if="uploadingAttachments" class="size-5 animate-spin" />
+        <Loader2Icon v-if="uploadingAttachments" class="size-3.5 animate-spin" />
         <Loader2Icon
           v-else-if="interruptingTurn || (isThreadRunning && hasComposerInput)"
-          class="size-5 animate-spin"
+          class="size-3.5 animate-spin"
         />
-        <SendIcon v-else-if="hasComposerInput" class="size-5" />
-        <SquareIcon v-else-if="canInterruptTurn" class="size-5 fill-current" />
-        <CheckIcon v-else-if="selectedThreadStatus === 'completed'" class="size-5" />
-        <SendIcon v-else class="size-5 opacity-60" />
+        <SendIcon v-else-if="hasComposerInput" class="size-3.5" />
+        <SquareIcon v-else-if="canInterruptTurn" class="size-3.5 fill-current" />
+        <CheckIcon v-else-if="selectedThreadStatus === 'completed'" class="size-3.5" />
+        <SendIcon v-else class="size-3.5 opacity-60" />
       </Button>
     </div>
   </div>
