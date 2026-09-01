@@ -66,9 +66,23 @@ watch(
   { immediate: true },
 );
 
-watch(git.hasChanges, (hasChanges) => {
-  if (!hasChanges && mode.value === "changes") mode.value = "source";
-});
+watch(
+  [git.hasChanges, () => gitState.value.loading, () => gitState.value.error],
+  ([hasChanges, loading, error]) => {
+    // A forced comparison refresh briefly clears the previous result while SSH reads the new Git
+    // state. Do not discard an explicitly selected diff view during that loading window; only fall
+    // back to source after a completed, error-free comparison confirms there are no changes.
+    if (
+      !loading &&
+      error === null &&
+      gitStatus.value === "clean" &&
+      !hasChanges &&
+      mode.value === "changes"
+    ) {
+      mode.value = "source";
+    }
+  },
+);
 
 function defaultMode(document: FilePreviewDocument): FileEditorMode {
   return isMarkdownPreviewPath(document.path, document.contentType) ? "preview" : "source";

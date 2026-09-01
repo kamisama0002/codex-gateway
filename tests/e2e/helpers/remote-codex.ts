@@ -166,9 +166,36 @@ export async function addRemoteHost(
   await hostForm.getByTestId("add-host-button").click();
   const host = uiHostSchema.parse(await (await hostResponsePromise).json());
   await closeSettings(page);
-  await expect(hostConnectedIndicator(page, host.id)).toBeVisible({
-    timeout: REMOTE_HOST_READY_TIMEOUT_MS,
-  });
+  const connectionIndicator = hostConnectedIndicator(page, host.id);
+  if (!(await connectionIndicator.isVisible().catch(() => false))) {
+    // Closing the settings dialog on mobile also closes the sidebar Sheet. Re-open it before
+    // waiting for the host's background runtime upgrade to finish.
+    const mobileSidebarToggle = page.getByTestId("mobile-sidebar-toggle");
+    if (await mobileSidebarToggle.isVisible().catch(() => false)) {
+      await mobileSidebarToggle.click();
+    }
+  }
+  const settingsToggle = page.getByTestId("settings-toggle");
+  const mobileSidebarToggle = page.getByTestId("mobile-sidebar-toggle");
+  // Navigation can close the mobile Sheet again while the background host bootstrap is
+  // completing. Re-open only when the sidebar is actually closed; clicking the toggle while it is
+  // already open would create an endless open/close race and hide the connected indicator.
+  await expect
+    .poll(
+      async () => {
+        if (await connectionIndicator.isVisible().catch(() => false)) return true;
+        if (
+          !(await settingsToggle.isVisible().catch(() => false)) &&
+          (await mobileSidebarToggle.isVisible().catch(() => false))
+        ) {
+          await mobileSidebarToggle.click();
+          await page.waitForTimeout(100);
+        }
+        return connectionIndicator.isVisible().catch(() => false);
+      },
+      { timeout: REMOTE_HOST_READY_TIMEOUT_MS, intervals: [250, 500, 1_000, 2_000] },
+    )
+    .toBe(true);
   if (
     remote.initialCodexVersion !== undefined &&
     remote.initialCodexVersion !== null &&
@@ -192,6 +219,7 @@ export async function addRemoteProject(
   name = `remote-project-${Date.now()}`,
   remotePath = remote.projectPath,
 ) {
+  await ensureMobileHostVisible(page, hostId);
   await page.getByTestId(`host-button-${hostId}`).click({ button: "right" });
   await page.getByRole("menuitem", { name: /添加项目|Add project/ }).click();
   await page.getByTestId("project-name-input").fill(name);
@@ -203,9 +231,21 @@ export async function addRemoteProject(
   );
   await page.getByTestId("add-project-button").click();
   const project = uiProjectSchema.parse(await (await projectResponsePromise).json());
-  await expect(page.getByTestId(`host-button-${hostId}`)).toBeVisible();
+  // Selecting the new project closes the mobile sidebar through the navigation watcher. Reopen
+  // it before asserting the newly-created tree nodes so mobile and desktop share this helper.
+  await ensureMobileHostVisible(page, hostId);
   await expect(page.getByTestId(`project-button-${project.id}`)).toBeVisible();
   return project;
+}
+
+async function ensureMobileHostVisible(page: Page, hostId: number) {
+  const hostButton = page.getByTestId(`host-button-${hostId}`);
+  if (await hostButton.isVisible().catch(() => false)) return;
+  const mobileSidebarToggle = page.getByTestId("mobile-sidebar-toggle");
+  if (await mobileSidebarToggle.isVisible().catch(() => false)) {
+    await mobileSidebarToggle.click();
+  }
+  await expect(hostButton).toBeVisible({ timeout: 30_000 });
 }
 
 export async function startRemoteThreadFromProjectMenu(
@@ -319,7 +359,14 @@ async function openSettings(page: Page) {
   ) {
     return;
   }
-  await page.getByTestId("settings-toggle").click();
+  const settingsToggle = page.getByTestId("settings-toggle");
+  if (!(await settingsToggle.isVisible().catch(() => false))) {
+    // On mobile the sidebar is hosted in a closed Sheet. Open it before looking up the settings
+    // control; otherwise API-backed host provisioning races a permanently hidden toggle.
+    await page.getByTestId("mobile-sidebar-toggle").click();
+    await expect(settingsToggle).toBeVisible();
+  }
+  await settingsToggle.click();
   await expect(page.getByTestId("settings-panel")).toBeVisible();
 }
 

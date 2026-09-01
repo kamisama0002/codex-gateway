@@ -54,7 +54,11 @@ export const test = base.extend<RemoteWorkspaceTestFixtures, RemoteWorkspaceWork
     { scope: "worker" },
   ],
 
-  remoteWorkspace: async ({ page, remoteCodexEnvironment }, use) => {
+  remoteWorkspace: async ({ page, remoteCodexEnvironment }, use, testInfo) => {
+    // A fresh SSH fixture may need the same managed Node/Codex installation as production. Keep
+    // the test-level budget aligned with addRemoteHost's ten-minute readiness window instead of
+    // failing at Playwright's four-minute default while the remote runtime is still bootstrapping.
+    testInfo.setTimeout(Math.max(testInfo.timeout, 10 * 60_000));
     const addHost = async (name?: string) =>
       await addRemoteHost(page, remoteCodexEnvironment, name);
     const addProject = async (hostId: number, name?: string, remotePath?: string) =>

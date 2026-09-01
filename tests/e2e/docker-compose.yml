@@ -64,6 +64,17 @@ services:
       MODEL_TARGET_MODEL: ${E2E_CODEX_MODEL:-gpt-5.6-luna}
     volumes:
       - ./model-target-server.mjs:/app/model-target-server.mjs:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/v1/models').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 30
 
   ssh-target:
     build:
@@ -120,7 +131,7 @@ services:
       bark-target:
         condition: service_started
       model-target:
-        condition: service_started
+        condition: service_healthy
       ssh-target:
         condition: service_started
       ssh-target-legacy-node:
@@ -146,7 +157,14 @@ services:
       - e2e-data:/workspace/codex-gateway/.data-e2e
     # Exercise the same V8 memory policy as production; the wider 2 GiB cgroup remains available
     # to Playwright's shared test topology and native browser/runtime allocations.
-    command: ["/usr/local/bin/codex-gateway-e2e-supervisor", "node", "--expose-gc", "--max-old-space-size=512", "/e2e-output/server/index.mjs"]
+    command:
+      [
+        "/usr/local/bin/codex-gateway-e2e-supervisor",
+        "node",
+        "--expose-gc",
+        "--max-old-space-size=512",
+        "/e2e-output/server/index.mjs",
+      ]
     networks:
       - default
       - runtime-manager

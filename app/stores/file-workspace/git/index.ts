@@ -61,7 +61,9 @@ export const useFileGitComparisonStore = defineStore("file-git-comparisons", () 
       // One path has one browser-side comparison request regardless of whether the Files editor or
       // the review panel asked first. Invalidations wait for that request to settle before issuing
       // a fresh read, matching the server's per-host SSH singleflight.
-      return pending.then(() => (state.stale ? loadTarget(input) : state));
+      // Preserve an explicit refresh across the pending request. The first request can clear the
+      // stale bit as it settles even though it observed the pre-refresh remote Git state.
+      return pending.then(() => (force || state.stale ? loadTarget(input) : state));
     }
 
     const token = Symbol(state.key);
@@ -160,7 +162,6 @@ function canCompare(document: FilePreviewDocument) {
     document.projectId !== null &&
     document.previewKind === "text" &&
     document.objectUrl !== "" &&
-    !document.stale &&
     (document.size ?? 0) <= MAX_EDITABLE_FILE_BYTES
   );
 }
