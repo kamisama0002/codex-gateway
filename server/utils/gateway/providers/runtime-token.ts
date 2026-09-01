@@ -3,7 +3,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 const TOKEN_VERSION = "rt1";
 // Managed runtimes are intentionally long-lived. The Gateway still checks the
 // current user grant on every request, so this is a bounded capability token,
-// not a permanent authorization; a runtime restart rotates it.
+// not a permanent authorization; runtime re-provisioning rotates it.
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60_000;
 
 export interface RuntimeModelTokenClaims {
