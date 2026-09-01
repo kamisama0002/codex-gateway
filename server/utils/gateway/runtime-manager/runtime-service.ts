@@ -18,6 +18,8 @@ import { runWithGatewayUser } from "../state/memory";
 import { threadBroker } from "../runtime/broker";
 import { auditStore } from "../audit/audit-store";
 import { runtimeStore } from "./runtime-store";
+import { providerStore } from "../providers/provider-store";
+import { issueRuntimeModelToken } from "../providers/runtime-token";
 import { transitionRuntime, type RuntimeEvent } from "./runtime-state";
 import {
   RuntimeManagerClient,
@@ -266,12 +268,15 @@ export class ManagedRuntimeService {
 
     let provisioned: RuntimeLifecycleResult;
     try {
-      provisioned = await this.options.manager.provision({
+      const provisionRequest: ProvisionRuntimeRequest = {
         runtimeId: identity.runtimeId,
         userHash: identity.userHash,
         runtimeType: "codex-app-server",
         imageAlias: this.options.imageAlias,
-      });
+      };
+      const providerConfig = providerConfigForUser(userId, identity.runtimeId);
+      if (providerConfig !== null) provisionRequest.providerConfig = providerConfig;
+      provisioned = await this.options.manager.provision(provisionRequest);
       this.assertRuntimeResult(identity.runtimeId, provisioned);
       runtime = this.persist(runtime, "provisioning", {
         containerId: provisioned.containerId,
@@ -549,6 +554,25 @@ function requiredEnvironment(name: string): string {
   const value = process.env[name];
   if (value === undefined || value.length === 0) throw new Error(`${name} is required`);
   return value;
+}
+
+function providerConfigForUser(userId: number, runtimeId: string) {
+  const model = providerStore.listForUser(userId)[0];
+  if (model === undefined) return null;
+  const proxyBase = process.env.RUNTIME_PROVIDER_PROXY_BASE_URL ?? "http://gateway:3100/api/internal/providers";
+  const baseUrl = `${proxyBase.replace(/\/$/, "")}/${encodeURIComponent(model.providerId)}/v1`;
+  return {
+    providerId: model.providerId,
+    modelId: model.modelId,
+    baseUrl,
+    wireApi: "responses" as const,
+    token: issueRuntimeModelToken({
+      userId,
+      runtimeId,
+      providerId: model.providerId,
+      modelId: model.modelId,
+    }),
+  };
 }
 
 function auditMetadata(

@@ -249,7 +249,7 @@ export function createProviderStore(db: DatabaseSync): ProviderStore {
         .all(positiveUserId(userId));
       return rows.map((row) => ({
         provider: rowToPublic(row),
-        providerId: String(row.provider_id),
+        providerId: String(row.id),
         modelId: String(row.model_id),
         displayName: String(row.display_name),
         enabled: Number(row.model_enabled) === 1,

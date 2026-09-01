@@ -17,6 +17,7 @@ const imageAliasSchema = z
   .min(1)
   .max(64)
   .regex(/^[a-z0-9][a-z0-9._-]*$/);
+const providerIdSchema = z.string().min(1).max(128).regex(/^[a-z0-9][a-z0-9_-]*$/);
 const runtimeActionRequestSchema = z.object({ runtimeId: runtimeIdSchema }).strict();
 const provisionRuntimeRequestSchema = z
   .object({
@@ -24,6 +25,16 @@ const provisionRuntimeRequestSchema = z
     userHash: z.string().regex(/^[a-f0-9]{64}$/),
     runtimeType: runtimeTypeSchema,
     imageAlias: imageAliasSchema,
+    providerConfig: z
+      .object({
+        providerId: providerIdSchema,
+        modelId: z.string().min(1).max(256),
+        baseUrl: z.url(),
+        wireApi: z.literal("responses"),
+        token: z.string().min(1).max(4096),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 const upgradeRuntimeRequestSchema = z
@@ -55,6 +66,13 @@ export interface ProvisionRuntimeRequest {
   userHash: string;
   runtimeType: RuntimeType;
   imageAlias: string;
+  providerConfig?: {
+    providerId: string;
+    modelId: string;
+    baseUrl: string;
+    wireApi: "responses";
+    token: string;
+  };
 }
 
 export interface RuntimeLifecycleResult {

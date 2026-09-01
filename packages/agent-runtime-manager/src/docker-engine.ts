@@ -1,4 +1,5 @@
 import type { RuntimeType } from "@codex-gateway/agent-runtime-contracts";
+import type { RuntimeProviderConfig } from "./contracts.js";
 import { runtimeTypeSchema } from "@codex-gateway/agent-runtime-contracts";
 import Docker from "dockerode";
 
@@ -43,6 +44,7 @@ export interface DockerContainerCreateSpec {
   security: DockerSecurityPolicy;
   serviceToken: string;
   userHash: string;
+  providerConfig?: RuntimeProviderConfig;
 }
 
 export interface EngineContainerState {
@@ -99,6 +101,14 @@ export class DockerodeEngine implements DockerEngine {
         `CODEX_APP_SERVER_PORT=${spec.internalPort}`,
         `CODEX_REMOTE_TOKEN=${spec.serviceToken}`,
         `CODEX_RUNTIME_IMAGE_ALIAS=${spec.imageAlias}`,
+        ...(spec.providerConfig === undefined
+          ? []
+          : [
+              `CODEX_GATEWAY_PROVIDER_ID=${spec.providerConfig.providerId}`,
+              `CODEX_GATEWAY_MODEL=${spec.providerConfig.modelId}`,
+              `CODEX_GATEWAY_PROVIDER_BASE_URL=${spec.providerConfig.baseUrl}`,
+              `CODEX_GATEWAY_PROVIDER_TOKEN=${spec.providerConfig.token}`,
+            ]),
       ],
       ExposedPorts: { [exposedPort]: {} },
       HostConfig: {

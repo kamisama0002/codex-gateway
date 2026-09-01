@@ -18,12 +18,24 @@ const imageAliasSchema = z
   .max(64)
   .regex(/^[a-z0-9][a-z0-9._-]*$/);
 
+const providerConfigSchema = z
+  .object({
+    providerId: z.string().min(1).max(128).regex(/^[a-z0-9][a-z0-9_-]*$/),
+    modelId: z.string().min(1).max(256),
+    baseUrl: z.url(),
+    wireApi: z.literal("responses"),
+    token: z.string().min(1).max(4096),
+  })
+  .strict();
+export type RuntimeProviderConfig = z.infer<typeof providerConfigSchema>;
+
 export const provisionRuntimeRequestSchema = z
   .object({
     runtimeId: runtimeIdSchema,
     userHash: userHashSchema,
     runtimeType: runtimeTypeSchema,
     imageAlias: imageAliasSchema,
+    providerConfig: providerConfigSchema.optional(),
   })
   .strict();
 export type ProvisionRuntimeRequest = z.infer<typeof provisionRuntimeRequestSchema>;

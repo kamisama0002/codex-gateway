@@ -163,6 +163,7 @@ export class RuntimeLifecycleService {
       security: securityPolicy,
       serviceToken: this.randomToken(),
       userHash: request.userHash,
+      providerConfig: request.providerConfig,
     };
     return this.engine.createManagedContainer(spec);
   }
