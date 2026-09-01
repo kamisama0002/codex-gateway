@@ -20,6 +20,13 @@ fi
 export E2E_UID="${E2E_UID:-12345}"
 export E2E_GID="${E2E_GID:-12345}"
 export E2E_CODEX_HOME="${E2E_CODEX_HOME:-$HOME/.codex}"
+if [ -z "${E2E_CODEX_PROVIDER_KEY_FILE:-}" ]; then
+  if [ -r /etc/codex/providers/kimi-k3.key ]; then
+    export E2E_CODEX_PROVIDER_KEY_FILE=/etc/codex/providers/kimi-k3.key
+  else
+    export E2E_CODEX_PROVIDER_KEY_FILE=/dev/null
+  fi
+fi
 export E2E_AGENT_NETWORK_NAME="${E2E_AGENT_NETWORK_NAME:-$project_name-agent-runtime}"
 export E2E_RUNTIME_MANAGER_NETWORK_NAME="${E2E_RUNTIME_MANAGER_NETWORK_NAME:-$project_name-runtime-manager}"
 export E2E_MANAGED_LABEL_VALUE="$project_name"

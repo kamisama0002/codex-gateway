@@ -3,6 +3,9 @@ x-ssh-target: &ssh-target
     CODEX_HOME: /home/codex/.codex
   volumes:
     - ../..:/workspace/codex-gateway
+    # Optional host-side provider credential used by containerized remote Codex tests. The
+    # run script falls back to /dev/null so ordinary contributors do not need this file.
+    - ${E2E_CODEX_PROVIDER_KEY_FILE:-/dev/null}:/run/secrets/codex-provider-key:ro
 
 services:
   agent-runtime-image:

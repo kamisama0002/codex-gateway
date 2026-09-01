@@ -147,6 +147,30 @@ async function prepareRemoteCodexHome(env: RemoteEnv) {
   try {
     await execTestSsh(connection, "rm -rf /home/codex/.codex && mkdir -p /home/codex/.codex");
     await uploadDirectory(connection, codexHome, "/home/codex/.codex");
+    // The source CODEX_HOME may belong to the host running the E2E suite. Re-home absolute
+    // catalog and provider-key paths after upload so a remote `codex` user never follows a
+    // host-only path such as /root/.codex or /etc/codex/providers.
+    await execTestSsh(
+      connection,
+      `
+set -eu
+codex_home="\${CODEX_HOME:-$HOME/.codex}"
+config_file="$codex_home/config.toml"
+provider_secret=/run/codex-provider-key
+if [ -s "$provider_secret" ]; then
+  cp "$provider_secret" "$codex_home/provider.key"
+  chmod 600 "$codex_home/provider.key"
+  if [ -f "$config_file" ]; then
+    sed -i -E 's#^args[[:space:]]*=[[:space:]]*\\["/etc/codex/providers/[^" ]+"\\]#args = ["'"$codex_home"'/provider.key"]#' "$config_file"
+  fi
+fi
+if [ -f "$config_file" ] && [ -f "$codex_home/models.json" ]; then
+  sed -i -E 's#^(model_catalog_json[[:space:]]*=[[:space:]]*).*$#\\1"'"$codex_home"'/models.json"#' "$config_file"
+fi
+chmod 700 "$codex_home"
+chmod 600 "$config_file" "$codex_home/models.json" "$codex_home/auth.json" 2>/dev/null || true
+`,
+    );
   } finally {
     connection.end();
   }
@@ -247,6 +271,7 @@ async function prepareCodexHome(sourceCodexHome: string, codexHome: string) {
   await Promise.all([
     copyOptional(join(sourceCodexHome, "auth.json"), join(codexHome, "auth.json")),
     copyOptional(join(sourceCodexHome, "config.toml"), join(codexHome, "config.toml")),
+    copyOptional(join(sourceCodexHome, "models.json"), join(codexHome, "models.json")),
     copyOptional(join(sourceCodexHome, "version.json"), join(codexHome, "version.json")),
   ]);
 }
