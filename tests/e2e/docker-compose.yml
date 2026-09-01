@@ -56,6 +56,15 @@ services:
       - ./bark-server.ts:/app/bark-server.ts:ro
       - bark-requests:/requests
 
+  model-target:
+    image: node:22-bookworm
+    command: ["node", "/app/model-target-server.mjs"]
+    environment:
+      MODEL_TARGET_PORT: "8080"
+      MODEL_TARGET_MODEL: ${E2E_CODEX_MODEL:-gpt-5.6-luna}
+    volumes:
+      - ./model-target-server.mjs:/app/model-target-server.mjs:ro
+
   ssh-target:
     build:
       context: ./docker
@@ -109,6 +118,8 @@ services:
       agent-runtime-manager:
         condition: service_healthy
       bark-target:
+        condition: service_started
+      model-target:
         condition: service_started
       ssh-target:
         condition: service_started
@@ -190,6 +201,7 @@ services:
       E2E_REMOTE_PROJECT_PATH: /workspace/codex-gateway
       E2E_CODEX_CLI_VERSION: ${E2E_CODEX_CLI_VERSION:-0.140.0}
       E2E_CODEX_MODEL: ${E2E_CODEX_MODEL:-gpt-5.6-luna}
+      E2E_MODEL_BASE_URL: ${E2E_MODEL_BASE_URL:-http://model-target:8080/v1}
       E2E_BARK_SERVER_URL: http://bark-target:8080
       E2E_BARK_REQUEST_LOG: /bark-requests/requests.jsonl
       E2E_MANAGED_LABEL_VALUE: ${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}

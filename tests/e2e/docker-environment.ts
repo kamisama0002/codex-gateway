@@ -142,6 +142,7 @@ async function prepareRemoteCodexHome(env: RemoteEnv) {
     join(homedir(), ".codex");
   const codexHome = join(runtimeDir, "codex-home");
   await prepareCodexHome(sourceCodexHome, codexHome);
+  const modelBaseUrl = firstNonEmptyString([process.env.E2E_MODEL_BASE_URL]) ?? "";
 
   const connection = await connectTestSsh(env);
   try {
@@ -156,6 +157,7 @@ async function prepareRemoteCodexHome(env: RemoteEnv) {
 set -eu
 codex_home="\${CODEX_HOME:-$HOME/.codex}"
 config_file="$codex_home/config.toml"
+model_base_url=${shellQuote(modelBaseUrl)}
 provider_secret=/run/codex-provider-key
 if [ -s "$provider_secret" ]; then
   cp "$provider_secret" "$codex_home/provider.key"
@@ -163,6 +165,17 @@ if [ -s "$provider_secret" ]; then
   if [ -f "$config_file" ]; then
     sed -i -E 's#^args[[:space:]]*=[[:space:]]*\\["/etc/codex/providers/[^" ]+"\\]#args = ["'"$codex_home"'/provider.key"]#' "$config_file"
   fi
+fi
+if [ -n "$model_base_url" ] && [ -f "$config_file" ]; then
+  awk -v replacement="$model_base_url" '
+    !done && $0 ~ /^[[:space:]]*base_url[[:space:]]*=/ {
+      print "base_url = \"" replacement "\"";
+      done = 1;
+      next;
+    }
+    { print }
+  ' "$config_file" > "$config_file.tmp"
+  mv "$config_file.tmp" "$config_file"
 fi
 if [ -f "$config_file" ] && [ -f "$codex_home/models.json" ]; then
   sed -i -E 's#^(model_catalog_json[[:space:]]*=[[:space:]]*).*$#\\1"'"$codex_home"'/models.json"#' "$config_file"
@@ -174,6 +187,10 @@ chmod 600 "$config_file" "$codex_home/models.json" "$codex_home/auth.json" 2>/de
   } finally {
     connection.end();
   }
+}
+
+function shellQuote(value: string) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 async function writeRemoteImage(env: RemoteEnv) {
