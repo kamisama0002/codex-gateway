@@ -408,6 +408,15 @@ export const realtimeServerMessageSchema: z.ZodType<RealtimeServerMessage> = z.d
     z.object({ type: z.literal("config.pinnedThreads.changed") }).strict(),
     z
       .object({
+        type: z.literal("thread.catalog.updated"),
+        hostId: positiveId,
+        threadId: nonEmptyString,
+        action: z.enum(["archived", "unarchived", "deleted"]),
+        thread: gatewayThreadSchema.nullable(),
+      })
+      .strict(),
+    z
+      .object({
         type: z.literal("thread.runtime.snapshot"),
         statuses: z.array(threadRuntimeStatusUpdateSchema),
       })

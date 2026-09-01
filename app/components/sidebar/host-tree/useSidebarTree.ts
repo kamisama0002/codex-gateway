@@ -22,8 +22,14 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   const { hosts, projects, projectDirectoryAvailability, hostConnectionStatuses } =
     storeToRefs(store);
   const storedPinnedThreads = useGatewayPinnedThreads();
-  const { threads, openingPinnedThreadKey, selectedHostId, selectedProjectId, selectedThreadId } =
-    storeToRefs(navigation);
+  const {
+    threads,
+    hostThreads,
+    openingPinnedThreadKey,
+    selectedHostId,
+    selectedProjectId,
+    selectedThreadId,
+  } = storeToRefs(navigation);
   const { unviewedCompletedThreadKeys, threadStatuses } = storeToRefs(runtime);
   const expandedHostIds = ref<Set<number>>(new Set());
   const expandedProjectIds = ref<Set<number>>(new Set());
@@ -36,6 +42,14 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   const projectThreads = computed(() =>
     threads.value.filter((thread) => thread.pinned !== true).slice(0, 20),
   );
+
+  function threadsForProject(projectId: number) {
+    const source =
+      projectId === selectedProjectId.value ? projectThreads.value : hostThreads.value;
+    return source
+      .filter((thread) => thread.projectId === projectId && thread.pinned !== true)
+      .slice(0, 20);
+  }
   const selectedThreadIsPinned = computed(() => {
     if (
       selectedHostId.value === null ||
@@ -123,6 +137,15 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     if (!isProjectListVisible) {
       void store.selectProject(projectId);
     }
+  }
+
+  function expandAllTree() {
+    const nextHosts = new Set(expandedHostIds.value);
+    const nextProjects = new Set(expandedProjectIds.value);
+    for (const host of hosts.value) nextHosts.add(host.id);
+    for (const project of projects.value) nextProjects.add(project.id);
+    expandedHostIds.value = nextHosts;
+    expandedProjectIds.value = nextProjects;
   }
 
   function toggleMissingProjects(hostId: number) {
@@ -219,12 +242,14 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     expandedProjectIds,
     expandedMissingProjectHostIds,
     projectThreads,
+    threadsForProject,
     availableProjectsByHost,
     missingProjectsByHost,
     openThread,
     openPinnedThread,
     selectHost,
     selectProject,
+    expandAllTree,
     toggleMissingProjects,
     startThreadInProject,
     threadRuntimeStatus,

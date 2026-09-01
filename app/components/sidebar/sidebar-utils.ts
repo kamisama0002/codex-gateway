@@ -110,7 +110,7 @@ export function statusLabelKey(status: string) {
 }
 
 export function selectedRowClass(selected: boolean) {
-  return selected ? "bg-primary/10 text-ink shadow-[inset_3px_0_0_var(--primary)]" : "";
+  return selected ? "bg-muted text-ink" : "";
 }
 
 export function hostConnectionClass(status: string) {

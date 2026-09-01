@@ -21,6 +21,7 @@ export function createHostActions() {
     navigation.selectedProjectId = null;
     navigation.selectedThreadId = null;
     navigation.threads = [];
+    navigation.hostThreads = [];
     views.resetCurrentView();
     catalog.models = [];
     catalog.modelsHostId = null;

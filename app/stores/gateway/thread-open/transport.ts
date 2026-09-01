@@ -43,18 +43,26 @@ export function requestActivateThreadSnapshot(input: {
   );
 }
 
-export function requestStartThread(options: ComposerTurnOptions) {
+export function requestStartThread(
+  options: ComposerTurnOptions,
+  context?: { projectId?: number | null },
+) {
   const gateway = useGatewayCatalogStore();
   const navigation = useGatewayNavigationStore();
   const hostId = navigation.selectedHostId;
   if (hostId === null) throw new Error("Host is required to start a thread");
+  const projectId = context && "projectId" in context ? context.projectId : navigation.selectedProjectId;
+  const cwd = projectById(gateway.projects, projectId ?? null)?.remotePath;
+  if (projectId !== null && projectId !== undefined && (cwd === undefined || cwd === "")) {
+    throw new Error("Project workspace path is required to start a thread");
+  }
   return useGatewayRealtimeStore().request(
     (requestId) => ({
       type: "thread.start",
       requestId,
       hostId,
-      projectId: navigation.selectedProjectId,
-      cwd: projectById(gateway.projects, navigation.selectedProjectId)?.remotePath,
+      projectId,
+      cwd,
       model: options.model === "" ? undefined : options.model,
       effort: options.effort === "" ? undefined : options.effort,
       approvalPolicy: options.approvalPolicy ?? undefined,

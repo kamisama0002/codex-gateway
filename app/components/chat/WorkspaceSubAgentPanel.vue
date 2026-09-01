@@ -18,9 +18,7 @@ const emit = defineEmits<{
 
 <template>
   <div data-testid="workspace-subagent-panel" class="flex min-h-0 flex-1 flex-col overflow-hidden">
-    <div
-      class="flex min-h-12 shrink-0 items-center gap-2 border-b border-hairline px-[clamp(1rem,2.5vw,1.5rem)]"
-    >
+    <div class="flex min-h-9 shrink-0 items-center gap-2 border-b border-hairline px-3">
       <div class="min-w-0 flex-1">
         <div class="truncate text-sm font-semibold" data-testid="workspace-panel-title">
           {{ title }}
@@ -32,7 +30,7 @@ const emit = defineEmits<{
       <button
         v-if="status === 'running'"
         type="button"
-        class="rounded-full border border-destructive/30 px-3 py-1 text-xs text-destructive hover:bg-destructive/10"
+        class="rounded-md border border-destructive/30 px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10"
         :aria-label="$t('app.interruptSubAgent')"
         @click="emit('interrupt', panel)"
       >

@@ -17,7 +17,7 @@ const emit = defineEmits<{
 
 <template>
   <header
-    class="flex min-h-14 shrink-0 items-center gap-2 border-b border-hairline bg-surface/95 px-3 pt-[env(safe-area-inset-top)] backdrop-blur"
+    class="flex min-h-11 shrink-0 items-center gap-2 border-b border-hairline bg-surface px-3 pt-[env(safe-area-inset-top)]"
   >
     <div class="flex min-w-0 basis-[34vw] flex-none items-center gap-2 overflow-hidden">
       <slot name="start" />
@@ -27,7 +27,7 @@ const emit = defineEmits<{
         data-testid="open-tmux-mobile-button"
         variant="ghost"
         size="sm"
-        class="relative h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-canvas-soft hover:text-ink"
+        class="relative h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-muted hover:text-ink"
         :disabled="!canOpenTerminal"
         :aria-label="$t('app.openTmuxMonitor')"
         @click="emit('openTmux')"
@@ -44,7 +44,7 @@ const emit = defineEmits<{
         data-testid="open-host-monitor-mobile-button"
         variant="ghost"
         size="sm"
-        class="h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-canvas-soft hover:text-ink"
+        class="h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-muted hover:text-ink"
         :disabled="!canOpenTerminal"
         :aria-label="$t('app.openHostMonitor')"
         @click="emit('openHostMonitor')"
@@ -55,7 +55,7 @@ const emit = defineEmits<{
         data-testid="open-browser-mobile-button"
         variant="ghost"
         size="sm"
-        class="h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-canvas-soft hover:text-ink"
+        class="h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-muted hover:text-ink"
         :disabled="!canOpenTerminal"
         :aria-label="$t('app.openBrowser')"
         @click="emit('openBrowser')"
@@ -66,7 +66,7 @@ const emit = defineEmits<{
         data-testid="open-terminal-mobile-button"
         variant="ghost"
         size="sm"
-        class="h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-canvas-soft hover:text-ink"
+        class="h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-muted hover:text-ink"
         :disabled="!canOpenTerminal"
         :aria-label="$t('app.openTerminal')"
         @click="emit('openTerminal')"

@@ -204,7 +204,7 @@ function handleViewportReady() {
       content moves inside an otherwise stable keyed row. Padding around the
       sizer is also invisible to virtual-core and creates a false scroll range.
     -->
-    <div class="mx-auto flex min-h-full w-full max-w-4xl flex-col px-[clamp(0.875rem,4vw,2rem)]">
+    <div class="mx-auto flex min-h-full w-full max-w-3xl flex-col px-[clamp(0.875rem,4vw,1.5rem)]">
       <div :ref="chatVirtualizer.containerRef" class="relative mt-auto shrink-0">
         <div
           v-for="virtualRow in virtualRows"
@@ -214,7 +214,7 @@ function handleViewportReady() {
           :data-row-key="rows[virtualRow.index]?.key"
           :data-row-type="rows[virtualRow.index]?.type"
           :data-row-section="rows[virtualRow.index]?.section"
-          class="pb-5 md:pb-8"
+          class="pb-3 md:pb-4"
           :style="rowStyle(virtualRow)"
         >
           <slot :row="rows[virtualRow.index]" :index="virtualRow.index" />

@@ -111,7 +111,7 @@ function fitAndReport() {
 <template>
   <div data-testid="terminal-panel" class="flex min-h-0 flex-1 flex-col bg-canvas text-ink">
     <div
-      class="flex min-h-10 items-center justify-between border-b border-hairline px-3 text-xs text-ink-muted"
+      class="flex min-h-8 items-center justify-between border-b border-hairline px-2 text-xs text-ink-muted"
     >
       <div class="min-w-0 truncate">
         <span class="font-medium text-ink">{{ session.title }}</span>
@@ -130,7 +130,7 @@ function fitAndReport() {
     <div
       ref="terminalRoot"
       data-testid="terminal-root"
-      class="min-h-0 flex-1 overflow-hidden p-2"
+      class="min-h-0 flex-1 overflow-hidden p-1"
     />
   </div>
 </template>

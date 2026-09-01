@@ -15,6 +15,12 @@ export const threadMetadataStore = {
     );
   },
 
+  delete(hostId: number, threadId: string) {
+    gatewayMemoryState.threadMetadata = gatewayMemoryState.threadMetadata.filter(
+      (thread) => thread.hostId !== hostId || thread.threadId !== threadId,
+    );
+  },
+
   get(hostId: number, threadId: string) {
     return (
       gatewayMemoryState.threadMetadata.find(

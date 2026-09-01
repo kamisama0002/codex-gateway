@@ -7,6 +7,7 @@ export interface HostTreeController {
   availableProjectsByHost: Map<number, ProjectRecord[]>;
   missingProjectsByHost: Map<number, ProjectRecord[]>;
   projectThreads: SidebarThread[];
+  threadsForProject: (projectId: number) => SidebarThread[];
   expandedHostIds: Set<number>;
   expandedProjectIds: Set<number>;
   expandedMissingProjectHostIds: Set<number>;
@@ -27,6 +28,14 @@ export interface HostTreeController {
   openThread: (threadId: string, context: { hostId: number; projectId: number }) => void;
   toggleThreadPin: (threadId: string, pinned: boolean) => void;
   rename: (thread: SidebarThread & { hostId: number }) => void;
+  archive: (thread: SidebarThread & { hostId: number }) => void;
+  archivedFilterActive: boolean;
+  archivedThreads: SidebarThread[];
+  archivedLoading: boolean;
+  setArchivedFilter: (active: boolean) => void;
+  openArchivedThread: (thread: SidebarThread & { hostId: number; projectId: number }) => void;
+  unarchive: (thread: SidebarThread & { hostId: number }) => void;
+  deleteThread: (thread: SidebarThread & { hostId: number }) => void;
   threadRuntimeStatus: (hostId: number, threadId: string) => ThreadRuntimeStatus;
   threadCompletionAttention: (hostId: number, threadId: string) => boolean;
 }

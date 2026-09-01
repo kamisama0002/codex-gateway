@@ -26,11 +26,11 @@ const emit = defineEmits<{
 
 <template>
   <div
-    class="h-11 min-w-0 shrink-0 overflow-x-auto overflow-y-hidden border-b border-hairline bg-canvas-soft/60 [scrollbar-color:var(--hairline)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-hairline [&::-webkit-scrollbar]:h-1"
+    class="h-8 min-w-0 shrink-0 overflow-x-auto overflow-y-hidden border-b border-hairline bg-surface [scrollbar-color:var(--hairline)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-hairline [&::-webkit-scrollbar]:h-1"
     role="tablist"
     :aria-label="$t('app.openFileTabs')"
   >
-    <div class="flex h-10 w-max min-w-full items-stretch">
+    <div class="flex h-8 w-max min-w-full items-stretch">
       <button
         v-for="document in documents"
         :key="document.key"
@@ -39,8 +39,8 @@ const emit = defineEmits<{
         :data-file-path="document.path"
         role="tab"
         :aria-selected="document.path === activePath"
-        class="group flex w-52 min-w-0 max-w-[min(14rem,46vw)] shrink-0 items-center gap-2 overflow-hidden border-r border-hairline px-3 text-sm text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-        :class="document.path === activePath ? 'bg-surface text-ink shadow-sm' : ''"
+        class="group flex w-40 min-w-0 max-w-[min(12rem,42vw)] shrink-0 items-center gap-1.5 overflow-hidden border-r border-hairline px-2 text-xs text-ink-muted transition-colors hover:bg-canvas-soft hover:text-ink"
+        :class="document.path === activePath ? 'bg-canvas-soft text-ink' : ''"
         :title="document.path"
         @click="emit('activate', document.path)"
       >
@@ -62,7 +62,7 @@ const emit = defineEmits<{
         <span
           role="button"
           tabindex="0"
-          class="ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded text-ink-faint hover:bg-canvas-soft hover:text-ink"
+          class="ml-auto inline-flex size-4 shrink-0 items-center justify-center rounded text-ink-faint hover:bg-surface hover:text-ink"
           :aria-label="$t('app.closeTab')"
           @click.stop="emit('close', document.path)"
           @keydown.enter.space.prevent.stop="emit('close', document.path)"

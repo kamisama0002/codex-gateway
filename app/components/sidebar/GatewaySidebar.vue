@@ -20,10 +20,12 @@ import HostTree from "./host-tree/HostTree.vue";
 import PinnedThreadList from "./thread-list/PinnedThreadList.vue";
 import RecentThreadList from "./thread-list/RecentThreadList.vue";
 import ThreadRenameDialog from "./thread-list/ThreadRenameDialog.vue";
+import ThreadDeleteDialog from "./thread-list/ThreadDeleteDialog.vue";
 import SidebarScrollArea from "./SidebarScrollArea.vue";
 import { SidebarFooter } from "@codex-gateway/ui/sidebar";
 import { useSidebarTree } from "./host-tree/useSidebarTree";
 import { useThreadRename } from "./thread-list/useThreadRename";
+import { useThreadLifecycle } from "./thread-list/useThreadLifecycle";
 import { useRecentThreadActivity } from "./thread-list/useRecentThreadActivity";
 import SidebarWorkspaceToolbar from "./SidebarWorkspaceToolbar.vue";
 import { useTmuxMonitorLauncher } from "@/composables/workspace/useTmuxMonitorLauncher";
@@ -40,6 +42,7 @@ const projectEditor = ref<{ host: HostRecord; project: ProjectRecord | null } | 
 const { longPressTriggered, longPressContextMenuHandlers } = useLongPressContextMenu();
 const sidebarTree = useSidebarTree(longPressTriggered);
 const threadRename = useThreadRename();
+const threadLifecycle = useThreadLifecycle();
 const recentActivity = useRecentThreadActivity();
 const workspaceActions = useWorkspaceLaunchActions();
 const tmuxLauncher = useTmuxMonitorLauncher();
@@ -60,6 +63,7 @@ const hostTreeController = computed<HostTreeController>(() => ({
   availableProjectsByHost: sidebarTree.availableProjectsByHost.value,
   missingProjectsByHost: sidebarTree.missingProjectsByHost.value,
   projectThreads: sidebarTree.projectThreads.value,
+  threadsForProject: sidebarTree.threadsForProject,
   expandedHostIds: sidebarTree.expandedHostIds.value,
   expandedProjectIds: sidebarTree.expandedProjectIds.value,
   expandedMissingProjectHostIds: sidebarTree.expandedMissingProjectHostIds.value,
@@ -80,6 +84,18 @@ const hostTreeController = computed<HostTreeController>(() => ({
   openThread: sidebarTree.openThread,
   toggleThreadPin: navigation.setThreadPinned,
   rename: threadRename.startRename,
+  archive: threadLifecycle.archive,
+  archivedFilterActive: navigation.archivedFilterActive,
+  archivedThreads: navigation.archivedThreads,
+  archivedLoading: navigation.archivedLoading,
+  setArchivedFilter: (active) => {
+    void navigation.setArchivedFilter(active);
+    if (active) sidebarTree.expandAllTree();
+  },
+  openArchivedThread: (thread) =>
+    void threadLifecycle.unarchiveAndOpen(thread, thread.projectId ?? null),
+  unarchive: threadLifecycle.unarchive,
+  deleteThread: threadLifecycle.startDelete,
   threadRuntimeStatus: sidebarTree.threadRuntimeStatus,
   threadCompletionAttention: sidebarTree.threadCompletionAttention,
 }));
@@ -110,7 +126,7 @@ async function openHostMonitor(hostId: number) {
 <template>
   <aside
     v-bind="$attrs"
-    class="relative flex h-full min-h-0 flex-col border-r border-hairline bg-canvas-soft"
+    class="relative flex h-full min-h-0 flex-col border-r border-hairline bg-canvas"
   >
     <SidebarWorkspaceToolbar
       v-if="workspaceToolbar"
@@ -122,9 +138,9 @@ async function openHostMonitor(hostId: number) {
       @open-browser="showBrowserDialog = true"
       @open-host-monitor="workspaceActions.openHostMonitor"
     />
-    <div class="flex min-h-0 flex-1 overflow-hidden px-3 py-3">
+    <div class="flex min-h-0 flex-1 overflow-hidden px-3 py-1.5">
       <SidebarScrollArea>
-        <div class="min-w-0 max-w-full space-y-4 overflow-hidden pr-1">
+        <div class="min-w-0 max-w-full space-y-3 overflow-hidden pr-1">
           <PinnedThreadList
             :threads="pinnedThreads"
             :hosts="hosts"
@@ -136,6 +152,7 @@ async function openHostMonitor(hostId: number) {
             @open="openPinnedThread"
             @unpin="navigation.setPinnedThread($event, false)"
             @rename="threadRename.startRename"
+            @archive="threadLifecycle.archive"
           />
 
           <RecentThreadList
@@ -146,6 +163,7 @@ async function openHostMonitor(hostId: number) {
             @open="recentActivity.openRecentThread"
             @pin="recentActivity.pinRecentThread"
             @rename="threadRename.startRename"
+            @archive="threadLifecycle.archive"
           />
 
           <HostTree :controller="hostTreeController" />
@@ -157,7 +175,7 @@ async function openHostMonitor(hostId: number) {
       <Button
         data-testid="settings-toggle"
         variant="ghost"
-        class="h-10 w-full justify-start gap-3 rounded-lg px-3 text-[0.9375rem] font-normal hover:bg-surface"
+        class="h-8 w-full justify-start gap-2 rounded-lg px-2 text-sm font-normal hover:bg-muted"
         @click="showSettings = !showSettings"
       >
         <SettingsIcon class="size-4" />
@@ -202,6 +220,12 @@ async function openHostMonitor(hostId: number) {
       v-model="threadRename.renameValue.value"
       :submitting="threadRename.submitting.value"
       @submit="threadRename.submitRename"
+    />
+    <ThreadDeleteDialog
+      :open="threadLifecycle.deleteOpen.value"
+      :deleting="threadLifecycle.deleting.value"
+      @cancel="threadLifecycle.cancelDelete"
+      @confirm="threadLifecycle.confirmDelete"
     />
   </aside>
 </template>

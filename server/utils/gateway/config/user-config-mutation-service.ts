@@ -11,6 +11,7 @@ import {
 } from "../state/memory";
 import { runtimeConfigFromMemory } from "../http/errors";
 import { pinnedThreadEvents } from "./pinned-thread-events";
+import { runtimeConfigStore } from "../state/runtime-config";
 
 export class UserConfigMutationService {
   commit<T>(userId: number, mutateDraft: () => T): T {
@@ -41,6 +42,23 @@ export class UserConfigMutationService {
       draftState.pinnedThreads,
     );
     return result;
+  }
+
+  unpinThread(userId: number, hostId: number, threadId: string) {
+    const pinned = runtimeConfigStore
+      .export()
+      .pinnedThreads.some((thread) => thread.hostId === hostId && thread.threadId === threadId);
+    if (!pinned) return;
+    this.commit(userId, () => {
+      runtimeConfigStore.replacePinnedThreads(
+        runtimeConfigStore
+          .export()
+          .pinnedThreads.filter(
+            (thread) => thread.hostId !== hostId || thread.threadId !== threadId,
+          ),
+      );
+      return runtimeConfigStore.export();
+    });
   }
 
   private reconcileCommittedConfig(

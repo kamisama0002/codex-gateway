@@ -18,7 +18,7 @@ const emit = defineEmits<{
   <div
     v-if="open"
     data-testid="slash-command-menu"
-    class="absolute inset-x-2 bottom-full z-20 mb-2 overflow-hidden rounded-2xl border border-hairline bg-surface p-1 shadow-xl shadow-ink/10"
+    class="absolute inset-x-2 bottom-full z-20 mb-2 overflow-hidden rounded-xl border border-hairline bg-surface p-1 shadow-sm"
     role="listbox"
   >
     <Button
@@ -27,8 +27,8 @@ const emit = defineEmits<{
       :data-testid="`slash-command-${command.id}`"
       type="button"
       variant="ghost"
-      class="h-auto w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-canvas-soft"
-      :class="index === selectedIndex ? 'bg-canvas-soft text-ink' : 'text-ink-secondary'"
+      class="h-auto w-full justify-start gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-muted"
+      :class="index === selectedIndex ? 'bg-muted text-ink' : 'text-ink-secondary'"
       role="option"
       :aria-selected="index === selectedIndex"
       @mouseenter="emit('hover', index)"

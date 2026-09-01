@@ -13,8 +13,8 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="flex h-11 shrink-0 items-center gap-1 border-b border-hairline px-3">
-    <span class="min-w-0 flex-1 truncate text-sm font-semibold" :title="title">{{ title }}</span>
+  <div class="flex h-10 shrink-0 items-center gap-1 border-b border-hairline px-3">
+    <span class="min-w-0 flex-1 truncate text-sm" :title="title">{{ title }}</span>
     <Button
       data-testid="open-tmux-button"
       variant="ghost"
