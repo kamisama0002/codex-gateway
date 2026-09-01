@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { envFile, upgradeEnvFile } from "../docker-environment";
+import { hostRecordSchema, projectRecordSchema } from "./http-schemas";
 import { connectTestSsh, execTestSsh } from "./ssh-client";
 
 export type RemoteRuntimeFixture = "empty-runtime" | "legacy-node" | "legacy-codex";
@@ -31,26 +32,8 @@ const remoteCodexEnvSchema = z
 
 export type RemoteCodexEnv = z.infer<typeof remoteCodexEnvSchema>;
 
-export interface UiHost {
-  id: number;
-}
-
-export interface UiProject {
-  id: number;
-  hostId: number;
-  name: string;
-  remotePath: string;
-}
-
-const uiHostSchema = z.object({ id: z.number().int().positive() }).loose();
-const uiProjectSchema = z
-  .object({
-    id: z.number().int().positive(),
-    hostId: z.number().int().positive(),
-    name: z.string().min(1),
-    remotePath: z.string().min(1),
-  })
-  .loose();
+export type UiHost = z.infer<typeof hostRecordSchema>;
+export type UiProject = z.infer<typeof projectRecordSchema>;
 
 export async function readRemoteEnv() {
   return remoteCodexEnvSchema.parse(JSON.parse(await readFile(envFile, "utf8")));
@@ -164,7 +147,7 @@ export async function addRemoteHost(
     (response) => response.url().endsWith("/api/hosts") && response.request().method() === "POST",
   );
   await hostForm.getByTestId("add-host-button").click();
-  const host = uiHostSchema.parse(await (await hostResponsePromise).json());
+  const host = hostRecordSchema.parse(await (await hostResponsePromise).json());
   await closeSettings(page);
   const connectionIndicator = hostConnectedIndicator(page, host.id);
   if (!(await connectionIndicator.isVisible().catch(() => false))) {
@@ -230,7 +213,7 @@ export async function addRemoteProject(
       response.url().endsWith("/api/projects") && response.request().method() === "POST",
   );
   await page.getByTestId("add-project-button").click();
-  const project = uiProjectSchema.parse(await (await projectResponsePromise).json());
+  const project = projectRecordSchema.parse(await (await projectResponsePromise).json());
   // Selecting the new project closes the mobile sidebar through the navigation watcher. Reopen
   // it before asserting the newly-created tree nodes so mobile and desktop share this helper.
   await ensureMobileHostVisible(page, hostId);

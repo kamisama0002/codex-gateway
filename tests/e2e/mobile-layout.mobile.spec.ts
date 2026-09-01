@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/remote-workspace";
 import { authenticatedFetch, openApp, reloadApp } from "./helpers/app";
-import { hostRecordSchema, projectRecordSchema } from "./helpers/http-schemas";
+import { projectRecordSchema } from "./helpers/http-schemas";
 import {
   appendAgentStreamLines,
   installSelectedThreadGoalSubmitMock,
@@ -576,7 +576,6 @@ test("opens sidebar context actions with long press on mobile", async ({
   // this workflow's budget aligned with the remote-host upgrade suite instead of the 4-minute UI
   // default, while the assertions below remain unchanged.
   test.setTimeout(10 * 60_000);
-  const { remote } = remoteWorkspace;
   await openApp(page);
   // Bootstrap waits for every configured host to finish its initial SSH/app-server overview.
   // Use the fixture helper here so the reload cannot race that connection after the host is
