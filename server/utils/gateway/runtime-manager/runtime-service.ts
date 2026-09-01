@@ -1,5 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
 import { Mutex } from "async-mutex";
+import pRetry, { type Options as RetryOptions } from "p-retry";
 import {
   serializeManagedRuntimeStatus,
   type ManagedRuntimeEndpoint,
@@ -61,9 +62,17 @@ interface ManagedRuntimeServiceOptions {
   imageAlias: string;
   expectedRuntimeVersion: string;
   probe(host: HostRecord): Promise<RuntimeCompatibilitySnapshot>;
+  probeRetryOptions?: RetryOptions;
   closeConnections?(userId: number): void;
   now?: () => string;
 }
+
+const defaultProbeRetryOptions: RetryOptions = {
+  retries: 10,
+  minTimeout: 250,
+  maxTimeout: 2_000,
+  factor: 1.5,
+};
 
 const safeManagerErrorCodes = new Set([
   "internal_error",
@@ -329,9 +338,11 @@ export class ManagedRuntimeService {
   ): Promise<UserAgentRuntimeRecord> {
     let snapshot: RuntimeCompatibilitySnapshot;
     try {
-      snapshot = await this.options.probe(
-        createManagedRuntimeHost(runtime.userId, runtime, endpoint),
-      );
+      const host = createManagedRuntimeHost(runtime.userId, runtime, endpoint);
+      snapshot = await pRetry(() => this.options.probe(host), {
+        ...defaultProbeRetryOptions,
+        ...this.options.probeRetryOptions,
+      });
     } catch (error) {
       const code = safeErrorCode(error);
       const degraded = this.persist(runtime, "degraded", { lastError: code });

@@ -76,6 +76,21 @@ describe("ManagedRuntimeService", () => {
     });
   });
 
+  it("retries compatibility probing while a newly started app-server becomes ready", async () => {
+    const fixture = runtimeFixture({
+      probeFailures: 2,
+      probeRetryOptions: { retries: 2, minTimeout: 0, maxTimeout: 0, factor: 1 },
+    });
+
+    await expect(fixture.service.start(7)).resolves.toMatchObject({
+      status: "ready",
+      runtimeVersion: "0.151.0",
+    });
+
+    expect(fixture.probe).toHaveBeenCalledTimes(3);
+    expect(fixture.audit.some((event) => event.outcome === "failure")).toBe(false);
+  });
+
   it("audits stop, restart, and removal and never serializes managed connection details", async () => {
     const fixture = runtimeFixture();
     await fixture.service.start(7);
@@ -251,7 +266,18 @@ describe("ManagedRuntimeService", () => {
   });
 });
 
-function runtimeFixture(options: { runtimeVersion?: string } = {}) {
+function runtimeFixture(
+  options: {
+    runtimeVersion?: string;
+    probeFailures?: number;
+    probeRetryOptions?: {
+      retries: number;
+      minTimeout: number;
+      maxTimeout: number;
+      factor: number;
+    };
+  } = {},
+) {
   const endpoint: ManagedRuntimeEndpoint = {
     runtimeId: "placeholder",
     websocketUrl: "ws://runtime-01:4500",
@@ -322,6 +348,18 @@ function runtimeFixture(options: { runtimeVersion?: string } = {}) {
   };
   const audit: AuditEventInput[] = [];
   const closeConnections = vi.fn();
+  let probeFailures = options.probeFailures ?? 0;
+  const probe = vi.fn(async () => {
+    if (probeFailures > 0) {
+      probeFailures -= 1;
+      throw new Error("app-server is still starting");
+    }
+    return {
+      runtimeVersion: options.runtimeVersion ?? "0.151.0",
+      schemaHash: "schema-v1",
+      capabilities: { conversations: true },
+    };
+  });
   let tick = 0;
   const service = new ManagedRuntimeService({
     manager,
@@ -330,13 +368,10 @@ function runtimeFixture(options: { runtimeVersion?: string } = {}) {
     identitySecret: "identity-secret",
     imageAlias: "stable",
     expectedRuntimeVersion: "0.151.0",
-    probe: vi.fn(async () => ({
-      runtimeVersion: options.runtimeVersion ?? "0.151.0",
-      schemaHash: "schema-v1",
-      capabilities: { conversations: true },
-    })),
+    probe,
+    probeRetryOptions: options.probeRetryOptions,
     closeConnections,
     now: () => new Date(1_788_134_400_000 + tick++).toISOString(),
   });
-  return { service, manager, store, audit, statuses, closeConnections };
+  return { service, manager, store, audit, statuses, closeConnections, probe };
 }
