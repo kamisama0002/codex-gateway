@@ -78,7 +78,7 @@ async function respond(result: unknown) {
 <template>
   <Collapsible v-slot="{ open }" class="max-w-4xl text-ink-muted">
     <CollapsibleTrigger
-      class="flex w-full items-center gap-2 rounded-md py-1 text-left text-[0.9375rem] hover:bg-canvas-soft"
+      class="flex w-full items-center gap-2 rounded-md py-1 text-left text-sm hover:bg-canvas-soft"
     >
       <TerminalIcon class="size-4 shrink-0" />
       <span class="min-w-0 flex-1 truncate">{{ title }}</span>

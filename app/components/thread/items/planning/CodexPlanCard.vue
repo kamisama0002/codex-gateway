@@ -26,13 +26,13 @@ defineProps<{
         <slot name="icon">
           <ListChecksIcon class="size-4 shrink-0" />
         </slot>
-        <PlanTitle class="truncate text-[0.9375rem] font-medium">{{ title }}</PlanTitle>
+        <PlanTitle class="truncate text-sm font-medium">{{ title }}</PlanTitle>
       </div>
       <PlanAction>
         <PlanTrigger :aria-label="$t('app.togglePlan')" />
       </PlanAction>
     </PlanHeader>
-    <PlanContent class="px-4 pb-4 text-[0.9375rem] leading-7">
+    <PlanContent class="px-4 pb-4 text-sm leading-6">
       <slot />
     </PlanContent>
     <slot name="footer" />

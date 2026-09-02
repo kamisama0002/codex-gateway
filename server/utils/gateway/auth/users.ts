@@ -48,6 +48,14 @@ export const userStore = {
     return this.findByUsername(normalized);
   },
 
+  findUsername(userId: number) {
+    if (!Number.isInteger(userId) || userId <= 0) return null;
+    const row = gatewayDatabase()
+      .prepare("SELECT username FROM users WHERE id = ?")
+      .get(userId);
+    return row === undefined ? null : String(row.username);
+  },
+
   findByUsername(username: string) {
     const row = gatewayDatabase()
       .prepare("SELECT id, username, password_hash, is_active, role FROM users WHERE username = ?")

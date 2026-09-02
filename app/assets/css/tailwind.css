@@ -252,8 +252,14 @@
 }
 
 @layer components {
+  /* DSH reading column: clamp(680px, 64% of pane, 920px). 4xl (56rem) is the
+     same cap without introducing a ResizeObserver width axis. */
+  .thread-column {
+    @apply mx-auto w-full max-w-4xl;
+  }
+
   .markdown-content {
-    @apply min-w-0 max-w-full text-[0.9375rem] leading-8 text-inherit;
+    @apply min-w-0 max-w-full text-sm leading-6 text-inherit;
   }
 
   .markdown-content > :first-child {
@@ -269,15 +275,15 @@
   }
 
   .markdown-content h1 {
-    @apply mt-7 mb-3 text-heading-3 font-bold leading-[1.27] tracking-heading-3 text-ink;
+    @apply mt-6 mb-2 text-xl font-bold leading-7 tracking-heading-3 text-ink;
   }
 
   .markdown-content h2 {
-    @apply mt-6 mb-3 text-title font-semibold leading-[1.4] tracking-title text-ink;
+    @apply mt-5 mb-2 text-lg font-semibold leading-7 tracking-title text-ink;
   }
 
   .markdown-content h3 {
-    @apply mt-5 mb-2 text-body-md font-semibold leading-[1.5] text-ink;
+    @apply mt-4 mb-2 text-sm font-semibold leading-6 text-ink;
   }
 
   .markdown-content ul,

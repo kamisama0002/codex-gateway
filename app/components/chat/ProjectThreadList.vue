@@ -77,7 +77,7 @@ function startProjectThread() {
 </script>
 
 <template>
-  <section data-testid="project-thread-list" class="mx-auto w-full max-w-3xl">
+  <section data-testid="project-thread-list" class="thread-column">
     <div class="mb-4 flex items-start justify-between gap-3">
       <div class="min-w-0">
         <div class="mb-1 flex items-center gap-1.5 text-xs text-ink-muted">

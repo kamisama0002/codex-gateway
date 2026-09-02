@@ -264,6 +264,21 @@ describe("ManagedRuntimeService", () => {
     expect(fixture.manager.provision).toHaveBeenCalledTimes(2);
     expect(fixture.manager.start).toHaveBeenCalledOnce();
   });
+
+  it("lists admin statuses with usernames and without container identity", async () => {
+    const fixture = runtimeFixture();
+    await fixture.service.start(7);
+
+    expect(fixture.service.listStatuses()).toEqual([
+      expect.objectContaining({
+        userId: 7,
+        username: "runtime-a",
+        status: "ready",
+      }),
+    ]);
+    expect(JSON.stringify(fixture.service.listStatuses())).not.toContain("container-01");
+    expect(JSON.stringify(fixture.service.listStatuses())).not.toContain("runtime-token");
+  });
 });
 
 function runtimeFixture(
@@ -372,6 +387,7 @@ function runtimeFixture(
     probeRetryOptions: options.probeRetryOptions,
     closeConnections,
     now: () => new Date(1_788_134_400_000 + tick++).toISOString(),
+    usernameFor: (userId) => (userId === 7 ? "runtime-a" : null),
   });
   return { service, manager, store, audit, statuses, closeConnections, probe };
 }
