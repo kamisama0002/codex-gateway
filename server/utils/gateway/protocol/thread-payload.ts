@@ -10,6 +10,24 @@ import { normalizeTokenUsage } from "~~/shared/token-usage";
 import { recordFromUnknown } from "~~/shared/utils/records";
 import type { TurnStartInput } from "../runtime/types";
 
+// Codex Desktop Agent / Default: workspace-write plus on-request approvals.
+// Gateway omits sandbox today, so app-server falls back to read-only.
+export const DEFAULT_THREAD_SANDBOX = "workspace-write" as const;
+
+export function buildAppServerThreadStartParams(params: Record<string, unknown>) {
+  const sandbox =
+    typeof params.sandbox === "string" && params.sandbox.trim() !== ""
+      ? params.sandbox
+      : DEFAULT_THREAD_SANDBOX;
+  return {
+    ...params,
+    sandbox,
+    historyMode: "paginated",
+    // Official opt-in fixed at thread creation; thread/resume cannot enable it later.
+    experimentalRawEvents: true,
+  };
+}
+
 export function buildUserInput(input: { text: string; images?: TurnStartInput["images"] }) {
   const userInput: Array<Record<string, unknown>> = [];
   if (input.text.trim() !== "") {
