@@ -3,6 +3,7 @@ import { INITIAL_TURN_PAGE_LIMIT } from "~~/shared/config";
 import { randomUUID } from "node:crypto";
 import type { ServerRequestResponseInput, TurnStartInput, TurnSteerInput } from "./types";
 import type { ControllerRegistry } from "./controller-registry";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 import { buildTurnStartParams, buildUserInput } from "../protocol/thread-payload";
 import { runtimeLog } from "./runtime-log";
 import type { ThreadOpenService } from "./thread-open-service";
@@ -27,7 +28,9 @@ export class ThreadTurnCommandService {
       const result = await controller.enqueue(() =>
         controller.client.request(
           "turn/start",
-          buildTurnStartParams(threadId, clientUserMessageId, input),
+          buildTurnStartParams(threadId, clientUserMessageId, input, {
+            managedRuntime: isManagedRuntimeHost(host),
+          }),
           120_000,
           parseTurnStartResponse,
         ),

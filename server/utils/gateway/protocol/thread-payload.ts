@@ -11,14 +11,25 @@ import { recordFromUnknown } from "~~/shared/utils/records";
 import type { TurnStartInput } from "../runtime/types";
 
 // Codex Desktop Agent / Default: workspace-write plus on-request approvals.
-// Gateway omits sandbox today, so app-server falls back to read-only.
 export const DEFAULT_THREAD_SANDBOX = "workspace-write" as const;
+// Managed Agent containers already isolate with Docker (read-only rootfs, dropped
+// caps, no user namespaces). Inner bubblewrap cannot start there, so skip it.
+export const MANAGED_RUNTIME_THREAD_SANDBOX = "danger-full-access" as const;
+export const MANAGED_RUNTIME_TURN_SANDBOX_POLICY = {
+  type: "externalSandbox",
+  networkAccess: "enabled",
+} as const;
 
-export function buildAppServerThreadStartParams(params: Record<string, unknown>) {
+export function buildAppServerThreadStartParams(
+  params: Record<string, unknown>,
+  options: { managedRuntime?: boolean } = {},
+) {
   const sandbox =
     typeof params.sandbox === "string" && params.sandbox.trim() !== ""
       ? params.sandbox
-      : DEFAULT_THREAD_SANDBOX;
+      : options.managedRuntime === true
+        ? MANAGED_RUNTIME_THREAD_SANDBOX
+        : DEFAULT_THREAD_SANDBOX;
   return {
     ...params,
     sandbox,
@@ -55,6 +66,7 @@ export function buildTurnStartParams(
   threadId: string,
   clientUserMessageId: string,
   input: TurnStartInput,
+  options: { managedRuntime?: boolean } = {},
 ) {
   return {
     threadId,
@@ -69,6 +81,9 @@ export function buildTurnStartParams(
         ? buildAppServerCollaborationMode(input.collaborationMode)
         : null,
     additionalContext: input.additionalContext ?? {},
+    ...(options.managedRuntime === true
+      ? { sandboxPolicy: MANAGED_RUNTIME_TURN_SANDBOX_POLICY }
+      : {}),
   };
 }
 
