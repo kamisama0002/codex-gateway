@@ -7,10 +7,12 @@ import type {
   RemoteGitWorkspaceSnapshot,
 } from "~~/shared/types";
 import { MAX_GIT_DIFF_BYTES } from "~~/shared/file-preview";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 import { remoteLoginShellCommand } from "../ssh/remote-command";
 import { shellQuote } from "../ssh/shell";
 import type { SshConnectionPool } from "../ssh/ssh-connection";
-import type { HostWithSecret } from "../ssh/ssh-types";
+import type { CommandResult, HostWithSecret } from "../ssh/ssh-types";
+import { currentGatewayUserId } from "../../state/memory";
 import { KeyedTaskLimiter } from "../concurrency/keyed-task-limiter";
 import { parseGitStatusRecords } from "./git-status-parser";
 
@@ -48,7 +50,7 @@ export class RemoteGitFileService {
     if (!path.startsWith("/") || !projectPath.startsWith("/")) {
       return { availability: "outsideWorktree" };
     }
-    const transportKey = this.ssh.connectionKeyFor(host);
+    const transportKey = this.transportKeyFor(host);
     const requestKey = `${transportKey}\0${projectPath}\0${path}`;
     const existing = this.pending.get(requestKey);
     if (existing !== undefined) return await existing;
@@ -85,7 +87,7 @@ export class RemoteGitFileService {
     if (!rootPath.startsWith("/") || !projectPath.startsWith("/")) {
       return { availability: "outsideWorktree" };
     }
-    const transportKey = this.ssh.connectionKeyFor(host);
+    const transportKey = this.transportKeyFor(host);
     const requestKey = `${transportKey}\0${projectPath}\0${rootPath}`;
     const existing = this.pendingWorkspace.get(requestKey);
     if (existing !== undefined) return await existing;
@@ -126,7 +128,7 @@ export class RemoteGitFileService {
     deadline: number,
     signal: AbortSignal,
   ) {
-    const result = await this.ssh.exec(host, metadataCommand(projectPath, path), {
+    const result = await this.execGit(host, metadataCommand(projectPath, path), {
       timeoutMs: remainingTimeout(deadline),
       signal,
       maxOutputBytes: MAX_GIT_METADATA_OUTPUT_BYTES,
@@ -148,7 +150,7 @@ export class RemoteGitFileService {
     deadline: number,
     signal: AbortSignal,
   ): Promise<RemoteGitWorkspaceSnapshot> {
-    const result = await this.ssh.exec(host, workspaceCommand(projectPath, rootPath), {
+    const result = await this.execGit(host, workspaceCommand(projectPath, rootPath), {
       timeoutMs: remainingTimeout(deadline),
       signal,
       // Porcelain output is machine-readable but unbounded. A generated directory with hundreds of
@@ -180,7 +182,7 @@ export class RemoteGitFileService {
     }
     const objectPath = metadata.originalPath ?? metadata.relativePath;
     const object = `${metadata.headOid}:${objectPath}`;
-    const result = await this.ssh.exec(host, baselineCommand(metadata.repositoryRoot, object), {
+    const result = await this.execGit(host, baselineCommand(metadata.repositoryRoot, object), {
       timeoutMs: remainingTimeout(deadline),
       signal,
       maxOutputBytes: MAX_GIT_DIFF_BYTES,
@@ -193,6 +195,34 @@ export class RemoteGitFileService {
     }
     return { kind: "head", revision: metadata.headOid, text: result.stdout };
   }
+
+  private transportKeyFor(host: HostWithSecret) {
+    if (!isManagedRuntimeHost(host)) return this.ssh.connectionKeyFor(host);
+    const userId = currentGatewayUserId();
+    if (userId === null) throw new Error("Managed Git inspect requires an authenticated user");
+    return `managed-git:${userId}`;
+  }
+
+  private async execGit(
+    host: HostWithSecret,
+    command: string,
+    options: { timeoutMs: number; signal: AbortSignal; maxOutputBytes: number },
+  ): Promise<CommandResult> {
+    if (!isManagedRuntimeHost(host)) {
+      return this.ssh.exec(host, remoteLoginShellCommand(command), options);
+    }
+    const userId = currentGatewayUserId();
+    if (userId === null) throw new Error("Managed Git inspect requires an authenticated user");
+    const { runtimeService } = await import("../../runtime-manager/runtime-service");
+    return runtimeService.execAgentCommand(userId, command, {
+      timeoutMs: options.timeoutMs,
+      maxOutputBytes: options.maxOutputBytes,
+    });
+  }
+}
+
+function gitRemoteCommand(script: string, ...args: string[]) {
+  return `sh -c ${shellQuote(script)} sh ${args.map((arg) => shellQuote(arg)).join(" ")}`;
 }
 
 function reportGitCommandFailure(
@@ -343,9 +373,7 @@ fi
 printf 'available\\0%s\\0%s\\0%s\\0%s\\0' "$repo_root" "$relative_path" "$head_oid" "$file_size"
 GIT_OPTIONAL_LOCKS=0 git --no-optional-locks -C "$repo_root" status --porcelain=v2 -z --untracked-files=all --ignored=matching -- "$relative_path"
 `;
-  return remoteLoginShellCommand(
-    `sh -c ${shellQuote(script)} sh ${shellQuote(projectPath)} ${shellQuote(path)}`,
-  );
+  return gitRemoteCommand(script, projectPath, path);
 }
 
 function baselineCommand(repositoryRoot: string, object: string) {
@@ -358,9 +386,7 @@ case "$size" in ''|*[!0-9]*) exit 45 ;; esac
 if [ "$size" -gt ${MAX_GIT_DIFF_BYTES} ]; then exit 46; fi
 GIT_OPTIONAL_LOCKS=0 git --no-optional-locks -C "$repo_root" cat-file blob "$object"
 `;
-  return remoteLoginShellCommand(
-    `sh -c ${shellQuote(script)} sh ${shellQuote(repositoryRoot)} ${shellQuote(object)}`,
-  );
+  return gitRemoteCommand(script, repositoryRoot, object);
 }
 
 function parseMetadata(
@@ -527,9 +553,7 @@ else
   GIT_OPTIONAL_LOCKS=0 git --no-optional-locks -C "$repo_root" status --porcelain=v2 -z --untracked-files=all
 fi
 `;
-  return remoteLoginShellCommand(
-    `sh -c ${shellQuote(script)} sh ${shellQuote(projectPath)} ${shellQuote(rootPath)}`,
-  );
+  return gitRemoteCommand(script, projectPath, rootPath);
 }
 
 function parseWorkspaceSnapshot(output: string): RemoteGitWorkspaceSnapshot {

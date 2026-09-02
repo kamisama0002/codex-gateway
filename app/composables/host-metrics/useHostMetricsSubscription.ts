@@ -1,16 +1,15 @@
-import { useDocumentVisibility, useElementVisibility } from "@vueuse/core";
+import { useDocumentVisibility } from "@vueuse/core";
 import type { Ref } from "vue";
 import { useGatewayRealtimeStore } from "@/stores/gateway-realtime";
 
-export function useHostMetricsSubscription(root: Ref<HTMLElement | null>, hostId: Ref<number>) {
+export function useHostMetricsSubscription(hostId: Ref<number>) {
   const realtime = useGatewayRealtimeStore();
-  const elementVisible = useElementVisibility(root);
   const documentVisibility = useDocumentVisibility();
 
   watch(
-    [hostId, elementVisible, documentVisibility, () => realtime.connected],
-    ([nextHostId, visible, documentState, connected], _previous, onCleanup) => {
-      if (!visible || documentState !== "visible" || !connected) return;
+    [hostId, documentVisibility, () => realtime.connected],
+    ([nextHostId, documentState, connected], _previous, onCleanup) => {
+      if (documentState !== "visible" || !connected) return;
       let active = true;
       void realtime
         .request((requestId) => ({

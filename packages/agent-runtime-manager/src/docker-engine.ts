@@ -1,6 +1,7 @@
 import type { RuntimeType } from "@codex-gateway/agent-runtime-contracts";
 import type { RuntimeProviderConfig } from "./contracts.js";
 import { runtimeTypeSchema } from "@codex-gateway/agent-runtime-contracts";
+import { PassThrough } from "node:stream";
 import Docker from "dockerode";
 
 export const runtimeResourceLabels = {
@@ -58,6 +59,7 @@ export interface EngineContainerState {
   runtimeType: RuntimeType;
   serviceToken: string;
   userHash: string;
+  nanoCpus: number;
 }
 
 export interface DockerEngine {
@@ -68,6 +70,11 @@ export interface DockerEngine {
   restartContainer(containerId: string): Promise<void>;
   removeContainer(containerId: string): Promise<void>;
   sampleContainerStats(containerId: string): Promise<unknown>;
+  execInContainer(
+    containerId: string,
+    command: string,
+    options: { timeoutMs: number; maxOutputBytes: number },
+  ): Promise<{ code: number | null; stdout: string; stderr: string }>;
   updateContainerResources(
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
@@ -146,7 +153,25 @@ export class DockerodeEngine implements DockerEngine {
   }
 
   async sampleContainerStats(containerId: string): Promise<unknown> {
-    return (await this.docker.getContainer(containerId).stats({ stream: false })) as unknown;
+    return readDockerStats(
+      await this.docker.getContainer(containerId).stats({ stream: false, "one-shot": false }),
+    );
+  }
+
+  async execInContainer(
+    containerId: string,
+    command: string,
+    options: { timeoutMs: number; maxOutputBytes: number },
+  ): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    const exec = await this.docker.getContainer(containerId).exec({
+      AttachStderr: true,
+      AttachStdout: true,
+      Cmd: ["/bin/sh", "-c", command],
+      User: "10001:10001",
+      WorkingDir: "/workspace",
+    });
+    const stream = await exec.start({ hijack: true, stdin: false });
+    return collectExecOutput(this.docker, stream, exec, options);
   }
 
   async removeContainer(containerId: string): Promise<void> {
@@ -217,8 +242,98 @@ export class DockerodeEngine implements DockerEngine {
       runtimeType: runtimeTypeSchema.parse(required(labels[runtimeResourceLabels.runtimeType])),
       serviceToken: required(environment.get("CODEX_REMOTE_TOKEN")),
       userHash: required(labels[runtimeResourceLabels.userHash]),
+      nanoCpus: Math.max(0, inspected.HostConfig.NanoCpus ?? 0),
     };
   }
+}
+
+async function readDockerStats(value: unknown): Promise<unknown> {
+  if (value !== null && typeof value === "object" && "cpu_stats" in value) return value;
+  if (!isAsyncIterable(value)) throw new Error("docker stats payload is invalid");
+  const chunks: Buffer[] = [];
+  for await (const chunk of value) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : Buffer.from(chunk));
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+}
+
+async function collectExecOutput(
+  docker: Docker,
+  stream: NodeJS.ReadableStream,
+  exec: { inspect(): Promise<{ ExitCode: number | null }> },
+  options: { timeoutMs: number; maxOutputBytes: number },
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  docker.modem.demuxStream(stream, stdout, stderr);
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+  let outputBytes = 0;
+  let overflowed = false;
+  let timedOut = false;
+  const consume = (chunks: Buffer[], chunk: Buffer) => {
+    outputBytes += chunk.length;
+    if (outputBytes > options.maxOutputBytes) {
+      overflowed = true;
+      destroyStream(stream);
+      return;
+    }
+    chunks.push(chunk);
+  };
+  stdout.on("data", (chunk: Buffer) => consume(stdoutChunks, chunk));
+  stderr.on("data", (chunk: Buffer) => consume(stderrChunks, chunk));
+  try {
+    await Promise.race([
+      finished(stream).catch((error: unknown) => {
+        if (overflowed || timedOut) return;
+        throw error;
+      }),
+      sleep(options.timeoutMs).then(() => {
+        timedOut = true;
+        destroyStream(stream);
+      }),
+    ]);
+  } finally {
+    stdout.destroy();
+    stderr.destroy();
+  }
+  if (overflowed) {
+    throw new Error(`Remote command output exceeded the ${options.maxOutputBytes} byte limit`);
+  }
+  if (timedOut) {
+    throw new Error(`Remote command timed out after ${options.timeoutMs}ms`);
+  }
+  const inspected = await exec.inspect();
+  return {
+    code: inspected.ExitCode,
+    stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+    stderr: Buffer.concat(stderrChunks).toString("utf8"),
+  };
+}
+
+function destroyStream(stream: NodeJS.ReadableStream) {
+  if ("destroy" in stream && typeof stream.destroy === "function") stream.destroy();
+}
+
+function finished(stream: NodeJS.ReadableStream) {
+  return new Promise<void>((resolve, reject) => {
+    stream.once("end", resolve);
+    stream.once("close", resolve);
+    stream.once("error", reject);
+  });
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<string | Uint8Array> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Symbol.asyncIterator in value &&
+    typeof value[Symbol.asyncIterator] === "function"
+  );
 }
 
 function isDockerStatus(error: unknown, statusCode: number): boolean {

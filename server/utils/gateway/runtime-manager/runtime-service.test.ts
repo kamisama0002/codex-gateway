@@ -57,6 +57,24 @@ describe("ManagedRuntimeService", () => {
     expect(fixture.manager.stats.mock.calls[0]?.[0]).toMatch(/^codex_[a-f0-9]{32}$/);
   });
 
+  it("executes a command in the user's Agent container by identity", async () => {
+    const fixture = runtimeFixture();
+
+    const result = await fixture.service.execAgentCommand(7, "git --version", {
+      timeoutMs: 1_000,
+      maxOutputBytes: 1_024,
+    });
+
+    expect(result).toEqual({ code: 0, stdout: "ok\n", stderr: "" });
+    expect(fixture.manager.exec).toHaveBeenCalledOnce();
+    expect(fixture.manager.exec.mock.calls[0]?.[0]).toMatchObject({
+      command: "git --version",
+      timeoutMs: 1_000,
+      maxOutputBytes: 1_024,
+    });
+    expect(fixture.manager.exec.mock.calls[0]?.[0]?.runtimeId).toMatch(/^codex_[a-f0-9]{32}$/);
+  });
+
   it("persists and audits a compatibility failure using only a safe error code", async () => {
     const fixture = runtimeFixture({ runtimeVersion: "0.150.0" });
 
@@ -374,8 +392,17 @@ function runtimeFixture(
         diskReadBytes: 0,
         diskWriteBytes: 0,
         interfaces: ["eth0"],
+        cpuQuotaCpus: 2,
       },
     })),
+    exec: vi.fn(
+      async (_input: {
+        runtimeId: string;
+        command: string;
+        timeoutMs: number;
+        maxOutputBytes: number;
+      }) => ({ code: 0, stdout: "ok\n", stderr: "" }),
+    ),
     restart: vi.fn(async (runtimeId: string) => ({
       runtimeId,
       containerId: "container-01",

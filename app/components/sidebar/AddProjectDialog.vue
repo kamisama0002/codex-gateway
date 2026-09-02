@@ -2,6 +2,11 @@
 import { FolderIcon, FolderOpenIcon } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import type { HostRecord, ProjectRecord, RemoteDirectoryEntry } from "~~/shared/types";
+import {
+  isManagedRuntimeHost,
+  MANAGED_WORKSPACE_PATH,
+  managedWorkspaceFolderFromName,
+} from "~~/shared/runtime/managed-runtime";
 import { Button } from "@codex-gateway/ui/button";
 import {
   Dialog,
@@ -30,16 +35,36 @@ const directories = ref<RemoteDirectoryEntry[]>([]);
 const directoryError = ref("");
 const browsing = ref(false);
 const saving = ref(false);
+const pathLocked = ref(false);
+const managedHost = computed(() => props.host !== null && isManagedRuntimeHost(props.host));
 const visibleDirectories = computed(() =>
   directories.value.filter((entry) => entry.type === "directory").slice(0, 12),
 );
 const editing = computed(() => Boolean(props.project));
+const dialogTitleKey = computed(() => {
+  if (editing.value) return "app.editProject";
+  return managedHost.value ? "app.addWorkspace" : "app.addProject";
+});
+const dialogDescriptionKey = computed(() => {
+  if (editing.value) return "app.editProjectDescription";
+  return managedHost.value ? "app.addWorkspaceDescription" : "app.addProjectDescription";
+});
+const defaultBrowsePath = computed(() => (managedHost.value ? MANAGED_WORKSPACE_PATH : "~"));
 
 watch(open, (isOpen) => {
   if (isOpen) {
     resetForm();
+    if (managedHost.value) void browseDirectories();
   }
 });
+
+watch(
+  () => projectForm.value.name,
+  (name) => {
+    if (!managedHost.value || editing.value || pathLocked.value) return;
+    projectForm.value.remotePath = name.trim() === "" ? "" : managedWorkspaceFolderFromName(name);
+  },
+);
 
 async function saveProject() {
   if (!props.host || !projectForm.value.name || !projectForm.value.remotePath) {
@@ -70,7 +95,10 @@ async function browseDirectories() {
   browsing.value = true;
   directoryError.value = "";
   try {
-    const result = await catalog.listRemoteDirectories(directoryPath.value || "~", props.host.id);
+    const result = await catalog.listRemoteDirectories(
+      directoryPath.value || defaultBrowsePath.value,
+      props.host.id,
+    );
     directoryPath.value = result.path;
     directories.value = result.entries;
   } catch (error: unknown) {
@@ -84,6 +112,7 @@ async function browseDirectories() {
 function chooseDirectory(entry: RemoteDirectoryEntry) {
   directoryPath.value = entry.path;
   projectForm.value.remotePath = entry.path;
+  pathLocked.value = true;
   if (!projectForm.value.name) {
     projectForm.value.name = entry.name;
   }
@@ -93,11 +122,12 @@ function resetForm() {
   projectForm.value = props.project
     ? { name: props.project.name, remotePath: props.project.remotePath }
     : { name: "", remotePath: "" };
-  directoryPath.value = props.project?.remotePath || "~";
+  directoryPath.value = props.project?.remotePath || defaultBrowsePath.value;
   directories.value = [];
   directoryError.value = "";
   browsing.value = false;
   saving.value = false;
+  pathLocked.value = Boolean(props.project);
 }
 </script>
 
@@ -105,13 +135,9 @@ function resetForm() {
   <Dialog v-model:open="open">
     <DialogContent class="flex max-h-[min(42rem,calc(100vh-2rem))] flex-col overflow-hidden">
       <DialogHeader>
-        <DialogTitle>{{ editing ? t("app.editProject") : t("app.addProject") }}</DialogTitle>
+        <DialogTitle>{{ t(dialogTitleKey) }}</DialogTitle>
         <DialogDescription>
-          {{
-            t(editing ? "app.editProjectDescription" : "app.addProjectDescription", {
-              host: host?.name ?? "",
-            })
-          }}
+          {{ t(dialogDescriptionKey, { host: host?.name ?? "" }) }}
         </DialogDescription>
       </DialogHeader>
 
@@ -121,7 +147,7 @@ function resetForm() {
             v-model="directoryPath"
             data-testid="project-browse-path-input"
             :aria-label="t('app.remotePath')"
-            :placeholder="t('app.remotePath')"
+            :placeholder="managedHost ? MANAGED_WORKSPACE_PATH : t('app.remotePath')"
           />
           <Button variant="secondary" :disabled="!host || browsing" @click="browseDirectories">
             <FolderOpenIcon class="size-4" />
@@ -162,7 +188,8 @@ function resetForm() {
             v-model="projectForm.remotePath"
             data-testid="project-path-input"
             :aria-label="t('app.remotePath')"
-            :placeholder="t('app.remotePath')"
+            :placeholder="managedHost ? `${MANAGED_WORKSPACE_PATH}/my-app` : t('app.remotePath')"
+            @input="pathLocked = true"
           />
         </div>
       </div>
@@ -174,7 +201,7 @@ function resetForm() {
         @click="saveProject"
       >
         <FolderIcon class="size-4" />
-        {{ editing ? t("app.saveProject") : t("app.addProject") }}
+        {{ editing ? t("app.saveProject") : t(dialogTitleKey) }}
       </Button>
     </DialogContent>
   </Dialog>

@@ -13,8 +13,8 @@ export function buildAgentMetricsSample(
   return {
     sampledAt: new Date(current.sampledAtMs).toISOString(),
     cpu: {
-      usagePercent: dockerCpuPercent(current),
-      loadAverage: [current.onlineCpus, 0, 0],
+      usagePercent: dockerCpuPercent(current, previous),
+      loadAverage: [current.cpuQuotaCpus, 0, 0],
     },
     memory: {
       totalBytes: current.memoryLimitBytes,
@@ -37,9 +37,13 @@ export function buildAgentMetricsSample(
   };
 }
 
-function dockerCpuPercent(stats: AgentContainerStats) {
-  const cpuDelta = stats.cpuUsage - stats.preCpuUsage;
-  const systemDelta = stats.systemCpuUsage - stats.preSystemCpuUsage;
+function dockerCpuPercent(stats: AgentContainerStats, previous: AgentContainerStats | null) {
+  const hasPrecpu = stats.preCpuUsage > 0 && stats.preSystemCpuUsage > 0;
+  const previousCpu = hasPrecpu ? stats.preCpuUsage : previous?.cpuUsage;
+  const previousSystem = hasPrecpu ? stats.preSystemCpuUsage : previous?.systemCpuUsage;
+  if (previousCpu === undefined || previousSystem === undefined) return null;
+  const cpuDelta = stats.cpuUsage - previousCpu;
+  const systemDelta = stats.systemCpuUsage - previousSystem;
   if (cpuDelta < 0 || systemDelta <= 0) return null;
   return clampPercent((cpuDelta / systemDelta) * stats.onlineCpus * 100);
 }

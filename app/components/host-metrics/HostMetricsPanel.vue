@@ -26,7 +26,7 @@ const latest = charts.latest;
 const currentGpus = computed(() => latest.value?.gpus ?? []);
 const gpuProcesses = computed(() => state.value?.gpuProcesses ?? null);
 const lastUpdated = computed(() => latest.value?.sampledAt ?? null);
-useHostMetricsSubscription(root, hostId);
+useHostMetricsSubscription(hostId);
 </script>
 
 <template>

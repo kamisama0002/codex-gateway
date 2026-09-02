@@ -23,7 +23,12 @@ export class ThreadLifecycleService {
   constructor(private readonly registry: ThreadLifecycleRegistry) {}
 
   async archive(host: HostRecord, threadId: string, userId: number) {
-    await this.request(host, "thread/archive", { threadId });
+    try {
+      await this.request(host, "thread/archive", { threadId });
+    } catch (error: unknown) {
+      if (isMissingRolloutError(error)) throw new ThreadRolloutNotReadyError();
+      throw error;
+    }
     this.afterRemove(host, threadId, userId, "archived");
   }
 
@@ -67,5 +72,19 @@ export class ThreadLifecycleService {
   private async request(host: HostRecord, method: string, params: { threadId: string }) {
     const client = await this.registry.getHostClient(host);
     return client.request(method, params);
+  }
+}
+
+function isMissingRolloutError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("no rollout found for thread id");
+}
+
+export class ThreadRolloutNotReadyError extends Error {
+  readonly code = "thread_rollout_not_ready";
+
+  constructor() {
+    super("thread_rollout_not_ready");
+    this.name = "ThreadRolloutNotReadyError";
   }
 }

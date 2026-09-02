@@ -162,6 +162,14 @@ class ThreadBroker {
     return this.registry.getHostClient(host);
   }
 
+  async listDirectories(host: HostRecord, path: string) {
+    return this.files.listDirectory(host, path);
+  }
+
+  async createDirectory(host: HostRecord, path: string) {
+    return this.files.createDirectory(host, path);
+  }
+
   async searchProjectFiles(
     host: HostRecord,
     rootPath: string,

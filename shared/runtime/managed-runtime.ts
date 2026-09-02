@@ -37,9 +37,51 @@ export function workspaceFolderLabel(project: {
   return stripped.length === 0 ? project.name : stripped;
 }
 
-function normalizeRemotePath(path: string): string {
-  const trimmed = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+export function normalizeRemotePath(path: string): string {
+  const parts: string[] = [];
+  for (const part of path.replaceAll("\\", "/").split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  return `/${parts.join("/")}`;
+}
+
+export function resolveManagedWorkspaceBrowsePath(path: string): string {
+  const trimmed = path.trim();
+  if (trimmed === "" || trimmed === "~" || trimmed === "~/") return MANAGED_WORKSPACE_PATH;
+  if (trimmed.startsWith("~/")) {
+    return normalizeRemotePath(`${MANAGED_WORKSPACE_PATH}/${trimmed.slice(2)}`);
+  }
+  if (trimmed.startsWith("/")) return normalizeRemotePath(trimmed);
+  return normalizeRemotePath(`${MANAGED_WORKSPACE_PATH}/${trimmed}`);
+}
+
+export function isInsideManagedWorkspace(path: string): boolean {
+  const normalized = normalizeRemotePath(path);
+  return (
+    normalized === MANAGED_WORKSPACE_PATH || normalized.startsWith(`${MANAGED_WORKSPACE_PATH}/`)
+  );
+}
+
+export function requireManagedWorkspaceSubpath(path: string): string {
+  const normalized = resolveManagedWorkspaceBrowsePath(path);
+  if (!isInsideManagedWorkspace(normalized) || normalized === MANAGED_WORKSPACE_PATH) {
+    throw new Error("Managed workspace folders must be a subdirectory of /workspace");
+  }
+  return normalized;
+}
+
+export function managedWorkspaceFolderFromName(name: string): string {
+  const slug = name
+    .trim()
+    .replaceAll(/[/\\]+/g, "-")
+    .replaceAll(/^\.+|\.+$/g, "");
+  if (slug.length === 0) return MANAGED_WORKSPACE_PATH;
+  return requireManagedWorkspaceSubpath(`${MANAGED_WORKSPACE_PATH}/${slug}`);
 }
 
 export function isManagedRuntimeHost(host: {

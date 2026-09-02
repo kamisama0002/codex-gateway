@@ -18,6 +18,7 @@ import {
 import {
   provisionRuntimeRequestSchema,
   runtimeActionRequestSchema,
+  execRuntimeRequestSchema,
   type RuntimeLifecycleResult,
   runtimeManagerPolicySchema,
   upgradeRuntimeRequestSchema,
@@ -79,6 +80,13 @@ async function handleRequest(
       return sendJson(response, 400, { error: "invalid_request" });
     }
     const payload: unknown = JSON.parse(body.toString("utf8"));
+    if (url.pathname === "/v1/runtimes/exec") {
+      return sendJson(
+        response,
+        200,
+        await options.service.exec(execRuntimeRequestSchema.parse(payload)),
+      );
+    }
     const actionMatch = /^\/v1\/runtimes\/(provision|start|stop|restart|upgrade|remove)$/.exec(
       url.pathname,
     );

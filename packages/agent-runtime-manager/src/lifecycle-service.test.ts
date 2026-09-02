@@ -74,6 +74,17 @@ class RecordingDockerEngine implements DockerEngine {
   }> = [];
   private readonly containers = new Map<string, EngineContainerState>();
   statsPayload: unknown = null;
+  execResult: { code: number | null; stdout: string; stderr: string } = {
+    code: 0,
+    stdout: "",
+    stderr: "",
+  };
+  readonly execCalls: Array<{
+    containerId: string;
+    command: string;
+    timeoutMs: number;
+    maxOutputBytes: number;
+  }> = [];
 
   constructor(options: { existingContainerId?: string } = {}) {
     if (options.existingContainerId !== undefined) {
@@ -88,6 +99,7 @@ class RecordingDockerEngine implements DockerEngine {
         runtimeType: "codex-app-server",
         serviceToken: "existing-service-token",
         userHash,
+        nanoCpus: 0,
       });
     }
   }
@@ -105,6 +117,7 @@ class RecordingDockerEngine implements DockerEngine {
       runtimeType: spec.runtimeType,
       serviceToken: spec.serviceToken,
       userHash: spec.userHash,
+      nanoCpus: spec.security.NanoCpus,
     };
     this.containers.set(spec.runtimeId, state);
     return state;
@@ -146,6 +159,21 @@ class RecordingDockerEngine implements DockerEngine {
     throw new Error("container not found");
   }
 
+  async execInContainer(
+    containerId: string,
+    command: string,
+    options: { timeoutMs: number; maxOutputBytes: number },
+  ): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    this.execCalls.push({ containerId, command, ...options });
+    for (const container of this.containers.values()) {
+      if (container.containerId === containerId) {
+        if (!container.running) throw new Error("container is not running");
+        return this.execResult;
+      }
+    }
+    throw new Error("container not found");
+  }
+
   async updateContainerResources(
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
@@ -163,6 +191,46 @@ class RecordingDockerEngine implements DockerEngine {
 }
 
 describe("RuntimeLifecycleService", () => {
+  it("executes a command in a running managed container", async () => {
+    const engine = new RecordingDockerEngine();
+    engine.execResult = { code: 0, stdout: "git version 2.45.0\n", stderr: "" };
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+    await service.provision(requestFor("runtime-git"));
+    await service.start({ runtimeId: "runtime-git" });
+
+    await expect(
+      service.exec({
+        runtimeId: "runtime-git",
+        command: "git --version",
+        timeoutMs: 1_000,
+        maxOutputBytes: 1_024,
+      }),
+    ).resolves.toEqual({ code: 0, stdout: "git version 2.45.0\n", stderr: "" });
+    expect(engine.execCalls).toEqual([
+      {
+        containerId: "container-1",
+        command: "git --version",
+        timeoutMs: 1_000,
+        maxOutputBytes: 1_024,
+      },
+    ]);
+  });
+
+  it("does not exec into a stopped managed container", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+    await service.provision(requestFor("runtime-git"));
+
+    await expect(
+      service.exec({
+        runtimeId: "runtime-git",
+        command: "git --version",
+        timeoutMs: 1_000,
+        maxOutputBytes: 1_024,
+      }),
+    ).rejects.toThrow("Agent runtime is not running");
+  });
+
   it("uses the fixed 4500 endpoint when production environment attempts to override it", async () => {
     const policy = loadRuntimeManagerPolicy({
       RUNTIME_MANAGER_AGENT_NETWORK: "agent-runtime",
@@ -244,6 +312,7 @@ describe("RuntimeLifecycleService", () => {
         diskReadBytes: 0,
         diskWriteBytes: 0,
         interfaces: ["eth0"],
+        cpuQuotaCpus: 2,
       },
     });
     expect(JSON.stringify(running)).not.toContain("secret-container");

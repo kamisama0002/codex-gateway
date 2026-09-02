@@ -15,6 +15,7 @@ const current = {
   diskReadBytes: 200,
   diskWriteBytes: 100,
   interfaces: ["eth0"],
+  cpuQuotaCpus: 2,
 };
 
 describe("buildAgentMetricsSample", () => {
@@ -49,5 +50,22 @@ describe("buildAgentMetricsSample", () => {
       },
       gpus: [],
     });
+  });
+
+  it("falls back to the previous sample when Docker omits precpu stats", () => {
+    const previous = {
+      ...current,
+      sampledAtMs: 1_000,
+      cpuUsage: 1_000_000_000,
+      systemCpuUsage: 8_000_000_000,
+    };
+    const withoutPrecpu = {
+      ...current,
+      preCpuUsage: 0,
+      preSystemCpuUsage: 0,
+    };
+
+    expect(buildAgentMetricsSample(withoutPrecpu, previous).cpu.usagePercent).toBe(100);
+    expect(buildAgentMetricsSample(withoutPrecpu, null).cpu.usagePercent).toBeNull();
   });
 });

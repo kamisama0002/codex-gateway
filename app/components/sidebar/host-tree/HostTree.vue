@@ -18,14 +18,20 @@ import { HOST_TREE_CONTROLLER, type HostTreeController } from "./controller";
 
 const props = defineProps<{ controller: HostTreeController }>();
 provide(HOST_TREE_CONTROLLER, toRef(props, "controller"));
-const sshHosts = computed(() =>
-  props.controller.hosts.filter((host) => !isManagedRuntimeHost(host)),
+const addProjectHost = computed(() => {
+  const selected = props.controller.hosts.find(
+    (host) => host.id === props.controller.selectedHostId,
+  );
+  return selected ?? props.controller.hosts[0] ?? null;
+});
+const addProjectLabelKey = computed(() =>
+  addProjectHost.value !== null && isManagedRuntimeHost(addProjectHost.value)
+    ? "app.addWorkspace"
+    : "app.addProject",
 );
 
 function addProject() {
-  const selected = sshHosts.value.find((host) => host.id === props.controller.selectedHostId);
-  const host = selected ?? sshHosts.value[0];
-  if (host) props.controller.addProject(host);
+  if (addProjectHost.value) props.controller.addProject(addProjectHost.value);
 }
 
 function toggleArchivedFilter() {
@@ -78,12 +84,13 @@ function toggleArchivedFilter() {
         </DropdownMenuContent>
       </DropdownMenu>
       <Button
+        data-testid="add-workspace-button"
         type="button"
         variant="ghost"
         size="icon-sm"
         class="shrink-0 text-ink-muted hover:text-ink-secondary"
-        :disabled="!sshHosts.length"
-        :aria-label="$t('app.addProject')"
+        :disabled="!addProjectHost"
+        :aria-label="$t(addProjectLabelKey)"
         @click="addProject"
       >
         <FolderPlusIcon />

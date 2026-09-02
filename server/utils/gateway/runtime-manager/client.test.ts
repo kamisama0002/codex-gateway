@@ -90,6 +90,7 @@ describe("RuntimeManagerClient", () => {
           diskReadBytes: 0,
           diskWriteBytes: 0,
           interfaces: ["eth0"],
+          cpuQuotaCpus: 2,
         },
       }),
     );
@@ -193,6 +194,55 @@ describe("RuntimeManagerClient", () => {
     expect(JSON.stringify(error)).not.toContain("sensitive-runtime");
     expect(JSON.stringify(error)).not.toContain("secret-token");
   });
+
+  it("signs an Agent exec request and returns stdout without a container id", async () => {
+    const timestamp = 1_788_131_200_000;
+    const nonce = "exec-nonce";
+    const secret = "manager-shared-secret";
+    const requestBody = JSON.stringify({
+      runtimeId: "runtime_01",
+      command: "git --version",
+      timeoutMs: 1_000,
+      maxOutputBytes: 1_024,
+    });
+    const bodySha256 = createHash("sha256").update(requestBody).digest("hex");
+    const signature = createHmac("sha256", secret)
+      .update(`POST\n/v1/runtimes/exec\n${timestamp}\n${nonce}\n${bodySha256}`)
+      .digest("hex");
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({ code: 0, stdout: "git version 2.45.0\n", stderr: "" }),
+    );
+    const client = new RuntimeManagerClient({
+      baseUrl: "http://runtime-manager:8787",
+      secret,
+      fetch,
+      now: () => timestamp,
+      nonce: () => nonce,
+    });
+
+    const result = await client.exec({
+      runtimeId: "runtime_01",
+      command: "git --version",
+      timeoutMs: 1_000,
+      maxOutputBytes: 1_024,
+    });
+
+    expect(result).toEqual({ code: 0, stdout: "git version 2.45.0\n", stderr: "" });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0]?.[0]).toBe("http://runtime-manager:8787/v1/runtimes/exec");
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      body: requestBody,
+      headers: {
+        "content-type": "application/json",
+        "x-runtime-body-sha256": bodySha256,
+        "x-runtime-nonce": nonce,
+        "x-runtime-signature": signature,
+        "x-runtime-timestamp": String(timestamp),
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("container");
+  });
 });
 
 describe("managed runtime browser boundary", () => {
@@ -230,5 +280,29 @@ describe("managed runtime browser boundary", () => {
     expect(turn.success).toBe(true);
     expect(subscribe.success).toBe(true);
     expect(unsubscribe.success).toBe(true);
+  });
+
+  it("allows starting a conversation on the local Agent host", () => {
+    const result = realtimeClientMessageSchema.safeParse({
+      type: "thread.start",
+      requestId: "request-1",
+      hostId: MANAGED_RUNTIME_HOST_ID,
+      projectId: 2_000_000_001,
+      cwd: "/workspace",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("allows Git inspect on the local Agent host", () => {
+    const result = realtimeClientMessageSchema.safeParse({
+      type: "file.git.workspace.inspect",
+      requestId: "request-1",
+      hostId: MANAGED_RUNTIME_HOST_ID,
+      projectId: 2_000_000_001,
+      rootPath: "/workspace",
+    });
+
+    expect(result.success).toBe(true);
   });
 });

@@ -3,7 +3,11 @@ import {
   MANAGED_RUNTIME_HOST_ID,
   MANAGED_RUNTIME_PROJECT_ID,
   MANAGED_WORKSPACE_PATH,
+  isInsideManagedWorkspace,
   isManagedWorkspaceRootProject,
+  managedWorkspaceFolderFromName,
+  requireManagedWorkspaceSubpath,
+  resolveManagedWorkspaceBrowsePath,
   workspaceFolderLabel,
 } from "~~/shared/runtime/managed-runtime";
 import {
@@ -88,5 +92,17 @@ describe("local workspace overlay", () => {
         remotePath: "/workspace/codex",
       }),
     ).toBe("workspace/codex");
+  });
+
+  it("resolves browse and create paths under /workspace", () => {
+    expect(resolveManagedWorkspaceBrowsePath("~")).toBe("/workspace");
+    expect(resolveManagedWorkspaceBrowsePath("codex")).toBe("/workspace/codex");
+    expect(resolveManagedWorkspaceBrowsePath("/workspace/foo/../bar")).toBe("/workspace/bar");
+    expect(isInsideManagedWorkspace("/workspace")).toBe(true);
+    expect(isInsideManagedWorkspace("/tmp")).toBe(false);
+    expect(requireManagedWorkspaceSubpath("/workspace/codex")).toBe("/workspace/codex");
+    expect(managedWorkspaceFolderFromName("my app")).toBe("/workspace/my app");
+    expect(() => requireManagedWorkspaceSubpath("/workspace")).toThrow(/subdirectory/);
+    expect(() => requireManagedWorkspaceSubpath("/tmp/outside")).toThrow(/subdirectory/);
   });
 });

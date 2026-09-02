@@ -34,6 +34,12 @@ interface RuntimeManagerPort {
   provision(input: ProvisionRuntimeRequest): Promise<RuntimeLifecycleResult>;
   inspect(runtimeId: string): Promise<RuntimeLifecycleResult>;
   stats(runtimeId: string): Promise<AgentRuntimeStatsResult>;
+  exec(input: {
+    runtimeId: string;
+    command: string;
+    timeoutMs: number;
+    maxOutputBytes: number;
+  }): Promise<{ code: number | null; stdout: string; stderr: string }>;
   start(runtimeId: string): Promise<RuntimeLifecycleResult>;
   stop(runtimeId: string): Promise<RuntimeLifecycleResult>;
   restart(runtimeId: string): Promise<RuntimeLifecycleResult>;
@@ -131,6 +137,24 @@ export class ManagedRuntimeService {
   sampleAgentStats(userId: number): Promise<AgentRuntimeStatsResult> {
     const identity = this.identity(positiveUserId(userId));
     return this.options.manager.stats(identity.runtimeId);
+  }
+
+  execAgentCommand(
+    userId: number,
+    command: string,
+    options: { timeoutMs: number; maxOutputBytes: number },
+  ): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    const identity = this.identity(positiveUserId(userId));
+    return this.options.manager
+      .exec({
+        runtimeId: identity.runtimeId,
+        command,
+        timeoutMs: options.timeoutMs,
+        maxOutputBytes: options.maxOutputBytes,
+      })
+      .catch((error: unknown) => {
+        throw new ManagedRuntimeServiceError(safeErrorCode(error));
+      });
   }
 
   start(userId: number, actorUserId = userId): Promise<ManagedRuntimeStatus> {
@@ -525,6 +549,13 @@ export const runtimeService = {
   },
   sampleAgentStats(userId: number) {
     return defaultRuntimeService().sampleAgentStats(userId);
+  },
+  execAgentCommand(
+    userId: number,
+    command: string,
+    options: { timeoutMs: number; maxOutputBytes: number },
+  ) {
+    return defaultRuntimeService().execAgentCommand(userId, command, options);
   },
   start(userId: number, actorUserId = userId) {
     return defaultRuntimeService().start(userId, actorUserId);

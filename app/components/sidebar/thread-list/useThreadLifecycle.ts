@@ -2,6 +2,7 @@ import { computed, ref } from "vue";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { messageFromError } from "@/stores/gateway/thread-utils/identity";
+import { gatewayErrorPayload } from "@/utils/gateway-error";
 import type { SidebarThreadRow } from "../sidebar-types";
 
 export function useThreadLifecycle() {
@@ -36,7 +37,9 @@ export function useThreadLifecycle() {
       await navigation.archiveThread(hostId, threadId);
     } catch (error: unknown) {
       bootstrap.setError(
-        messageFromError(error, bootstrap.t("app.archiveThreadFailed"), bootstrap.errorLabels),
+        isThreadRolloutNotReady(error)
+          ? bootstrap.t("app.archiveThreadNotReady")
+          : messageFromError(error, bootstrap.t("app.archiveThreadFailed"), bootstrap.errorLabels),
         { hostId, threadId },
       );
     }
@@ -106,4 +109,9 @@ export function useThreadLifecycle() {
     confirmDelete,
     cancelDelete,
   };
+}
+
+function isThreadRolloutNotReady(error: unknown) {
+  const payload = gatewayErrorPayload(error);
+  return payload.code === "thread_rollout_not_ready" || payload.statusMessage === "thread_rollout_not_ready";
 }

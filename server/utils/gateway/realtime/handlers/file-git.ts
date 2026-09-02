@@ -1,7 +1,7 @@
 import type { RealtimeClientMessage } from "~~/shared/types";
 import { remoteGitFiles } from "../../infra/host-services";
 import { requireRecord } from "../../http/validation/common";
-import { hostStore } from "../../state/hosts";
+import { requireWorkspaceHost } from "../../runtime-manager/local-workspace";
 import { projectStore } from "../../state/projects";
 import { sendRealtimePeerMessage, type RealtimePeer } from "../peer-state";
 
@@ -9,7 +9,7 @@ export async function compareGitFile(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "file.git.compare" }>,
 ) {
-  const host = requireRecord(hostStore.getWithSecret(request.hostId), "Host not found");
+  const host = await requireWorkspaceHost(request.hostId);
   const project = requireRecord(projectStore.get(request.projectId), "Project not found");
   if (project.hostId !== host.id) {
     throw new Error(`Project ${project.id} does not belong to host ${host.id}`);
@@ -29,7 +29,7 @@ export async function inspectGitWorkspace(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "file.git.workspace.inspect" }>,
 ) {
-  const host = requireRecord(hostStore.getWithSecret(request.hostId), "Host not found");
+  const host = await requireWorkspaceHost(request.hostId);
   const project = requireRecord(projectStore.get(request.projectId), "Project not found");
   if (project.hostId !== host.id) {
     throw new Error(`Project ${project.id} does not belong to host ${host.id}`);

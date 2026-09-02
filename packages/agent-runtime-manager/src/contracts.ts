@@ -81,6 +81,7 @@ export const agentContainerStatsSchema = z
     diskReadBytes: z.number().nonnegative(),
     diskWriteBytes: z.number().nonnegative(),
     interfaces: z.array(z.string().min(1)).min(1),
+    cpuQuotaCpus: z.number().positive(),
   })
   .strict();
 export type AgentContainerStats = z.infer<typeof agentContainerStatsSchema>;
@@ -93,6 +94,25 @@ export const agentRuntimeStatsResultSchema = z
   })
   .strict();
 export type AgentRuntimeStatsResult = z.infer<typeof agentRuntimeStatsResultSchema>;
+
+export const execRuntimeRequestSchema = z
+  .object({
+    runtimeId: runtimeIdSchema,
+    command: z.string().min(1).max(64 * 1024),
+    timeoutMs: z.number().int().positive().max(60_000),
+    maxOutputBytes: z.number().int().positive().max(4 * 1024 * 1024),
+  })
+  .strict();
+export type ExecRuntimeRequest = z.infer<typeof execRuntimeRequestSchema>;
+
+export const execRuntimeResultSchema = z
+  .object({
+    code: z.number().int().nullable(),
+    stdout: z.string(),
+    stderr: z.string(),
+  })
+  .strict();
+export type ExecRuntimeResult = z.infer<typeof execRuntimeResultSchema>;
 
 export const runtimeImagePolicySchema = z
   .object({

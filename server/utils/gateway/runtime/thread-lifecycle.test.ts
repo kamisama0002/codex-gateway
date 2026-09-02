@@ -43,6 +43,24 @@ describe("ThreadLifecycleService", () => {
     unsubscribe();
   });
 
+  it("does not delete a thread when archive fails because the rollout is not on disk yet", async () => {
+    const request = vi.fn(async () => {
+      throw new Error("no rollout found for thread id thread-empty");
+    });
+    seedSnapshot("thread-empty");
+    const service = new ThreadLifecycleService({
+      getHostClient: async () => ({ request }),
+      close: vi.fn(),
+    });
+
+    await expect(service.archive(host, "thread-empty", 9)).rejects.toMatchObject({
+      code: "thread_rollout_not_ready",
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith("thread/archive", { threadId: "thread-empty" });
+    expect(threadSnapshotStore.get(1, "thread-empty")).not.toBeNull();
+  });
+
   it("deletes through thread/delete and removes metadata", async () => {
     const request = vi.fn(async () => ({}));
     const close = vi.fn();

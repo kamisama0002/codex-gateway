@@ -73,6 +73,7 @@ const agentContainerStatsSchema = z
     diskReadBytes: z.number().nonnegative(),
     diskWriteBytes: z.number().nonnegative(),
     interfaces: z.array(z.string().min(1)).min(1),
+    cpuQuotaCpus: z.number().positive(),
   })
   .strict();
 const agentRuntimeStatsResultSchema = z
@@ -80,6 +81,21 @@ const agentRuntimeStatsResultSchema = z
     runtimeId: runtimeIdSchema,
     status: z.enum(["absent", "stopped", "running"]),
     stats: agentContainerStatsSchema.nullable(),
+  })
+  .strict();
+const execRuntimeRequestSchema = z
+  .object({
+    runtimeId: runtimeIdSchema,
+    command: z.string().min(1).max(64 * 1024),
+    timeoutMs: z.number().int().positive().max(60_000),
+    maxOutputBytes: z.number().int().positive().max(4 * 1024 * 1024),
+  })
+  .strict();
+const execRuntimeResultSchema = z
+  .object({
+    code: z.number().int().nullable(),
+    stdout: z.string(),
+    stderr: z.string(),
   })
   .strict();
 const managerErrorSchema = z.object({ error: z.string().min(1) }).strict();
@@ -109,6 +125,7 @@ export interface RuntimeLifecycleResult {
 }
 
 export type AgentRuntimeStatsResult = z.infer<typeof agentRuntimeStatsResultSchema>;
+export type ExecRuntimeResult = z.infer<typeof execRuntimeResultSchema>;
 
 interface RuntimeManagerClientOptions {
   baseUrl: string;
@@ -166,6 +183,22 @@ export class RuntimeManagerClient {
     );
   }
 
+  exec(input: {
+    runtimeId: string;
+    command: string;
+    timeoutMs: number;
+    maxOutputBytes: number;
+  }): Promise<ExecRuntimeResult> {
+    const parsed = execRuntimeRequestSchema.parse(input);
+    return this.requestParsed(
+      "POST",
+      "/v1/runtimes/exec",
+      parsed,
+      execRuntimeResultSchema,
+      parsed.timeoutMs + 5_000,
+    );
+  }
+
   provision(input: ProvisionRuntimeRequest): Promise<RuntimeLifecycleResult> {
     return this.request(
       "POST",
@@ -219,6 +252,7 @@ export class RuntimeManagerClient {
     path: string,
     payload: Record<string, unknown> | undefined,
     schema: z.ZodType<T>,
+    timeoutMs = this.timeoutMs,
   ): Promise<T> {
     const body = payload === undefined ? "" : JSON.stringify(payload);
     const timestamp = this.now();
@@ -238,7 +272,7 @@ export class RuntimeManagerClient {
     if (payload !== undefined) headers["content-type"] = "application/json";
 
     const controller = new AbortController();
-    const deadline = setTimeout(() => controller.abort(), this.timeoutMs);
+    const deadline = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await this.fetch(`${this.baseUrl}${path}`, {
         method,

@@ -13,6 +13,8 @@ import {
   agentRuntimeStatsResultSchema,
   runtimeManagerPolicySchema,
   type AgentRuntimeStatsResult,
+  type ExecRuntimeRequest,
+  type ExecRuntimeResult,
   type ProvisionRuntimeRequest,
   type RuntimeActionRequest,
   type RuntimeLifecycleResult,
@@ -87,7 +89,20 @@ export class RuntimeLifecycleService {
     const parsed = parseDockerContainerStats(
       await this.engine.sampleContainerStats(container.containerId),
     );
-    return statsResult(request.runtimeId, "running", parsed);
+    return statsResult(request.runtimeId, "running", {
+      ...parsed,
+      cpuQuotaCpus: cpuQuotaCpus(container.nanoCpus, parsed.onlineCpus),
+    });
+  }
+
+  async exec(request: ExecRuntimeRequest): Promise<ExecRuntimeResult> {
+    const container = await this.engine.findManagedContainer(request.runtimeId);
+    if (!container) throw new RuntimeLifecycleError("runtime_not_found");
+    if (!container.running) throw new Error("Agent runtime is not running");
+    return this.engine.execInContainer(container.containerId, request.command, {
+      timeoutMs: request.timeoutMs,
+      maxOutputBytes: request.maxOutputBytes,
+    });
   }
 
   async start(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
@@ -258,4 +273,8 @@ function statsResult(
   stats: AgentRuntimeStatsResult["stats"],
 ): AgentRuntimeStatsResult {
   return agentRuntimeStatsResultSchema.parse({ runtimeId, status, stats });
+}
+
+function cpuQuotaCpus(nanoCpus: number, onlineCpus: number) {
+  return nanoCpus > 0 ? nanoCpus / 1_000_000_000 : onlineCpus;
 }

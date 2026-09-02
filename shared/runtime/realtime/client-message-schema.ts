@@ -348,9 +348,6 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z
 
 function isSshOnlyManagedHostMessage(type: string) {
   return (
-    type.startsWith("tmux.") ||
-    type.startsWith("terminal.") ||
-    type.startsWith("browser.") ||
-    type.startsWith("file.git.")
+    type.startsWith("tmux.") || type.startsWith("terminal.") || type.startsWith("browser.")
   );
 }
