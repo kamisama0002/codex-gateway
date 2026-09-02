@@ -23,6 +23,7 @@ async function createHost() {
   <div class="grid gap-4 md:grid-cols-2">
     <div class="space-y-3">
       <div class="font-medium">{{ t("app.addHost") }}</div>
+      <p class="text-sm text-ink-secondary">{{ t("app.addHostDescription") }}</p>
       <HostConnectionFields v-model="hostForm" create />
       <Button
         data-testid="add-host-button"

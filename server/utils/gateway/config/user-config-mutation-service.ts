@@ -10,6 +10,7 @@ import {
   type StoredHostRecord,
 } from "../state/memory";
 import { runtimeConfigFromMemory } from "../http/errors";
+import { workspaceHostIds } from "../runtime-manager/local-workspace";
 import { pinnedThreadEvents } from "./pinned-thread-events";
 import { runtimeConfigStore } from "../state/runtime-config";
 
@@ -118,7 +119,7 @@ function attemptRuntimeReconciliation(userId: number, resource: string, reconcil
 }
 
 function pruneDanglingHostRelations(state: ReturnType<typeof currentGatewayMemoryState>) {
-  const hostIds = new Set(state.hosts.map((host) => host.id));
+  const hostIds = workspaceHostIds(state.hosts.map((host) => host.id));
 
   // Relation cleanup belongs to the draft transaction, before SQLite is written. Resource
   // lifecycle callbacks run after commit and must never mutate durable configuration: doing so

@@ -12,13 +12,13 @@ test("streams Agent container metrics through the shared realtime connection", a
   remoteWorkspace,
 }) => {
   const session = await loginGatewayUser(request, E2E_USERNAME, E2E_PASSWORD);
-  await startManagedRuntime(request, session);
   await installRealtimeSocketProbe(page);
   await openApp(page);
   const { project } = await remoteWorkspace.provision({
     hostName: `metrics-host-${Date.now()}`,
     projectName: "Metrics project",
   });
+  await startManagedRuntime(request, session);
 
   await expect(page.getByTestId(`project-button-${project.id}`)).toBeVisible();
   await page.getByTestId("open-host-monitor-button").click();

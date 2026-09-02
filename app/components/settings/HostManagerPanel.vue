@@ -7,6 +7,7 @@ import { ScrollArea } from "@codex-gateway/ui/scroll-area";
 import { hostConnectionClass, hostConnectionLabelKey } from "@/components/sidebar/sidebar-utils";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 
 const catalog = useGatewayCatalogStore();
 const navigation = useGatewayNavigationStore();
@@ -19,7 +20,16 @@ async function selectHost(hostId: number) {
 }
 
 async function deleteHost(hostId: number) {
+  if (isManagedRuntimeHost({ id: hostId })) return;
   await catalog.deleteHost(hostId);
+}
+
+function hostTitle(host: { id: number; name: string; connectionKind?: string | null }) {
+  return isManagedRuntimeHost(host) ? t("app.localHost") : host.name;
+}
+
+function hostSubtitle(host: { sshHost: string; connectionKind?: string | null }) {
+  return isManagedRuntimeHost(host) ? t("app.localHostSubtitle") : host.sshHost;
 }
 
 function hostConnectionStatus(hostId: number) {
@@ -69,13 +79,14 @@ function hostStatusClass(hostId: number) {
             >
               <ServerIcon class="size-4 shrink-0" />
               <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm">{{ host.name }}</span>
+                <span class="block truncate text-sm">{{ hostTitle(host) }}</span>
                 <span class="block truncate text-[0.6875rem] text-ink-muted">
-                  {{ host.sshHost }}
+                  {{ hostSubtitle(host) }}
                 </span>
               </span>
             </Button>
             <Button
+              v-if="!isManagedRuntimeHost(host)"
               variant="ghost"
               size="sm"
               class="size-8 p-0 text-destructive hover:text-destructive/80"

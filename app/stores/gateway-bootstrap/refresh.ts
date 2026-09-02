@@ -11,6 +11,7 @@ import {
   writeGatewayRouteSelection,
 } from "@/stores/gateway/route-state";
 import { useGatewayBootstrapStore } from ".";
+import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 
 /** Orchestrates independent stores without making the bootstrap state store import them. */
 export async function refreshGatewayClient() {
@@ -44,7 +45,10 @@ export async function refreshGatewayClient() {
         : false;
     if (routeHostExists) navigation.selectedHostId = routeSelection.hostId;
     else if (navigation.selectedHostId === null) {
-      navigation.selectedHostId = catalog.hosts[0]?.id ?? null;
+      navigation.selectedHostId =
+        catalog.hosts.find((host) => host.id === MANAGED_RUNTIME_HOST_ID)?.id ??
+        catalog.hosts[0]?.id ??
+        null;
     }
     navigation.selectedProjectId = routeHostExists ? routeSelection.projectId : null;
     navigation.selectedThreadId = routeHostExists ? routeSelection.threadId : null;

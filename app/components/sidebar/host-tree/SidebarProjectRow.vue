@@ -8,6 +8,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@codex-gateway/ui/context-menu";
+import { isManagedRuntimeProjectId } from "~~/shared/runtime/managed-runtime";
 
 const props = defineProps<{
   project: ProjectRecord;
@@ -68,7 +69,7 @@ function selectProject(event: MouseEvent) {
       </Button>
     </ContextMenuTrigger>
     <ContextMenuContent :collision-padding="12" prioritize-position class="w-44">
-      <ContextMenuItem @select="emit('edit')">
+      <ContextMenuItem v-if="!isManagedRuntimeProjectId(project.id)" @select="emit('edit')">
         <FolderOpenIcon class="mr-2 size-4" />
         {{ $t("app.editProject") }}
       </ContextMenuItem>
@@ -76,7 +77,11 @@ function selectProject(event: MouseEvent) {
         <PlusIcon class="mr-2 size-4" />
         {{ $t("app.newThread") }}
       </ContextMenuItem>
-      <ContextMenuItem class="text-destructive focus:text-destructive" @select="emit('delete')">
+      <ContextMenuItem
+        v-if="!isManagedRuntimeProjectId(project.id)"
+        class="text-destructive focus:text-destructive"
+        @select="emit('delete')"
+      >
         <Trash2Icon class="mr-2 size-4" />
         {{ $t("app.deleteProject") }}
       </ContextMenuItem>

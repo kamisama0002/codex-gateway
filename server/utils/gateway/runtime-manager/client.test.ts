@@ -196,19 +196,27 @@ describe("RuntimeManagerClient", () => {
 });
 
 describe("managed runtime browser boundary", () => {
-  it("rejects the hidden managed host identity in browser realtime messages", () => {
+  it("rejects SSH-only workspace actions on the local Agent host", () => {
     const result = realtimeClientMessageSchema.safeParse({
+      type: "terminal.open",
+      requestId: "request-1",
+      hostId: MANAGED_RUNTIME_HOST_ID,
+      scope: "host",
+      cols: 80,
+      rows: 24,
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("allows thread turns and Agent runtime metrics on the local Agent host", () => {
+    const turn = realtimeClientMessageSchema.safeParse({
       type: "turn.interrupt",
       requestId: "request-1",
       hostId: MANAGED_RUNTIME_HOST_ID,
       threadId: "thread-1",
       turnId: "turn-1",
     });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("allows Agent runtime metrics subscriptions", () => {
     const subscribe = realtimeClientMessageSchema.safeParse({
       type: "host.metrics.subscribe",
       requestId: "request-1",
@@ -219,6 +227,7 @@ describe("managed runtime browser boundary", () => {
       hostId: MANAGED_RUNTIME_HOST_ID,
     });
 
+    expect(turn.success).toBe(true);
     expect(subscribe.success).toBe(true);
     expect(unsubscribe.success).toBe(true);
   });

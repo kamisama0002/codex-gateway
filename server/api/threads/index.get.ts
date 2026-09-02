@@ -5,9 +5,7 @@ import {
   hostLogContext,
   setGatewayRequestLogContext,
 } from "../../utils/gateway/http/errors";
-import { requireRecord } from "../../utils/gateway/http/validation/common";
 import { threadListSchema } from "../../utils/gateway/http/validation/threads";
-import { hostStore } from "../../utils/gateway/state/hosts";
 import { projectStore } from "../../utils/gateway/state/projects";
 import { threadMetadataStore } from "../../utils/gateway/state/thread-metadata";
 import { threadSnapshotStore } from "../../utils/gateway/state/thread-snapshots";
@@ -15,12 +13,14 @@ import { remoteFiles } from "../../utils/gateway/infra/host-services";
 import { withAllThreadSources } from "../../utils/gateway/protocol/thread-list";
 import { projectGatewayThreadsForList } from "../../utils/gateway/protocol/thread-list-projection";
 import { threadProjectDiscovery } from "../../utils/gateway/runtime/thread-project-discovery";
-import type { HostWithSecret } from "../../utils/gateway/infra/ssh/ssh-types";
+import { requireWorkspaceHost } from "../../utils/gateway/runtime-manager/local-workspace";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
+import type { HostRecord } from "~~/shared/types";
 import { trimmedOrNull } from "~~/shared/utils/strings";
 
 export default defineGatewayEventHandler(async (event) => {
   const query = await getValidatedQuery(event, (body) => threadListSchema.parse(body));
-  const host = requireRecord(hostStore.getWithSecret(query.hostId), "Host not found");
+  const host = await requireWorkspaceHost(query.hostId);
   const userId = event.context.auth?.user.id;
   const discoveryGeneration =
     userId === undefined ? null : threadProjectDiscovery.captureGeneration(userId, host.id);
@@ -82,9 +82,12 @@ export default defineGatewayEventHandler(async (event) => {
 });
 
 async function inspectProjectAvailability(
-  host: HostWithSecret,
+  host: HostRecord,
   projects: Array<{ id: number; remotePath: string }>,
 ) {
+  if (isManagedRuntimeHost(host)) {
+    return Object.fromEntries(projects.map((project) => [project.id, "available"] as const));
+  }
   try {
     const byPath = await remoteFiles.inspectProjectDirectories(
       host,

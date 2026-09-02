@@ -1,8 +1,7 @@
 import type { RealtimeClientMessage } from "~~/shared/types";
-import { requireRecord } from "../../http/validation/common";
 import { threadItemsListSchema, threadTurnsListSchema } from "../../http/validation/threads";
 import { threadBroker } from "../../runtime/broker";
-import { hostStore } from "../../state/hosts";
+import { requireWorkspaceHost } from "../../runtime-manager/local-workspace";
 import { sendRealtimePeerMessage, type RealtimePeer } from "../peer-state";
 
 export async function loadThreadTurns(
@@ -10,7 +9,7 @@ export async function loadThreadTurns(
   request: Extract<RealtimeClientMessage, { type: "thread.turns.load" }>,
 ) {
   const input = threadTurnsListSchema.parse(request);
-  const host = requireRecord(hostStore.getWithSecret(input.hostId), "Host not found");
+  const host = await requireWorkspaceHost(input.hostId);
   const result = await threadBroker.listThreadTurns(host, input.threadId, {
     cursor: input.cursor ?? null,
     limit: input.limit,
@@ -30,7 +29,7 @@ export async function loadThreadItems(
   request: Extract<RealtimeClientMessage, { type: "thread.items.load" }>,
 ) {
   const input = threadItemsListSchema.parse(request);
-  const host = requireRecord(hostStore.getWithSecret(input.hostId), "Host not found");
+  const host = await requireWorkspaceHost(input.hostId);
   const result = await threadBroker.listThreadItems(host, input.threadId, input);
   sendRealtimePeerMessage(peer, {
     type: "thread.items.page",

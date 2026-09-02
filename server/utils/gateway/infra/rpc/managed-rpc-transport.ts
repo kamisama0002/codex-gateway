@@ -18,7 +18,7 @@ export function createManagedRuntimeHost(
   const host: HostRecord = {
     id: MANAGED_RUNTIME_HOST_ID,
     connectionKind: "managed",
-    name: "Managed Codex Runtime",
+    name: "Local",
     sshHost: "managed-runtime.internal",
     username: null,
     port: null,

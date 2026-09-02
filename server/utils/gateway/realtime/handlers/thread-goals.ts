@@ -1,14 +1,13 @@
 import type { RealtimeClientMessage } from "~~/shared/types";
-import { requireRecord } from "../../http/validation/common";
 import { threadBroker } from "../../runtime/broker";
-import { hostStore } from "../../state/hosts";
+import { requireWorkspaceHost } from "../../runtime-manager/local-workspace";
 import { sendRealtimePeerMessage, type RealtimePeer } from "../peer-state";
 
 export async function setThreadGoal(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "thread.goal.set" }>,
 ) {
-  const host = requireRecord(hostStore.getWithSecret(request.hostId), "Host not found");
+  const host = await requireWorkspaceHost(request.hostId);
   const result = await threadBroker.setThreadGoal(host, request.threadId, {
     ...("objective" in request ? { objective: request.objective } : {}),
     ...("status" in request ? { status: request.status } : {}),
@@ -27,7 +26,7 @@ export async function getThreadGoal(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "thread.goal.get" }>,
 ) {
-  const host = requireRecord(hostStore.getWithSecret(request.hostId), "Host not found");
+  const host = await requireWorkspaceHost(request.hostId);
   const result = await threadBroker.getThreadGoal(host, request.threadId);
   sendRealtimePeerMessage(peer, {
     type: "thread.goal.snapshot",
@@ -42,7 +41,7 @@ export async function clearThreadGoal(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "thread.goal.clear" }>,
 ) {
-  const host = requireRecord(hostStore.getWithSecret(request.hostId), "Host not found");
+  const host = await requireWorkspaceHost(request.hostId);
   const result = await threadBroker.clearThreadGoal(host, request.threadId);
   sendRealtimePeerMessage(peer, {
     type: "thread.goal.cleared",

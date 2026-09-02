@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { FolderIcon, FolderXIcon, ChartNoAxesCombinedIcon, Trash2Icon } from "@lucide/vue";
 import { Button } from "@codex-gateway/ui/button";
 import {
@@ -13,9 +14,13 @@ import HostStatusIndicator from "./HostStatusIndicator.vue";
 import SidebarProjectRow from "./SidebarProjectRow.vue";
 import ThreadRow from "../thread-list/ThreadRow.vue";
 import { requireHostTreeController } from "./controller";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 
 const props = defineProps<{ host: HostRecord }>();
 const controller = requireHostTreeController();
+const { t } = useI18n();
+const isLocalHost = computed(() => isManagedRuntimeHost(props.host));
+const hostTitle = computed(() => (isLocalHost.value ? t("app.localHost") : props.host.name));
 
 function archivedForProject(projectId: number) {
   return controller.value.archivedThreads.filter((thread) => thread.projectId === projectId);
@@ -37,8 +42,8 @@ function hostStatus() {
           class="h-8 w-full min-w-0 justify-start gap-1.5 overflow-hidden rounded-lg px-2 text-sm font-medium text-ink-muted hover:bg-muted hover:text-ink"
           @click="controller.selectHost(host.id)"
         >
-          <span class="min-w-0 flex-1 truncate text-left" :title="host.sshHost">
-            {{ host.name }}
+          <span class="min-w-0 flex-1 truncate text-left" :title="hostTitle">
+            {{ hostTitle }}
           </span>
           <HostStatusIndicator
             :status="hostStatus()"
@@ -51,11 +56,12 @@ function hostStatus() {
           <ChartNoAxesCombinedIcon class="mr-2 size-4" />
           {{ $t("app.openHostMonitor") }}
         </ContextMenuItem>
-        <ContextMenuItem @select="controller.addProject(host)">
+        <ContextMenuItem v-if="!isLocalHost" @select="controller.addProject(host)">
           <FolderIcon class="mr-2 size-4" />
           {{ $t("app.addProject") }}
         </ContextMenuItem>
         <ContextMenuItem
+          v-if="!isLocalHost"
           class="text-destructive focus:text-destructive"
           @select="controller.deleteHost(host.id)"
         >

@@ -8,12 +8,17 @@ import { projectStore } from "./projects";
 import { subAgentThreadStore } from "./sub-agent-threads";
 import { threadMetadataStore } from "./thread-metadata";
 import { threadSnapshotStore } from "./thread-snapshots";
+import {
+  overlayPublicHosts,
+  overlayPublicProjects,
+  workspaceHostIds,
+} from "../runtime-manager/local-workspace";
 
 export const runtimeConfigStore = {
   replace(config: GatewayConfig) {
     hostStore.replaceHosts(config.hosts);
     projectStore.replaceProjects(config.projects ?? []);
-    const hostIds = hostStore.hostIds();
+    const hostIds = workspaceHostIds(hostStore.hostIds());
     projectStore.pruneToHosts(hostIds);
     threadMetadataStore.pruneToHosts(hostIds);
     threadSnapshotStore.pruneToHosts(hostIds);
@@ -26,7 +31,7 @@ export const runtimeConfigStore = {
   },
 
   replacePinnedThreads(pinnedThreads: GatewayConfig["pinnedThreads"]) {
-    const hostIds = hostStore.hostIds();
+    const hostIds = workspaceHostIds(hostStore.hostIds());
     gatewayMemoryState.pinnedThreads = normalizePinnedThreads(pinnedThreads).filter((thread) =>
       hostIds.has(thread.hostId),
     );
@@ -39,11 +44,13 @@ export const runtimeConfigStore = {
   export(): GatewayConfig {
     return {
       version: 1,
-      hosts: hostStore.listWithSecret().map((host) => ({
-        ...host,
-        hasPassword: Boolean(host.password),
-      })),
-      projects: projectStore.listConfigured(),
+      hosts: overlayPublicHosts(
+        hostStore.listWithSecret().map((host) => ({
+          ...host,
+          hasPassword: Boolean(host.password),
+        })),
+      ),
+      projects: overlayPublicProjects(projectStore.listConfigured()),
       pinnedThreads: gatewayMemoryState.pinnedThreads,
       notifications: normalizeNotificationSettings(gatewayMemoryState.notifications),
     };

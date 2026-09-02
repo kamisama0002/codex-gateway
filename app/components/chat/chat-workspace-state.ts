@@ -2,13 +2,18 @@ import { storeToRefs } from "pinia";
 import { computed } from "vue";
 import type { GatewayThread, ThreadHistoryState } from "~~/shared/types";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
+import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
+import { hostById } from "@/stores/gateway-catalog/selectors";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 
 export function useChatWorkspaceState() {
   const bootstrapRefs = storeToRefs(useGatewayBootstrapStore());
+  const catalog = useGatewayCatalogStore();
   const navigationRefs = storeToRefs(useGatewayNavigationStore());
+  const selectedHost = computed(() => hostById(catalog.hosts, navigationRefs.selectedHostId.value));
   const runtime = useGatewayThreadRuntimeStore();
   const viewRefs = storeToRefs(useGatewayThreadViewStore());
   // The backend projects snapshot history once and realtime reducers update this Pinia array only
@@ -48,7 +53,11 @@ export function useChatWorkspaceState() {
     }),
     selectedThreadViewReady,
     visibleError,
-    canOpenTerminal: computed(() => navigationRefs.selectedHostId.value !== null),
+    canOpenTerminal: computed(
+      () =>
+        navigationRefs.selectedHostId.value !== null &&
+        (selectedHost.value === null || !isManagedRuntimeHost(selectedHost.value)),
+    ),
   };
 }
 

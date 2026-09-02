@@ -93,8 +93,12 @@ const safeManagerErrorCodes = new Set([
 ]);
 
 export class ManagedRuntimeServiceError extends Error {
-  constructor(readonly code: string) {
-    super(code);
+  constructor(
+    readonly code: string,
+    readonly statusCode = 502,
+    message = code,
+  ) {
+    super(message);
     this.name = "ManagedRuntimeServiceError";
   }
 }

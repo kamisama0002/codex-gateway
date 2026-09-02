@@ -1,11 +1,11 @@
 import type { GatewayEvent, HostRecord, RealtimeClientMessage } from "~~/shared/types";
-import { requireRecord } from "../../http/validation/common";
 import { threadOpenSchema, threadStartSchema } from "../../http/validation/threads";
 import { threadBroker } from "../../runtime/broker";
 import type { ThreadSubscriptionLease } from "../../runtime/controller-registry";
 import { threadRuntimeEvents } from "../../runtime/thread-runtime-events";
 import { gatewayEventStore } from "../../state/gateway-events";
-import { hostStore } from "../../state/hosts";
+import { requireWorkspaceHost } from "../../runtime-manager/local-workspace";
+import { isManagedRuntimeHost, MANAGED_WORKSPACE_PATH } from "~~/shared/runtime/managed-runtime";
 import { bindGatewayUser } from "../../state/memory";
 import { recordFromUnknown } from "~~/shared/utils/records";
 import { isThreadActiveStatus } from "~~/shared/thread-runtime-status";
@@ -32,7 +32,7 @@ export async function subscribeThread(
   const key = threadTopicKey(hostId, threadId);
   state.threadUnsubscribers.get(key)?.();
 
-  const host = requireRecord(hostStore.getWithSecret(hostId), "Host not found");
+  const host = await requireWorkspaceHost(hostId);
   const afterId = Number(message.afterId ?? 0);
   subscribeThreadEvents(peer, host, threadId, afterId, message.afterEpoch);
 }
@@ -43,7 +43,7 @@ export async function activateThread(
 ) {
   const input = threadOpenSchema.parse(message);
 
-  const host = requireRecord(hostStore.getWithSecret(input.hostId), "Host not found");
+  const host = await requireWorkspaceHost(input.hostId);
   // Capture the replay cursor before reading the snapshot. Events emitted while thread/read is in
   // flight are then replayed by subscribeThreadEvents; capturing it afterwards would pair an old
   // snapshot with a newer cursor and permanently skip those events.
@@ -103,11 +103,17 @@ export async function startThread(
   message: Extract<RealtimeClientMessage, { type: "thread.start" }>,
 ) {
   const input = threadStartSchema.parse(message);
-  const host = requireRecord(hostStore.getWithSecret(input.hostId), "Host not found");
+  const host = await requireWorkspaceHost(input.hostId);
+  const cwd =
+    input.cwd === "" || input.cwd == null
+      ? isManagedRuntimeHost(host)
+        ? MANAGED_WORKSPACE_PATH
+        : undefined
+      : input.cwd;
   const result = await threadBroker.startThread(
     host,
     {
-      cwd: input.cwd === "" ? undefined : input.cwd,
+      cwd,
       model: input.model === "" ? undefined : input.model,
       effort: input.effort === "" ? undefined : input.effort,
       approvalPolicy: input.approvalPolicy ?? undefined,

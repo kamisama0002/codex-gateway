@@ -4,7 +4,7 @@ import { DEFAULT_BARK_GROUP, DEFAULT_BARK_SERVER_URL } from "~~/shared/config";
 import { trimmedOrFallback, trimmedOrNull } from "~~/shared/utils/strings";
 import { optionalPositiveInt } from "./common";
 import { hostBaseSchema, validateHostProxy } from "./hosts-projects";
-import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
+import { MANAGED_RUNTIME_HOST_ID, MANAGED_RUNTIME_PROJECT_ID } from "~~/shared/runtime/managed-runtime";
 
 export const pinnedThreadSchema = z
   .object({
@@ -77,17 +77,11 @@ export const gatewayConfigSchema = z
     }),
   })
   .strict()
-  .superRefine((config, ctx) => {
-    for (const [index, host] of config.hosts.entries()) {
-      if (host.id === MANAGED_RUNTIME_HOST_ID) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["hosts", index, "id"],
-          message: "The managed runtime host ID is reserved",
-        });
-      }
-    }
-  });
+  .transform((config) => ({
+    ...config,
+    hosts: config.hosts.filter((host) => host.id !== MANAGED_RUNTIME_HOST_ID),
+    projects: config.projects.filter((project) => project.id !== MANAGED_RUNTIME_PROJECT_ID),
+  }));
 
 export function parseGatewayConfig(body: unknown): GatewayConfig {
   const input = gatewayConfigSchema.parse(body);

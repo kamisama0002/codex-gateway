@@ -1,4 +1,5 @@
 import type { HostCreateInput, HostRecord, HostUpdateInput } from "~~/shared/types";
+import { isManagedRuntimeHostId } from "~~/shared/runtime/managed-runtime";
 import { trimmedOrNull } from "~~/shared/utils/strings";
 import { gatewayMemoryState, nextId, nowIso, type StoredHostRecord } from "./memory";
 
@@ -31,11 +32,16 @@ function normalizeHost(input: HostCreateInput, id = nextId(gatewayMemoryState.ho
 
 export const hostStore = {
   replaceHosts(hosts: HostRecord[]) {
-    gatewayMemoryState.hosts = hosts.map((host) => ({
-      ...host,
-      proxyUrl: trimmedOrNull(host.proxyUrl),
-      hasPassword: Boolean(host.password),
-    }));
+    gatewayMemoryState.hosts = hosts
+      .filter(
+        (host) =>
+          !isManagedRuntimeHostId(host.id) && (host.connectionKind ?? "ssh") !== "managed",
+      )
+      .map((host) => ({
+        ...host,
+        proxyUrl: trimmedOrNull(host.proxyUrl),
+        hasPassword: Boolean(host.password),
+      }));
   },
 
   list(): HostRecord[] {

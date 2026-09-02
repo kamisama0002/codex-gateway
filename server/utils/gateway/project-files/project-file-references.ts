@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import type { SFTPWrapper, Stats } from "ssh2";
 import type { FileReference, HostRecord, ProjectRecord } from "~~/shared/types";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 import { sshConnections } from "../infra/host-services";
 
 export const MAX_FILE_REFERENCES = 10;
@@ -25,6 +26,10 @@ export async function validateProjectFileReferences(
       }),
     ).values(),
   ];
+  if (references.length === 0) return [];
+  if (isManagedRuntimeHost(host)) {
+    return normalized;
+  }
   const sftp = await sshConnections.sftp(host);
   const root = await realpath(sftp, project.remotePath);
 

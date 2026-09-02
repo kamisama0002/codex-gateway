@@ -5,13 +5,12 @@ import {
   hostLogContext,
   setGatewayRequestLogContext,
 } from "../../utils/gateway/http/errors";
-import { requireRecord } from "../../utils/gateway/http/validation/common";
 import { modelListSchema } from "../../utils/gateway/http/validation/models";
-import { hostStore } from "../../utils/gateway/state/hosts";
+import { requireWorkspaceHost } from "../../utils/gateway/runtime-manager/local-workspace";
 
 export default defineGatewayEventHandler(async (event) => {
   const query = await getValidatedQuery(event, (body) => modelListSchema.parse(body));
-  const host = requireRecord(hostStore.getWithSecret(query.hostId), "Host not found");
+  const host = await requireWorkspaceHost(query.hostId);
   setGatewayRequestLogContext(event, "models/list", {
     ...hostLogContext(host),
     includeHidden: query.includeHidden ?? false,

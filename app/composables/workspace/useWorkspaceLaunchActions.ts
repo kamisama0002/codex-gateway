@@ -13,6 +13,7 @@ import { browserWorkspacePanelId } from "@/stores/gateway/workspace-panels";
 import { HOST_METRICS_WORKSPACE_PANEL_ID } from "@/stores/gateway/workspace-panels";
 import { useGatewayHostMetricsPanelStore } from "@/stores/gateway-host-metrics/panels";
 import { workspaceLayoutScopeKey } from "@/stores/gateway-workspace-layout";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 
 export function useWorkspaceLaunchActions() {
   const gateway = useGatewayCatalogStore();
@@ -24,11 +25,16 @@ export function useWorkspaceLaunchActions() {
   const hostMetricsPanels = useGatewayHostMetricsPanelStore();
   const { hosts, projects } = storeToRefs(gateway);
   const { selectedHostId, selectedProjectId, selectedThreadId } = storeToRefs(navigation);
+  const { t } = useI18n();
   const selectedHost = computed(() => hostById(hosts.value, selectedHostId.value));
   const selectedProject = computed(() => projectById(projects.value, selectedProjectId.value));
+  const isLocalAgentHost = computed(
+    () => selectedHost.value !== null && isManagedRuntimeHost(selectedHost.value),
+  );
 
   function openTerminal() {
-    if (selectedHostId.value === null || selectedHost.value === null) return;
+    if (selectedHostId.value === null || selectedHost.value === null || isLocalAgentHost.value)
+      return;
     if (selectedThreadId.value !== null) {
       const thread = threadView.currentThread;
       void terminal.openTerminal({
@@ -59,7 +65,7 @@ export function useWorkspaceLaunchActions() {
   }
 
   function openBrowser(targetUrl: string) {
-    if (selectedHostId.value === null) return;
+    if (selectedHostId.value === null || isLocalAgentHost.value) return;
     const panelId = createUuid();
     browser.addPanel({
       panelId,
@@ -83,8 +89,14 @@ export function useWorkspaceLaunchActions() {
   }
 
   return {
-    canLaunch: computed(() => selectedHostId.value !== null),
-    selectedHostTitle: computed(() => selectedHost.value?.name ?? "Codex Gateway"),
+    canLaunch: computed(() => selectedHostId.value !== null && !isLocalAgentHost.value),
+    selectedHostTitle: computed(() =>
+      selectedHost.value === null
+        ? "Codex Gateway"
+        : isLocalAgentHost.value
+          ? t("app.localHost")
+          : selectedHost.value.name,
+    ),
     openTerminal,
     openBrowser,
     openHostMonitor,
