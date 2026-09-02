@@ -40,7 +40,7 @@ watch(inProgress, (active) => (active ? resume() : pause()), { immediate: true }
         class="absolute inset-y-0 left-0 bg-accent-orange/20 transition-[width] duration-300"
         :style="{ width: `${progressPercent}%` }"
       />
-      <div class="relative flex items-center gap-2 px-3 py-2 text-[0.9375rem]">
+      <div class="relative flex items-center gap-2 px-3 py-2 text-sm">
         <Loader2Icon v-if="inProgress" class="size-4 shrink-0 animate-spin text-accent-orange" />
         <CheckCircle2Icon v-else class="size-4 shrink-0 text-accent-green" />
         <span class="min-w-0 flex-1 truncate">{{ t("app.sleep") }}</span>

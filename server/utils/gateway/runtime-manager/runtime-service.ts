@@ -18,6 +18,7 @@ import { SUPPORTED_CODEX_VERSION, parseCodexVersion } from "../infra/codex/codex
 import { runWithGatewayUser } from "../state/memory";
 import { threadBroker } from "../runtime/broker";
 import { auditStore } from "../audit/audit-store";
+import { userStore } from "../auth/users";
 import { runtimeStore } from "./runtime-store";
 import { providerStore } from "../providers/provider-store";
 import { issueRuntimeModelToken } from "../providers/runtime-token";
@@ -65,6 +66,7 @@ interface ManagedRuntimeServiceOptions {
   probeRetryOptions?: RetryOptions;
   closeConnections?(userId: number): void;
   now?: () => string;
+  usernameFor?(userId: number): string | null;
 }
 
 const defaultProbeRetryOptions: RetryOptions = {
@@ -113,8 +115,11 @@ export class ManagedRuntimeService {
     return runtime === null ? null : serializeManagedRuntimeStatus(runtime);
   }
 
-  listStatuses(): ManagedRuntimeStatus[] {
-    return this.options.store.list().map(serializeManagedRuntimeStatus);
+  listStatuses(): Array<ManagedRuntimeStatus & { username: string }> {
+    return this.options.store.list().map((runtime) => ({
+      ...serializeManagedRuntimeStatus(runtime),
+      username: this.options.usernameFor?.(runtime.userId) ?? `user-${runtime.userId}`,
+    }));
   }
 
   start(userId: number, actorUserId = userId): Promise<ManagedRuntimeStatus> {
@@ -540,6 +545,7 @@ function defaultRuntimeService(): ManagedRuntimeService {
     probe: probeManagedCodexRuntime,
     closeConnections: (userId) =>
       runWithGatewayUser(userId, () => threadBroker.closeHost(MANAGED_RUNTIME_HOST_ID)),
+    usernameFor: (userId) => userStore.findUsername(userId),
   });
   return productionRuntimeService;
 }

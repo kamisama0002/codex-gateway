@@ -14,6 +14,9 @@ const asyncPanels = {
   SettingsDockNotificationPanel: defineAsyncComponent(
     () => import("@/components/settings/settings-dock/SettingsDockNotificationPanel.vue"),
   ),
+  SettingsDockRuntimePanel: defineAsyncComponent(
+    () => import("@/components/settings/settings-dock/SettingsDockRuntimePanel.vue"),
+  ),
 };
 
 export default defineNuxtPlugin((nuxtApp) => {

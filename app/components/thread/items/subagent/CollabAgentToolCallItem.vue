@@ -81,7 +81,7 @@ function agentName(threadId: string) {
 
 <template>
   <div class="max-w-4xl text-ink-secondary">
-    <div class="flex items-center gap-2 text-[0.9375rem]">
+    <div class="flex items-center gap-2 text-sm">
       <BotIcon class="size-4 text-ink-muted" />
       <span class="min-w-0 truncate">{{ title }}</span>
       <Badge variant="secondary">{{ item.status }}</Badge>

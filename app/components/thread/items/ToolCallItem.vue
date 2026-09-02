@@ -24,7 +24,7 @@ const detailSections = computed(() => presentation.value.details);
 
 <template>
   <div class="max-w-4xl text-ink-muted">
-    <div class="flex items-center gap-2 text-[0.9375rem]">
+    <div class="flex items-center gap-2 text-sm">
       <SearchIcon v-if="iconType === 'search'" class="size-4" />
       <ImageIcon v-else-if="iconType === 'image'" class="size-4" />
       <WrenchIcon v-else class="size-4" />

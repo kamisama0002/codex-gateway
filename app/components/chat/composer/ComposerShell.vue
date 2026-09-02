@@ -100,7 +100,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
   <div
     class="shrink-0 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] md:px-[clamp(1rem,3vw,2rem)] md:pb-[clamp(0.5rem,1.4vh,0.75rem)]"
   >
-    <div class="mx-auto w-full max-w-3xl">
+    <div class="thread-column">
       <ComposerModeStrip
         :plan-mode-active="planModeActive"
         :plan-summary="planSummary"

@@ -18,7 +18,7 @@ const { t } = useI18n();
 <template>
   <button
     type="button"
-    class="flex w-full max-w-3xl items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-ink-secondary hover:bg-muted"
+    class="thread-column flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-ink-secondary hover:bg-muted"
     :aria-expanded="open"
     :disabled="loading"
     :data-state="open ? 'open' : 'closed'"

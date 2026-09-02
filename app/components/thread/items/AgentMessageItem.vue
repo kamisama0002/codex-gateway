@@ -25,7 +25,7 @@ const hasFooter = computed(
 </script>
 
 <template>
-  <Message from="assistant" class="min-w-0 max-w-full lg:max-w-3xl">
+  <Message from="assistant" class="min-w-0 max-w-full">
     <MessageContent class="min-w-0 w-full gap-0 overflow-visible text-sm leading-6 text-ink">
       <MarkdownContent :content="text" :streaming="inProgress" />
       <AgentMessageActions

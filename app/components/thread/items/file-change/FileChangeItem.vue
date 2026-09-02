@@ -89,7 +89,7 @@ watch(
 
 <template>
   <div class="max-w-4xl text-ink-secondary">
-    <div class="flex items-center gap-2 text-[0.9375rem]">
+    <div class="flex items-center gap-2 text-sm">
       <Loader2Icon v-if="isInProgress" class="size-4 animate-spin text-primary" />
       <FilePenIcon v-else class="size-4" />
       <span>{{ title }}</span>

@@ -33,7 +33,7 @@ watch(inProgress, (active) => (active ? resume() : pause()), { immediate: true }
 </script>
 
 <template>
-  <Checkpoint class="max-w-4xl gap-2 py-1 text-[0.9375rem] text-ink-muted">
+  <Checkpoint class="max-w-4xl gap-2 py-1 text-sm text-ink-muted">
     <CheckpointIcon>
       <Loader2Icon v-if="inProgress" class="size-4 shrink-0 animate-spin text-primary" />
       <CheckCircle2Icon v-else class="size-4 shrink-0 text-accent-green" />
