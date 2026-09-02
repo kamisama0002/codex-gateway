@@ -23,9 +23,12 @@ RUN pnpm --filter @codex-gateway/agent-runtime-manager rebuild esbuild \
 
 FROM node:24-bookworm-slim
 
+ARG DEBIAN_MIRROR=
 ENV NODE_ENV=production
 
-RUN apt-get update \
+COPY docker/rewrite-debian-mirror.sh /tmp/rewrite-debian-mirror.sh
+RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tini \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir --parents /data

@@ -7,7 +7,10 @@ LABEL com.qiancheng.codex.version=0.151.0
 ENV CODEX_HOME=/codex-home
 ENV CODEX_WORKSPACE=/workspace
 
-RUN apt-get update \
+ARG DEBIAN_MIRROR=
+COPY docker/rewrite-debian-mirror.sh /tmp/rewrite-debian-mirror.sh
+RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tini \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 codex \

@@ -9,7 +9,11 @@ RUN corepack enable
 WORKDIR /app
 
 FROM base AS deps
-RUN apt-get update \
+ARG DEBIAN_MIRROR=
+ARG NPM_REGISTRY=
+COPY docker/rewrite-debian-mirror.sh /tmp/rewrite-debian-mirror.sh
+RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
+    && apt-get update \
     && apt-get install -y --no-install-recommends python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 # Keep precompiled browser packages in the dependency layer. Their Office, Markdown, UI, and AI
@@ -19,7 +23,9 @@ COPY patches ./patches
 COPY packages ./packages
 COPY shared ./shared
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile
+    if [ -n "${NPM_REGISTRY}" ]; then pnpm config set registry "${NPM_REGISTRY}"; fi \
+    && pnpm install --frozen-lockfile --ignore-scripts \
+    && pnpm build:dependencies
 
 FROM deps AS build
 COPY i18n ./i18n
@@ -34,10 +40,13 @@ COPY app ./app
 RUN pnpm exec nuxt build
 
 FROM node:${NODE_VERSION} AS runner
+ARG DEBIAN_MIRROR=
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
-RUN apt-get update \
+COPY docker/rewrite-debian-mirror.sh /tmp/rewrite-debian-mirror.sh
+RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tini \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app

@@ -14,12 +14,16 @@ services:
     build:
       context: ../..
       dockerfile: docker/agent-runtime.Dockerfile
+      args:
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
 
   agent-runtime-manager:
     image: codex-runtime-manager-e2e:0.151.0
     build:
       context: ../..
       dockerfile: docker/runtime-manager.Dockerfile
+      args:
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
     environment:
       NODE_ENV: test
       RUNTIME_MANAGER_AGENT_NETWORK: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
