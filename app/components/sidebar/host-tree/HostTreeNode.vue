@@ -14,7 +14,10 @@ import HostStatusIndicator from "./HostStatusIndicator.vue";
 import SidebarProjectRow from "./SidebarProjectRow.vue";
 import ThreadRow from "../thread-list/ThreadRow.vue";
 import { requireHostTreeController } from "./controller";
-import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
+import {
+  isManagedRuntimeHost,
+  isManagedWorkspaceRootProject,
+} from "~~/shared/runtime/managed-runtime";
 
 const props = defineProps<{ host: HostRecord }>();
 const controller = requireHostTreeController();
@@ -27,6 +30,12 @@ function archivedForProject(projectId: number) {
 
 function hostStatus() {
   return controller.value.hostConnectionStatuses[props.host.id]?.status ?? "idle";
+}
+
+function projectThreadsExpanded(project: { id: number; hostId: number; remotePath: string }) {
+  return (
+    isManagedWorkspaceRootProject(project) || controller.value.expandedProjectIds.has(project.id)
+  );
 }
 </script>
 
@@ -79,6 +88,7 @@ function hostStatus() {
         class="min-w-0 overflow-hidden"
       >
         <SidebarProjectRow
+          v-if="!isManagedWorkspaceRootProject(project)"
           :project="project"
           :expanded="controller.expandedProjectIds.has(project.id)"
           :selected="project.id === controller.selectedProjectId"
@@ -89,8 +99,9 @@ function hostStatus() {
           @start-thread="controller.startThreadInProject(project)"
         />
         <div
-          v-if="controller.expandedProjectIds.has(project.id)"
-          class="min-w-0 space-y-0.5 overflow-hidden pl-5"
+          v-if="projectThreadsExpanded(project)"
+          class="min-w-0 space-y-0.5 overflow-hidden"
+          :class="isManagedWorkspaceRootProject(project) ? '' : 'pl-5'"
         >
           <template v-if="controller.archivedFilterActive">
             <ThreadRow
@@ -116,7 +127,9 @@ function hostStatus() {
               @delete="controller.deleteThread({ ...thread, hostId: project.hostId })"
             />
             <div
-              v-if="!archivedForProject(project.id).length"
+              v-if="
+                !isManagedWorkspaceRootProject(project) && !archivedForProject(project.id).length
+              "
               class="px-2 py-1 text-sm text-ink-faint"
             >
               {{
@@ -153,7 +166,10 @@ function hostStatus() {
               @archive="controller.archive({ ...thread, hostId: project.hostId })"
             />
             <div
-              v-if="!controller.threadsForProject(project.id).length"
+              v-if="
+                !isManagedWorkspaceRootProject(project) &&
+                !controller.threadsForProject(project.id).length
+              "
               class="px-2 py-1 text-sm text-ink-faint"
             >
               {{ $t("app.noAgentsYet") }}

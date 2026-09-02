@@ -3,6 +3,8 @@ import {
   MANAGED_RUNTIME_HOST_ID,
   MANAGED_RUNTIME_PROJECT_ID,
   MANAGED_WORKSPACE_PATH,
+  isManagedWorkspaceRootProject,
+  workspaceFolderLabel,
 } from "~~/shared/runtime/managed-runtime";
 import {
   overlayPublicHosts,
@@ -57,5 +59,34 @@ describe("local workspace overlay", () => {
     const once = overlayPublicProjects([]);
     expect(overlayPublicProjects(once)).toEqual(once);
     expect(overlayPublicHosts(overlayPublicHosts([]))).toEqual(overlayPublicHosts([]));
+  });
+
+  it("treats the overlay /workspace project as a hidden root folder", () => {
+    expect(
+      isManagedWorkspaceRootProject({
+        hostId: MANAGED_RUNTIME_HOST_ID,
+        remotePath: MANAGED_WORKSPACE_PATH,
+      }),
+    ).toBe(true);
+    expect(
+      isManagedWorkspaceRootProject({
+        hostId: MANAGED_RUNTIME_HOST_ID,
+        remotePath: "/workspace/codex",
+      }),
+    ).toBe(false);
+    expect(
+      workspaceFolderLabel({
+        hostId: MANAGED_RUNTIME_HOST_ID,
+        name: "workspace/codex",
+        remotePath: "/workspace/codex",
+      }),
+    ).toBe("codex");
+    expect(
+      workspaceFolderLabel({
+        hostId: 1,
+        name: "workspace/codex",
+        remotePath: "/workspace/codex",
+      }),
+    ).toBe("workspace/codex");
   });
 });

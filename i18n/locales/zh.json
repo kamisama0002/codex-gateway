@@ -1,6 +1,6 @@
 {
   "app": {
-    "newChat": "新聊天",
+    "newChat": "新会话",
     "loginTitle": "登录 Codex Gateway",
     "loginDescription": "输入管理员创建的账号密码，连接配置会加密保存在服务器端。",
     "login": "登录",

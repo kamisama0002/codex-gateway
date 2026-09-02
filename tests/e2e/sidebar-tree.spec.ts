@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { openApp } from "./helpers/app";
 import { installRealtimeThreadSnapshotMock, seedGatewayThread } from "./helpers/gateway-store";
 import { defaultGatewayHost, defaultGatewayProject } from "./fixtures/thread-history";
+import { MANAGED_RUNTIME_HOST_ID, MANAGED_RUNTIME_PROJECT_ID } from "../../shared/runtime/managed-runtime";
 
 test("collapses the desktop sidebar and restores the saved layout", async ({ page }) => {
   await openApp(page);
@@ -121,114 +122,45 @@ test("marks completed threads as needing review until they are opened", async ({
   ).toBeHidden();
 });
 
-test("keeps non-pinned main threads in recent activity for the page session", async ({ page }) => {
+test("shows a new conversation action instead of recent activity", async ({ page }) => {
   await openApp(page);
-  const host = {
-    ...defaultGatewayHost(104),
-    name: "Activity Host",
-    sshHost: "activity.example.internal",
-  };
-  const project = {
-    ...defaultGatewayProject(104, 204),
-    name: "Activity Project",
-    remotePath: "/workspace/activity",
-  };
-  await page.evaluate(
-    ({ host, project }) => {
-      const driver = window.__codexGatewayE2e;
-      if (!driver) throw new Error("Gateway E2E driver is unavailable");
-      const { activity, catalog, config, runtime } = driver;
-      catalog.hosts = [host];
-      catalog.projects = [project];
-      config.gatewayConfig.pinnedThreads = [
-        {
-          hostId: host.id,
-          projectId: project.id,
-          threadId: "already-pinned",
-          title: "Already pinned",
-        },
-      ];
-      activity.ingestMetadata(
-        host.id,
-        [
-          {
-            id: "recent-main",
-            title: "Recent main thread",
-            projectId: project.id,
-            cwd: project.remotePath,
-            parentThreadId: null,
-            agentNickname: null,
-            agentRole: null,
-            name: null,
-            preview: null,
-            recencyAt: null,
-            updatedAt: 3,
-          },
-          {
-            id: "already-pinned",
-            title: "Already pinned",
-            projectId: project.id,
-            cwd: null,
-            parentThreadId: null,
-            agentNickname: null,
-            agentRole: null,
-            name: null,
-            preview: null,
-            recencyAt: null,
-            updatedAt: 2,
-          },
-          {
-            id: "spawned-child",
-            title: "Spawned child",
-            projectId: project.id,
-            parentThreadId: "recent-main",
-            cwd: null,
-            agentNickname: null,
-            agentRole: null,
-            name: null,
-            preview: null,
-            recencyAt: null,
-            updatedAt: 1,
-          },
-          {
-            id: "managed-child-before-parent-hydration",
-            title: "Inherited parent title",
-            projectId: project.id,
-            agentRole: "explorer",
-            agentNickname: "Scout",
-            cwd: null,
-            parentThreadId: null,
-            name: null,
-            preview: null,
-            recencyAt: null,
-            updatedAt: 4,
-          },
-        ],
-        [project],
-      );
-      runtime.setThreadStatus(host.id, "recent-main", "running");
-      runtime.setThreadStatus(host.id, "already-pinned", "running");
-      runtime.setThreadStatus(host.id, "spawned-child", "running");
-      runtime.setThreadStatus(host.id, "managed-child-before-parent-hydration", "running");
-      runtime.setThreadStatus(host.id, "recent-main", "completed");
+  await expect(page.getByTestId("new-conversation-button")).toBeVisible();
+  await expect(page.getByText("新会话", { exact: true })).toBeVisible();
+  await expect(page.getByText("最近运行", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("工作区", { exact: true }).first()).toBeVisible();
+});
+
+test("hides the default workspace folder and lists its threads under 工作区", async ({ page }) => {
+  await openApp(page);
+  await seedGatewayThread(page, {
+    hostId: MANAGED_RUNTIME_HOST_ID,
+    projectId: MANAGED_RUNTIME_PROJECT_ID,
+    threadId: "hello-thread",
+    host: {
+      ...defaultGatewayHost(MANAGED_RUNTIME_HOST_ID),
+      name: "Local",
+      connectionKind: "managed",
     },
-    { host, project },
-  );
-
-  await expect(page.getByText("最近运行", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("recent-thread-button-recent-main")).toBeVisible();
-  await expect(page.getByTestId("recent-thread-button-already-pinned")).toBeHidden();
-  await expect(page.getByTestId("recent-thread-button-spawned-child")).toBeHidden();
-  await expect(
-    page.getByTestId("recent-thread-button-managed-child-before-parent-hydration"),
-  ).toBeHidden();
-
-  const sectionOrder = await page.getByTestId("sidebar-scroll-area").evaluate((root) => {
-    const text = root.textContent ?? "";
-    return [text.indexOf("已固定"), text.indexOf("最近运行"), text.indexOf("主机")];
+    project: {
+      ...defaultGatewayProject(MANAGED_RUNTIME_HOST_ID, MANAGED_RUNTIME_PROJECT_ID),
+      name: "workspace",
+      remotePath: "/workspace",
+    },
+    currentThread: { id: "hello-thread", name: "你好" },
+    threads: [
+      {
+        id: "hello-thread",
+        name: "你好",
+        pinned: false,
+        updatedAt: Math.floor(Date.now() / 1000),
+      },
+    ],
   });
-  expect(sectionOrder[0]).toBeLessThan(sectionOrder[1]!);
-  expect(sectionOrder[1]).toBeLessThan(sectionOrder[2]!);
+
+  await expect(page.getByTestId("new-conversation-button")).toBeVisible();
+  await expect(page.getByTestId(`project-button-${MANAGED_RUNTIME_PROJECT_ID}`)).toHaveCount(0);
+  await expect(page.getByTestId("thread-button-hello-thread")).toBeVisible();
+  await expect(page.getByTestId("thread-button-hello-thread")).toContainText("你好");
 });
 
 test("sorts pinned threads for display without rewriting persisted pin order", async ({ page }) => {

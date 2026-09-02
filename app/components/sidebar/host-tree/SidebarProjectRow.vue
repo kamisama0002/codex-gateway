@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { ChevronRightIcon, FolderIcon, FolderOpenIcon, FolderXIcon, PlusIcon, Trash2Icon } from "@lucide/vue";
 import type { ProjectRecord } from "~~/shared/types";
 import { Button } from "@codex-gateway/ui/button";
@@ -8,7 +9,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@codex-gateway/ui/context-menu";
-import { isManagedRuntimeProjectId } from "~~/shared/runtime/managed-runtime";
+import { isManagedRuntimeProjectId, workspaceFolderLabel } from "~~/shared/runtime/managed-runtime";
 
 const props = defineProps<{
   project: ProjectRecord;
@@ -30,6 +31,8 @@ function selectProject(event: MouseEvent) {
     emit("select", event);
   }
 }
+
+const folderLabel = computed(() => workspaceFolderLabel(props.project));
 </script>
 
 <template>
@@ -63,8 +66,8 @@ function selectProject(event: MouseEvent) {
             <FolderIcon class="size-4 text-ink-muted" />
           </span>
         </template>
-        <span class="min-w-0 flex-1 truncate text-left" :title="project.name">
-          {{ project.name }}
+        <span class="min-w-0 flex-1 truncate text-left" :title="folderLabel">
+          {{ folderLabel }}
         </span>
       </Button>
     </ContextMenuTrigger>

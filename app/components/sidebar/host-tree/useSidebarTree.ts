@@ -13,6 +13,7 @@ import {
 } from "../sidebar-utils";
 import type { PinnedThreadRecord, ProjectRecord } from "../sidebar-types";
 import { firstNonEmptyString } from "~~/shared/utils/strings";
+import { isManagedWorkspaceRootProject } from "~~/shared/runtime/managed-runtime";
 
 export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   const store = useGatewayCatalogStore();
@@ -168,6 +169,17 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     );
   }
 
+  function startNewConversation() {
+    const selected =
+      selectedProjectId.value === null
+        ? undefined
+        : projects.value.find((project) => project.id === selectedProjectId.value);
+    const managedRoot = projects.value.find((project) => isManagedWorkspaceRootProject(project));
+    const project = selected ?? managedRoot;
+    if (!project) return;
+    startThreadInProject(project);
+  }
+
   function threadRuntimeStatus(hostId: number, threadId: string) {
     return threadStatuses.value[threadKey(hostId, threadId)] ?? "idle";
   }
@@ -252,6 +264,7 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     expandAllTree,
     toggleMissingProjects,
     startThreadInProject,
+    startNewConversation,
     threadRuntimeStatus,
     threadCompletionAttention,
     pinnedRuntimeStatus,

@@ -1,6 +1,6 @@
 {
   "app": {
-    "newChat": "New chat",
+    "newChat": "New conversation",
     "loginTitle": "Sign in to Codex Gateway",
     "loginDescription": "Use the account created by the administrator. Connection config is encrypted on the server.",
     "login": "Sign in",

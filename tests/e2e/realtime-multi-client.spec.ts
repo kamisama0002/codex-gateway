@@ -167,9 +167,6 @@ test("fans out a real remote app-server thread to multiple browser clients acros
     await expect(
       secondPage.getByTestId(`thread-button-${threadId}`).getByLabel("运行中"),
     ).toBeVisible({ timeout: 30_000 });
-    await expect(
-      secondPage.getByTestId(`recent-thread-button-${threadId}`).getByLabel("运行中"),
-    ).toBeVisible({ timeout: 30_000 });
     await expect
       .poll(() => threadRuntimeStatus(secondPage, host.id, threadId), { timeout: 30_000 })
       .toBe("running");

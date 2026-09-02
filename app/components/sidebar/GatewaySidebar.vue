@@ -17,8 +17,8 @@ import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import AddProjectDialog from "./AddProjectDialog.vue";
 import HostTree from "./host-tree/HostTree.vue";
+import NewConversationButton from "./NewConversationButton.vue";
 import PinnedThreadList from "./thread-list/PinnedThreadList.vue";
-import RecentThreadList from "./thread-list/RecentThreadList.vue";
 import ThreadRenameDialog from "./thread-list/ThreadRenameDialog.vue";
 import ThreadDeleteDialog from "./thread-list/ThreadDeleteDialog.vue";
 import SidebarScrollArea from "./SidebarScrollArea.vue";
@@ -26,7 +26,6 @@ import { SidebarFooter } from "@codex-gateway/ui/sidebar";
 import { useSidebarTree } from "./host-tree/useSidebarTree";
 import { useThreadRename } from "./thread-list/useThreadRename";
 import { useThreadLifecycle } from "./thread-list/useThreadLifecycle";
-import { useRecentThreadActivity } from "./thread-list/useRecentThreadActivity";
 import SidebarWorkspaceToolbar from "./SidebarWorkspaceToolbar.vue";
 import { useTmuxMonitorLauncher } from "@/composables/workspace/useTmuxMonitorLauncher";
 import type { HostTreeController } from "./host-tree/controller";
@@ -43,11 +42,11 @@ const { longPressTriggered, longPressContextMenuHandlers } = useLongPressContext
 const sidebarTree = useSidebarTree(longPressTriggered);
 const threadRename = useThreadRename();
 const threadLifecycle = useThreadLifecycle();
-const recentActivity = useRecentThreadActivity();
 const workspaceActions = useWorkspaceLaunchActions();
 const tmuxLauncher = useTmuxMonitorLauncher();
 const {
   hosts,
+  projects,
   pinnedThreads,
   selectedHostId,
   selectedThreadId,
@@ -55,7 +54,6 @@ const {
   pinnedRuntimeStatus,
   pinnedCompletionAttention,
 } = sidebarTree;
-const { recentThreads } = recentActivity;
 const { selectedHostTitle, canLaunch } = workspaceActions;
 const { activeCount: tmuxActiveCount } = tmuxLauncher;
 const hostTreeController = computed<HostTreeController>(() => ({
@@ -141,6 +139,11 @@ async function openHostMonitor(hostId: number) {
     <div class="flex min-h-0 flex-1 overflow-hidden px-3 py-1.5">
       <SidebarScrollArea>
         <div class="min-w-0 max-w-full space-y-3 overflow-hidden pr-1">
+          <NewConversationButton
+            :disabled="!projects.length"
+            @click="sidebarTree.startNewConversation"
+          />
+
           <PinnedThreadList
             :threads="pinnedThreads"
             :hosts="hosts"
@@ -151,17 +154,6 @@ async function openHostMonitor(hostId: number) {
             :completion-attention="pinnedCompletionAttention"
             @open="openPinnedThread"
             @unpin="navigation.setPinnedThread($event, false)"
-            @rename="threadRename.startRename"
-            @archive="threadLifecycle.archive"
-          />
-
-          <RecentThreadList
-            :threads="recentThreads"
-            :selected-host-id="selectedHostId"
-            :selected-thread-id="selectedThreadId"
-            :long-press-handlers="longPressContextMenuHandlers"
-            @open="recentActivity.openRecentThread"
-            @pin="recentActivity.pinRecentThread"
             @rename="threadRename.startRename"
             @archive="threadLifecycle.archive"
           />
