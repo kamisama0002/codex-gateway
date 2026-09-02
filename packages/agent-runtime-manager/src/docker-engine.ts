@@ -67,6 +67,11 @@ export interface DockerEngine {
   stopContainer(containerId: string): Promise<void>;
   restartContainer(containerId: string): Promise<void>;
   removeContainer(containerId: string): Promise<void>;
+  sampleContainerStats(containerId: string): Promise<unknown>;
+  updateContainerResources(
+    containerId: string,
+    resources: { Memory: number; NanoCpus: number; PidsLimit: number },
+  ): Promise<void>;
 }
 
 export class DockerodeEngine implements DockerEngine {
@@ -140,8 +145,23 @@ export class DockerodeEngine implements DockerEngine {
     await this.docker.getContainer(containerId).restart({ t: 30 });
   }
 
+  async sampleContainerStats(containerId: string): Promise<unknown> {
+    return (await this.docker.getContainer(containerId).stats({ stream: false })) as unknown;
+  }
+
   async removeContainer(containerId: string): Promise<void> {
     await this.docker.getContainer(containerId).remove({ force: false, v: false });
+  }
+
+  async updateContainerResources(
+    containerId: string,
+    resources: { Memory: number; NanoCpus: number; PidsLimit: number },
+  ): Promise<void> {
+    await this.docker.getContainer(containerId).update({
+      Memory: resources.Memory,
+      NanoCPUs: resources.NanoCpus,
+      PidsLimit: resources.PidsLimit,
+    });
   }
 
   private async ensureManagedVolume(spec: DockerManagedVolumeSpec): Promise<void> {

@@ -73,7 +73,6 @@ export function useWorkspaceLaunchActions() {
   }
 
   function openHostMonitor() {
-    if (selectedHostId.value === null) return;
     const scopeKey = workspaceLayoutScopeKey(
       selectedHostId.value,
       selectedProjectId.value,

@@ -58,6 +58,30 @@ const runtimeLifecycleResultSchema = z
     endpoint: internalManagedRuntimeEndpointSchema.nullable(),
   })
   .strict();
+const agentContainerStatsSchema = z
+  .object({
+    sampledAtMs: z.number().int().nonnegative(),
+    cpuUsage: z.number().nonnegative(),
+    systemCpuUsage: z.number().nonnegative(),
+    preCpuUsage: z.number().nonnegative(),
+    preSystemCpuUsage: z.number().nonnegative(),
+    onlineCpus: z.number().int().positive(),
+    memoryUsageBytes: z.number().nonnegative(),
+    memoryLimitBytes: z.number().positive(),
+    rxBytes: z.number().nonnegative(),
+    txBytes: z.number().nonnegative(),
+    diskReadBytes: z.number().nonnegative(),
+    diskWriteBytes: z.number().nonnegative(),
+    interfaces: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
+const agentRuntimeStatsResultSchema = z
+  .object({
+    runtimeId: runtimeIdSchema,
+    status: z.enum(["absent", "stopped", "running"]),
+    stats: agentContainerStatsSchema.nullable(),
+  })
+  .strict();
 const managerErrorSchema = z.object({ error: z.string().min(1) }).strict();
 const DEFAULT_RUNTIME_MANAGER_TIMEOUT_MS = 30_000;
 
@@ -83,6 +107,8 @@ export interface RuntimeLifecycleResult {
   status: "absent" | "stopped" | "running";
   endpoint: ManagedRuntimeEndpoint | null;
 }
+
+export type AgentRuntimeStatsResult = z.infer<typeof agentRuntimeStatsResultSchema>;
 
 interface RuntimeManagerClientOptions {
   baseUrl: string;
@@ -130,6 +156,16 @@ export class RuntimeManagerClient {
     return this.request("GET", `/v1/runtimes/${encodeURIComponent(input.runtimeId)}`);
   }
 
+  stats(runtimeId: string): Promise<AgentRuntimeStatsResult> {
+    const input = runtimeActionRequestSchema.parse({ runtimeId });
+    return this.requestParsed(
+      "GET",
+      `/v1/runtimes/${encodeURIComponent(input.runtimeId)}/stats`,
+      undefined,
+      agentRuntimeStatsResultSchema,
+    );
+  }
+
   provision(input: ProvisionRuntimeRequest): Promise<RuntimeLifecycleResult> {
     return this.request(
       "POST",
@@ -175,6 +211,15 @@ export class RuntimeManagerClient {
     path: string,
     payload?: Record<string, unknown>,
   ): Promise<RuntimeLifecycleResult> {
+    return this.requestParsed(method, path, payload, runtimeLifecycleResultSchema);
+  }
+
+  private async requestParsed<T>(
+    method: "GET" | "POST",
+    path: string,
+    payload: Record<string, unknown> | undefined,
+    schema: z.ZodType<T>,
+  ): Promise<T> {
     const body = payload === undefined ? "" : JSON.stringify(payload);
     const timestamp = this.now();
     const nonce = this.nonce();
@@ -209,7 +254,7 @@ export class RuntimeManagerClient {
           response.status,
         );
       }
-      const parsed = runtimeLifecycleResultSchema.safeParse(value);
+      const parsed = schema.safeParse(value);
       if (!parsed.success) {
         throw new RuntimeManagerClientError("runtime_manager_invalid_response", response.status, {
           cause: parsed.error,

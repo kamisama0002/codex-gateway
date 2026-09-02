@@ -25,6 +25,7 @@ import { issueRuntimeModelToken } from "../providers/runtime-token";
 import { transitionRuntime, type RuntimeEvent } from "./runtime-state";
 import {
   RuntimeManagerClient,
+  type AgentRuntimeStatsResult,
   type ProvisionRuntimeRequest,
   type RuntimeLifecycleResult,
 } from "./client";
@@ -32,6 +33,7 @@ import {
 interface RuntimeManagerPort {
   provision(input: ProvisionRuntimeRequest): Promise<RuntimeLifecycleResult>;
   inspect(runtimeId: string): Promise<RuntimeLifecycleResult>;
+  stats(runtimeId: string): Promise<AgentRuntimeStatsResult>;
   start(runtimeId: string): Promise<RuntimeLifecycleResult>;
   stop(runtimeId: string): Promise<RuntimeLifecycleResult>;
   restart(runtimeId: string): Promise<RuntimeLifecycleResult>;
@@ -120,6 +122,11 @@ export class ManagedRuntimeService {
       ...serializeManagedRuntimeStatus(runtime),
       username: this.options.usernameFor?.(runtime.userId) ?? `user-${runtime.userId}`,
     }));
+  }
+
+  sampleAgentStats(userId: number): Promise<AgentRuntimeStatsResult> {
+    const identity = this.identity(positiveUserId(userId));
+    return this.options.manager.stats(identity.runtimeId);
   }
 
   start(userId: number, actorUserId = userId): Promise<ManagedRuntimeStatus> {
@@ -511,6 +518,9 @@ export const runtimeService = {
   },
   listStatuses() {
     return defaultRuntimeService().listStatuses();
+  },
+  sampleAgentStats(userId: number) {
+    return defaultRuntimeService().sampleAgentStats(userId);
   },
   start(userId: number, actorUserId = userId) {
     return defaultRuntimeService().start(userId, actorUserId);

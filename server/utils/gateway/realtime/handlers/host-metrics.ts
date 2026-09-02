@@ -1,6 +1,6 @@
 import type { RealtimeClientMessage } from "~~/shared/types";
+import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import { hostMetricsManager } from "../../infra/host-services";
-import { hostStore } from "../../state/hosts";
 import {
   authenticatedUserId,
   sendRealtimePeerMessage,
@@ -13,8 +13,11 @@ export function subscribeHostMetrics(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "host.metrics.subscribe" }>,
 ) {
+  if (request.hostId !== MANAGED_RUNTIME_HOST_ID) {
+    throw new Error("Host metrics are only available for the Agent runtime");
+  }
   const userId = authenticatedUserId(peer);
-  if (hostStore.get(request.hostId) === null) throw new Error(`Host ${request.hostId} not found`);
+  hostMetricsManager.ensureCollector(userId);
   const subscriptions = stateFor(peer).hostMetricsUnsubscribers;
   replaceSubscription(subscriptions, request.hostId, () =>
     hostMetricsManager.events.subscribe(userId, request.hostId, (event) => {

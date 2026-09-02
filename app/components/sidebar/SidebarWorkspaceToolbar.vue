@@ -38,7 +38,6 @@ const emit = defineEmits<{
       variant="ghost"
       size="icon"
       class="size-8 shrink-0"
-      :disabled="!canLaunch"
       :title="$t('app.openHostMonitor')"
       :aria-label="$t('app.openHostMonitor')"
       @click="emit('openHostMonitor')"

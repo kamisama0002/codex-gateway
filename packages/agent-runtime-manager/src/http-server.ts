@@ -24,6 +24,11 @@ import {
 } from "./contracts.js";
 import { DockerodeEngine } from "./docker-engine.js";
 import { RuntimeLifecycleError, RuntimeLifecycleService } from "./lifecycle-service.js";
+import {
+  parseAgentMemoryBytes,
+  parseAgentNanoCpus,
+  parseAgentPidsLimit,
+} from "./resource-limits.js";
 
 const MAX_BODY_BYTES = 64 * 1024;
 export const CODEX_APP_SERVER_PORT = 4500;
@@ -52,6 +57,15 @@ async function handleRequest(
     if (url.search) return sendJson(response, 404, { error: "not_found" });
 
     if (request.method === "GET") {
+      const statsMatch = /^\/v1\/runtimes\/([^/]+)\/stats$/.exec(url.pathname);
+      if (statsMatch) {
+        const result = await options.service.stats(
+          runtimeActionRequestSchema.parse({
+            runtimeId: decodeURIComponent(statsMatch[1] ?? ""),
+          }),
+        );
+        return sendJson(response, 200, result);
+      }
       const match = /^\/v1\/runtimes\/([^/]+)$/.exec(url.pathname);
       if (!match) return sendJson(response, 404, { error: "not_found" });
       const result = await options.service.inspect(
@@ -160,6 +174,9 @@ export function loadRuntimeManagerPolicy(
     internalPort: CODEX_APP_SERVER_PORT,
     networkName: requiredEnvironment(environment, "RUNTIME_MANAGER_AGENT_NETWORK"),
     resourceLabels,
+    agentMemoryBytes: parseAgentMemoryBytes(environment.RUNTIME_AGENT_MEMORY),
+    agentNanoCpus: parseAgentNanoCpus(environment.RUNTIME_AGENT_CPUS),
+    agentPidsLimit: parseAgentPidsLimit(environment.RUNTIME_AGENT_PIDS),
   });
 }
 

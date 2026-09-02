@@ -38,7 +38,7 @@ useHostMetricsSubscription(root, hostId);
         </div>
         <div class="min-w-0 flex-1">
           <h1 class="truncate text-base font-semibold text-ink">
-            {{ host?.name ?? $t("app.hostMonitor") }}
+            {{ $t("app.hostMonitor") }}
           </h1>
           <p class="text-xs text-ink-muted">
             {{ $t("app.hostMonitorWindow") }}
@@ -63,7 +63,7 @@ useHostMetricsSubscription(root, hostId);
           test-id="host-metric-cpu"
           :title="$t('app.hostMetricCpu')"
           :value="formatPercent(latest.cpu.usagePercent)"
-          :subtitle="`Load ${latest.cpu.loadAverage.map((value) => value.toFixed(2)).join(' / ')}`"
+          :subtitle="$t('app.hostMetricCpuQuota', { n: latest.cpu.loadAverage[0] })"
         >
           <HostMetricLineChart :series="charts.cpuSeries.value" value-suffix="%" :maximum="100" />
         </HostMetricCard>

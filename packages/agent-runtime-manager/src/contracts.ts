@@ -66,6 +66,34 @@ export const runtimeLifecycleResultSchema = z
   .strict();
 export type RuntimeLifecycleResult = z.infer<typeof runtimeLifecycleResultSchema>;
 
+export const agentContainerStatsSchema = z
+  .object({
+    sampledAtMs: z.number().int().nonnegative(),
+    cpuUsage: z.number().nonnegative(),
+    systemCpuUsage: z.number().nonnegative(),
+    preCpuUsage: z.number().nonnegative(),
+    preSystemCpuUsage: z.number().nonnegative(),
+    onlineCpus: z.number().int().positive(),
+    memoryUsageBytes: z.number().nonnegative(),
+    memoryLimitBytes: z.number().positive(),
+    rxBytes: z.number().nonnegative(),
+    txBytes: z.number().nonnegative(),
+    diskReadBytes: z.number().nonnegative(),
+    diskWriteBytes: z.number().nonnegative(),
+    interfaces: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
+export type AgentContainerStats = z.infer<typeof agentContainerStatsSchema>;
+
+export const agentRuntimeStatsResultSchema = z
+  .object({
+    runtimeId: runtimeIdSchema,
+    status: runtimeLifecycleStatusSchema,
+    stats: agentContainerStatsSchema.nullable(),
+  })
+  .strict();
+export type AgentRuntimeStatsResult = z.infer<typeof agentRuntimeStatsResultSchema>;
+
 export const runtimeImagePolicySchema = z
   .object({
     image: z.string().min(1),
@@ -79,6 +107,19 @@ export const runtimeManagerPolicySchema = z
     internalPort: z.number().int().min(1).max(65_535),
     networkName: z.string().min(1),
     resourceLabels: z.record(z.string().min(1).max(128), z.string().max(256)).default({}),
+    agentMemoryBytes: z
+      .number()
+      .int()
+      .min(128 * 1024 * 1024)
+      .max(16 * 1024 * 1024 * 1024)
+      .default(2 * 1024 * 1024 * 1024),
+    agentNanoCpus: z
+      .number()
+      .int()
+      .min(250_000_000)
+      .max(8_000_000_000)
+      .default(2_000_000_000),
+    agentPidsLimit: z.number().int().min(32).max(4_096).default(256),
   })
   .strict()
   .refine(

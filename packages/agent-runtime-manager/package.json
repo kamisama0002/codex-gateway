@@ -23,7 +23,7 @@
   "scripts": {
     "build": "tsc --noEmit && rimraf dist && esbuild src/contracts.ts src/auth.ts src/docker-engine.ts src/lifecycle-service.ts src/http-server.ts --bundle --platform=node --format=esm --target=node24 --outdir=dist --external:dockerode --external:zod",
     "start": "node dist/http-server.js",
-    "test": "vitest run --root ../.. packages/agent-runtime-manager/src/auth.test.ts packages/agent-runtime-manager/src/image-policy.test.ts packages/agent-runtime-manager/src/lifecycle-service.test.ts",
+    "test": "vitest run --root ../.. packages/agent-runtime-manager/src/auth.test.ts packages/agent-runtime-manager/src/image-policy.test.ts packages/agent-runtime-manager/src/lifecycle-service.test.ts packages/agent-runtime-manager/src/resource-limits.test.ts packages/agent-runtime-manager/src/container-stats.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

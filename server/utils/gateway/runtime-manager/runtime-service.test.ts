@@ -44,6 +44,19 @@ describe("ManagedRuntimeService", () => {
     expect(JSON.stringify(fixture.audit)).not.toContain("container-01");
   });
 
+  it("samples Agent container stats by user identity without requiring a store record", async () => {
+    const fixture = runtimeFixture();
+
+    const sampled = await fixture.service.sampleAgentStats(7);
+
+    expect(sampled.status).toBe("running");
+    expect(sampled.stats?.memoryLimitBytes).toBe(256);
+    expect(sampled).not.toHaveProperty("containerId");
+    expect(JSON.stringify(sampled)).not.toContain("container-01");
+    expect(fixture.manager.stats).toHaveBeenCalledOnce();
+    expect(fixture.manager.stats.mock.calls[0]?.[0]).toMatch(/^codex_[a-f0-9]{32}$/);
+  });
+
   it("persists and audits a compatibility failure using only a safe error code", async () => {
     const fixture = runtimeFixture({ runtimeVersion: "0.150.0" });
 
@@ -343,6 +356,25 @@ function runtimeFixture(
       imageVersion: "0.151.0",
       status: "stopped" as const,
       endpoint: { ...endpoint, runtimeId },
+    })),
+    stats: vi.fn(async (runtimeId: string) => ({
+      runtimeId,
+      status: "running" as const,
+      stats: {
+        sampledAtMs: 1_788_134_400_000,
+        cpuUsage: 20,
+        systemCpuUsage: 100,
+        preCpuUsage: 10,
+        preSystemCpuUsage: 80,
+        onlineCpus: 2,
+        memoryUsageBytes: 128,
+        memoryLimitBytes: 256,
+        rxBytes: 8,
+        txBytes: 4,
+        diskReadBytes: 0,
+        diskWriteBytes: 0,
+        interfaces: ["eth0"],
+      },
     })),
     restart: vi.fn(async (runtimeId: string) => ({
       runtimeId,

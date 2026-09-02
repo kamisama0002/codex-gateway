@@ -21,6 +21,7 @@ import { workspaceLayoutScopeKey } from "@/stores/gateway-workspace-layout";
 import { useFileGitReviewPanelStore } from "@/stores/file-workspace/git/review-panel";
 import { GIT_REVIEW_WORKSPACE_PANEL_ID } from "@/stores/gateway/workspace-panels";
 import { HOST_METRICS_WORKSPACE_PANEL_ID } from "@/stores/gateway/workspace-panels";
+import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 
 export function useWorkspacePanels(selection: WorkspacePanelSelection) {
   const { t } = useI18n();
@@ -87,15 +88,13 @@ export function useWorkspacePanels(selection: WorkspacePanelSelection) {
     return [{ id: TMUX_WORKSPACE_PANEL_ID }];
   });
   const hostMetricsPanel = computed(() => {
-    const hostId = selection.selectedHostId.value;
-    if (hostId === null) return [];
     const scopeKey = workspaceLayoutScopeKey(
-      hostId,
+      selection.selectedHostId.value,
       selection.selectedProjectId.value,
       selection.selectedThreadId.value,
     );
     return hostMetricsPanels.isOpen(scopeKey)
-      ? [{ id: HOST_METRICS_WORKSPACE_PANEL_ID, hostId }]
+      ? [{ id: HOST_METRICS_WORKSPACE_PANEL_ID, hostId: MANAGED_RUNTIME_HOST_ID }]
       : [];
   });
   const gitReviewPanel = computed(() => {

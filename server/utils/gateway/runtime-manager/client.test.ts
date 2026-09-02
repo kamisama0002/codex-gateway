@@ -64,6 +64,59 @@ describe("RuntimeManagerClient", () => {
     });
   });
 
+  it("validates Agent container stats without a container id", async () => {
+    const timestamp = 1_788_131_200_000;
+    const nonce = "stats-nonce";
+    const secret = "manager-shared-secret";
+    const bodySha256 = createHash("sha256").update("").digest("hex");
+    const signature = createHmac("sha256", secret)
+      .update(`GET\n/v1/runtimes/runtime_01/stats\n${timestamp}\n${nonce}\n${bodySha256}`)
+      .digest("hex");
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({
+        runtimeId: "runtime_01",
+        status: "running",
+        stats: {
+          sampledAtMs: timestamp,
+          cpuUsage: 20,
+          systemCpuUsage: 100,
+          preCpuUsage: 10,
+          preSystemCpuUsage: 80,
+          onlineCpus: 2,
+          memoryUsageBytes: 128,
+          memoryLimitBytes: 256,
+          rxBytes: 8,
+          txBytes: 4,
+          diskReadBytes: 0,
+          diskWriteBytes: 0,
+          interfaces: ["eth0"],
+        },
+      }),
+    );
+    const client = new RuntimeManagerClient({
+      baseUrl: "http://runtime-manager:8787",
+      secret,
+      fetch,
+      now: () => timestamp,
+      nonce: () => nonce,
+    });
+
+    const result = await client.stats("runtime_01");
+
+    expect(result.stats?.memoryLimitBytes).toBe(256);
+    expect(result).not.toHaveProperty("containerId");
+    expect(fetch.mock.calls[0]?.[0]).toBe("http://runtime-manager:8787/v1/runtimes/runtime_01/stats");
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({
+      method: "GET",
+      headers: {
+        "x-runtime-body-sha256": bodySha256,
+        "x-runtime-nonce": nonce,
+        "x-runtime-signature": signature,
+        "x-runtime-timestamp": String(timestamp),
+      },
+    });
+  });
+
   it("fails closed when Runtime Manager returns an invalid endpoint", async () => {
     const client = new RuntimeManagerClient({
       baseUrl: "http://runtime-manager:8787",
@@ -153,5 +206,20 @@ describe("managed runtime browser boundary", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("allows Agent runtime metrics subscriptions", () => {
+    const subscribe = realtimeClientMessageSchema.safeParse({
+      type: "host.metrics.subscribe",
+      requestId: "request-1",
+      hostId: MANAGED_RUNTIME_HOST_ID,
+    });
+    const unsubscribe = realtimeClientMessageSchema.safeParse({
+      type: "host.metrics.unsubscribe",
+      hostId: MANAGED_RUNTIME_HOST_ID,
+    });
+
+    expect(subscribe.success).toBe(true);
+    expect(unsubscribe.success).toBe(true);
   });
 });

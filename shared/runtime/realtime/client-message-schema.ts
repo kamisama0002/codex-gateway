@@ -341,7 +341,7 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z
       .strict(),
     z.object({ type: z.literal("ping"), nonce: z.string().optional() }).strict(),
   ])
-  .refine(
-    (message) => !("hostId" in message) || message.hostId !== MANAGED_RUNTIME_HOST_ID,
-    "Managed runtime hosts are server-internal",
-  );
+  .refine((message) => {
+    if (!("hostId" in message) || message.hostId !== MANAGED_RUNTIME_HOST_ID) return true;
+    return message.type === "host.metrics.subscribe" || message.type === "host.metrics.unsubscribe";
+  }, "Managed runtime hosts are server-internal");

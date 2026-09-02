@@ -10,18 +10,24 @@ import {
   type EngineContainerState,
 } from "./docker-engine.js";
 import {
+  agentRuntimeStatsResultSchema,
   runtimeManagerPolicySchema,
+  type AgentRuntimeStatsResult,
   type ProvisionRuntimeRequest,
   type RuntimeActionRequest,
   type RuntimeLifecycleResult,
   type UpgradeRuntimeRequest,
 } from "./contracts.js";
+import { parseDockerContainerStats } from "./container-stats.js";
 
 export interface RuntimeManagerPolicy {
   images: Record<string, { image: string; imageVersion: string }>;
   internalPort: number;
   networkName: string;
   resourceLabels?: Record<string, string>;
+  agentMemoryBytes?: number;
+  agentNanoCpus?: number;
+  agentPidsLimit?: number;
 }
 
 interface RuntimeLifecycleServiceOptions {
@@ -37,20 +43,17 @@ export class RuntimeLifecycleError extends Error {
   }
 }
 
-const securityPolicy: DockerSecurityPolicy = {
+const agentIsolation: Omit<DockerSecurityPolicy, "Memory" | "NanoCpus" | "PidsLimit"> = {
   User: "10001:10001",
   ReadonlyRootfs: true,
   CapDrop: ["ALL"],
   SecurityOpt: ["no-new-privileges:true"],
   Tmpfs: { "/tmp": "rw,nosuid,nodev,noexec,size=64m" },
-  PidsLimit: 256,
-  Memory: 2 * 1024 * 1024 * 1024,
-  NanoCpus: 2_000_000_000,
   Privileged: false,
 };
 
 export class RuntimeLifecycleService {
-  private readonly policy: RuntimeManagerPolicy;
+  private readonly policy: ReturnType<typeof runtimeManagerPolicySchema.parse>;
   private readonly randomToken: () => string;
 
   constructor(
@@ -77,9 +80,20 @@ export class RuntimeLifecycleService {
     return container ? toResult(container) : absentResult(request.runtimeId);
   }
 
+  async stats(request: RuntimeActionRequest): Promise<AgentRuntimeStatsResult> {
+    const container = await this.engine.findManagedContainer(request.runtimeId);
+    if (!container) return statsResult(request.runtimeId, "absent", null);
+    if (!container.running) return statsResult(request.runtimeId, "stopped", null);
+    const parsed = parseDockerContainerStats(
+      await this.engine.sampleContainerStats(container.containerId),
+    );
+    return statsResult(request.runtimeId, "running", parsed);
+  }
+
   async start(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
     const container = await this.requireContainer(request.runtimeId);
     if (!container.running) await this.engine.startContainer(container.containerId);
+    await this.applyResourceLimits(container.containerId);
     return toResult({ ...container, running: true });
   }
 
@@ -92,6 +106,7 @@ export class RuntimeLifecycleService {
   async restart(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
     const container = await this.requireContainer(request.runtimeId);
     await this.engine.restartContainer(container.containerId);
+    await this.applyResourceLimits(container.containerId);
     return toResult({ ...container, running: true });
   }
 
@@ -160,12 +175,29 @@ export class RuntimeLifecycleService {
       networkName: this.policy.networkName,
       runtimeId: request.runtimeId,
       runtimeType: request.runtimeType,
-      security: securityPolicy,
+      security: this.agentSecurityPolicy(),
       serviceToken: this.randomToken(),
       userHash: request.userHash,
       providerConfig: request.providerConfig,
     };
     return this.engine.createManagedContainer(spec);
+  }
+
+  private agentSecurityPolicy(): DockerSecurityPolicy {
+    return {
+      ...agentIsolation,
+      Memory: this.policy.agentMemoryBytes,
+      NanoCpus: this.policy.agentNanoCpus,
+      PidsLimit: this.policy.agentPidsLimit,
+    };
+  }
+
+  private async applyResourceLimits(containerId: string): Promise<void> {
+    await this.engine.updateContainerResources(containerId, {
+      Memory: this.policy.agentMemoryBytes,
+      NanoCpus: this.policy.agentNanoCpus,
+      PidsLimit: this.policy.agentPidsLimit,
+    });
   }
 
   private resolveImage(imageAlias: string): { image: string; imageVersion: string } {
@@ -218,4 +250,12 @@ function absentResult(runtimeId: string): RuntimeLifecycleResult {
     runtimeId,
     status: "absent",
   };
+}
+
+function statsResult(
+  runtimeId: string,
+  status: AgentRuntimeStatsResult["status"],
+  stats: AgentRuntimeStatsResult["stats"],
+): AgentRuntimeStatsResult {
+  return agentRuntimeStatsResultSchema.parse({ runtimeId, status, stats });
 }
