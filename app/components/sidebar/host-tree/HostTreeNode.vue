@@ -18,9 +18,8 @@ import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 
 const props = defineProps<{ host: HostRecord }>();
 const controller = requireHostTreeController();
-const { t } = useI18n();
 const isLocalHost = computed(() => isManagedRuntimeHost(props.host));
-const hostTitle = computed(() => (isLocalHost.value ? t("app.localHost") : props.host.name));
+const hostTitle = computed(() => props.host.name);
 
 function archivedForProject(projectId: number) {
   return controller.value.archivedThreads.filter((thread) => thread.projectId === projectId);
@@ -33,7 +32,7 @@ function hostStatus() {
 
 <template>
   <div class="min-w-0 overflow-hidden">
-    <ContextMenu>
+    <ContextMenu v-if="!isLocalHost">
       <ContextMenuTrigger as-child>
         <Button
           :data-testid="`host-button-${host.id}`"
@@ -56,12 +55,11 @@ function hostStatus() {
           <ChartNoAxesCombinedIcon class="mr-2 size-4" />
           {{ $t("app.openHostMonitor") }}
         </ContextMenuItem>
-        <ContextMenuItem v-if="!isLocalHost" @select="controller.addProject(host)">
+        <ContextMenuItem @select="controller.addProject(host)">
           <FolderIcon class="mr-2 size-4" />
           {{ $t("app.addProject") }}
         </ContextMenuItem>
         <ContextMenuItem
-          v-if="!isLocalHost"
           class="text-destructive focus:text-destructive"
           @select="controller.deleteHost(host.id)"
         >
@@ -71,7 +69,10 @@ function hostStatus() {
       </ContextMenuContent>
     </ContextMenu>
 
-    <div v-if="controller.expandedHostIds.has(host.id)" class="min-w-0 overflow-hidden">
+    <div
+      v-if="isLocalHost || controller.expandedHostIds.has(host.id)"
+      class="min-w-0 overflow-hidden"
+    >
       <div
         v-for="project in controller.availableProjectsByHost.get(host.id) ?? []"
         :key="project.id"

@@ -32,7 +32,6 @@ const editableHosts = computed(() =>
     return form ? [{ host, form }] : [];
   }),
 );
-const localHost = computed(() => hosts.value.find((host) => isManagedRuntimeHost(host)) ?? null);
 
 watch(
   hosts,
@@ -73,13 +72,6 @@ async function saveHost(host: HostRecord) {
 <template>
   <section class="space-y-2">
     <div class="text-sm font-medium text-ink-secondary">{{ t("app.editHosts") }}</div>
-    <div
-      v-if="localHost"
-      class="rounded-md border border-hairline bg-canvas-soft p-3 text-sm"
-    >
-      <div class="font-medium">{{ t("app.localHost") }}</div>
-      <p class="mt-1 text-ink-secondary">{{ t("app.localHostDescription") }}</p>
-    </div>
     <div
       v-if="!editableHosts.length"
       class="rounded-md border border-hairline bg-canvas-soft p-3 text-sm text-ink-secondary"

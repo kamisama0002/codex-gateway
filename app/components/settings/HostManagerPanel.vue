@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { ServerIcon, Trash2Icon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { Badge } from "@codex-gateway/ui/badge";
@@ -14,6 +15,7 @@ const navigation = useGatewayNavigationStore();
 const { hosts, hostConnectionStatuses } = storeToRefs(catalog);
 const { selectedHostId } = storeToRefs(navigation);
 const { t } = useI18n();
+const sshHosts = computed(() => hosts.value.filter((host) => !isManagedRuntimeHost(host)));
 
 async function selectHost(hostId: number) {
   await catalog.selectHost(hostId);
@@ -22,14 +24,6 @@ async function selectHost(hostId: number) {
 async function deleteHost(hostId: number) {
   if (isManagedRuntimeHost({ id: hostId })) return;
   await catalog.deleteHost(hostId);
-}
-
-function hostTitle(host: { id: number; name: string; connectionKind?: string | null }) {
-  return isManagedRuntimeHost(host) ? t("app.localHost") : host.name;
-}
-
-function hostSubtitle(host: { sshHost: string; connectionKind?: string | null }) {
-  return isManagedRuntimeHost(host) ? t("app.localHostSubtitle") : host.sshHost;
 }
 
 function hostConnectionStatus(hostId: number) {
@@ -60,13 +54,13 @@ function hostStatusClass(hostId: number) {
   <section class="space-y-2">
     <div class="flex items-center justify-between px-1">
       <div class="text-xs font-medium text-ink-secondary">{{ t("app.hosts") }}</div>
-      <Badge variant="secondary">{{ hosts.length }}</Badge>
+      <Badge variant="secondary">{{ sshHosts.length }}</Badge>
     </div>
 
     <ScrollArea class="max-h-56">
       <div class="space-y-1 pr-2">
         <div
-          v-for="host in hosts"
+          v-for="host in sshHosts"
           :key="host.id"
           class="rounded-lg p-1"
           :class="host.id === selectedHostId ? 'bg-primary/10' : 'hover:bg-canvas-soft'"
@@ -79,14 +73,13 @@ function hostStatusClass(hostId: number) {
             >
               <ServerIcon class="size-4 shrink-0" />
               <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm">{{ hostTitle(host) }}</span>
+                <span class="block truncate text-sm">{{ host.name }}</span>
                 <span class="block truncate text-[0.6875rem] text-ink-muted">
-                  {{ hostSubtitle(host) }}
+                  {{ host.sshHost }}
                 </span>
               </span>
             </Button>
             <Button
-              v-if="!isManagedRuntimeHost(host)"
               variant="ghost"
               size="sm"
               class="size-8 p-0 text-destructive hover:text-destructive/80"

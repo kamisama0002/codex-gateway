@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { FolderPlusIcon, SlidersHorizontalIcon } from "@lucide/vue";
-import { toRef } from "vue";
+import { computed, toRef } from "vue";
 import { Button } from "@codex-gateway/ui/button";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -17,12 +18,13 @@ import { HOST_TREE_CONTROLLER, type HostTreeController } from "./controller";
 
 const props = defineProps<{ controller: HostTreeController }>();
 provide(HOST_TREE_CONTROLLER, toRef(props, "controller"));
+const sshHosts = computed(() =>
+  props.controller.hosts.filter((host) => !isManagedRuntimeHost(host)),
+);
 
 function addProject() {
-  const selected = props.controller.hosts.find(
-    (host) => host.id === props.controller.selectedHostId,
-  );
-  const host = selected ?? props.controller.hosts[0];
+  const selected = sshHosts.value.find((host) => host.id === props.controller.selectedHostId);
+  const host = selected ?? sshHosts.value[0];
   if (host) props.controller.addProject(host);
 }
 
@@ -80,7 +82,7 @@ function toggleArchivedFilter() {
         variant="ghost"
         size="icon-sm"
         class="shrink-0 text-ink-muted hover:text-ink-secondary"
-        :disabled="!controller.hosts.length"
+        :disabled="!sshHosts.length"
         :aria-label="$t('app.addProject')"
         @click="addProject"
       >
