@@ -6,7 +6,7 @@ import {
 } from "~~/shared/runtime/app-server";
 import {
   runtimeStatusFromAppThreadStatus,
-  runtimeStatusFromSnapshotState,
+  runtimeStatusFromAuthoritativeThread,
 } from "~~/shared/thread-runtime-status";
 import { recordFromUnknown } from "~~/shared/utils/records";
 import { CodexRpcClient } from "../infra/rpc/rpc";
@@ -232,7 +232,7 @@ export class ThreadController {
     this.subAgentThread = isAppServerSubAgentThread(snapshot.thread);
     this.activeMainThread =
       !this.subAgentThread &&
-      runtimeStatusFromSnapshotState(snapshot.thread, snapshot.history) === "running";
+      runtimeStatusFromAuthoritativeThread(snapshot.thread, snapshot.history) === "running";
   }
 
   private async requestResume(params: Record<string, unknown>) {

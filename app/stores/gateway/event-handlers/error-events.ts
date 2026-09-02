@@ -3,12 +3,12 @@ import { useGatewayConfigStore } from "@/stores/gateway-config";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
-import { appServerTurnErrorFromNotification } from "../errors";
+import { useGatewayTurnRecoveryStore } from "@/stores/gateway-turn-recovery";
+import { appServerTurnErrorFromNotification, misalignmentDetailsFromNotification } from "../errors";
 import { pinnedKey, titleForThread } from "../thread-utils/identity";
 import type { GatewayEventHandlerRegistry } from "./types";
 import { idFromUnknown } from "~~/shared/utils/records";
-import { useGatewayTurnRecoveryStore } from "@/stores/gateway-turn-recovery";
-import { misalignmentDetailsFromNotification } from "../errors";
+import { gatewayDomainEvents } from "../domain-events";
 
 export const errorEventHandlers: GatewayEventHandlerRegistry = {
   error: (event, params, threadId) => {
@@ -36,6 +36,14 @@ export const errorEventHandlers: GatewayEventHandlerRegistry = {
       )
     )
       return;
+    if (!error.willRetry) {
+      gatewayDomainEvents.emit("thread-status-detected", {
+        hostId: event.hostId,
+        threadId,
+        status: "failed",
+        turnId: turnId === "" ? null : turnId,
+      });
+    }
     gateway.setError(threadScopedErrorMessage(event.hostId, threadId, error.toDisplayMessage()), {
       hostId: event.hostId,
       threadId,

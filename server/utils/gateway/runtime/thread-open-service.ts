@@ -2,10 +2,7 @@ import type { AppServerThread, HostRecord } from "~~/shared/types";
 import { INITIAL_TURN_PAGE_LIMIT } from "~~/shared/config";
 import { threadTurnsFromHistory } from "~~/shared/thread-history/shape";
 import { projectThreadTimelineHistory } from "~~/shared/thread-history/timeline";
-import {
-  runtimeStatusFromSnapshotState,
-  runtimeStatusFromThreadState,
-} from "~~/shared/thread-runtime-status";
+import { runtimeStatusFromAuthoritativeThread } from "~~/shared/thread-runtime-status";
 import {
   extractThreadSettings,
   latestThreadSettingsFromEvents,
@@ -103,7 +100,8 @@ export class ThreadOpenService {
         thread: gatewayThreadFromAppServer(host.id, projectId, thread),
         history,
         lastEventId: gatewayEventStore.latestId(host.id, threadId),
-        runtimeStatus: runtimeStatusFromThreadState(thread, history, recentEvents) ?? "running",
+        runtimeStatus:
+          runtimeStatusFromAuthoritativeThread(thread, history, recentEvents) ?? "completed",
         threadSettings: snapshot.threadSettings,
         tokenUsage: snapshot.tokenUsage,
         projectId,
@@ -119,7 +117,8 @@ export class ThreadOpenService {
     if (snapshot === null) return false;
     const recentEvents = gatewayEventStore.list(hostId, threadId, 0, 200);
     return (
-      runtimeStatusFromThreadState(snapshot.thread, snapshot.history, recentEvents) === "running"
+      runtimeStatusFromAuthoritativeThread(snapshot.thread, snapshot.history, recentEvents) ===
+      "running"
     );
   }
 
@@ -174,7 +173,7 @@ export class ThreadOpenService {
       threadSnapshotStore.set(host.id, threadId, snapshot);
     }
     const status =
-      runtimeStatusFromSnapshotState(
+      runtimeStatusFromAuthoritativeThread(
         result.thread,
         cachedSnapshot?.history ?? { thread: { id: threadId, turns: [] } },
       ) ?? "completed";
@@ -199,7 +198,8 @@ export class ThreadOpenService {
       limit,
       activationController,
     );
-    const status = runtimeStatusFromSnapshotState(snapshot.thread, snapshot.history) ?? "completed";
+    const status =
+      runtimeStatusFromAuthoritativeThread(snapshot.thread, snapshot.history) ?? "completed";
     // The refresh event is the backend's canonical correction after reconnect
     // or stale running scans; clients must converge on this status.
     threadRuntimeEvents.record(host.id, threadId, "thread/status/changed", {
@@ -213,7 +213,7 @@ export class ThreadOpenService {
     return {
       thread: gatewayThreadFromAppServer(host.id, resolvedProjectId, snapshot.thread),
       history: snapshot.history,
-      runtimeStatus: runtimeStatusFromThreadState(snapshot.thread, snapshot.history, recentEvents),
+      runtimeStatus: runtimeStatusFromAuthoritativeThread(snapshot.thread, snapshot.history, recentEvents),
       projectId: resolvedProjectId,
       project: resolvedProjectId === null ? null : projectStore.get(resolvedProjectId),
       turnsPage: snapshot.turnsPage,
@@ -239,7 +239,7 @@ export class ThreadOpenService {
     return {
       thread: gatewayThreadFromAppServer(host.id, resolvedProjectId, snapshot.thread),
       history: snapshot.history,
-      runtimeStatus: runtimeStatusFromThreadState(snapshot.thread, snapshot.history, recentEvents),
+      runtimeStatus: runtimeStatusFromAuthoritativeThread(snapshot.thread, snapshot.history, recentEvents),
       projectId: resolvedProjectId,
       project: resolvedProjectId === null ? null : projectStore.get(resolvedProjectId),
       turnsPage: snapshot.turnsPage,

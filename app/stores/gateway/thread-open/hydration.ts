@@ -9,7 +9,7 @@ import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity"
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { threadIdFromParams } from "../thread-utils/identity";
-import { runtimeStatusFromThreadState } from "../thread-utils/status";
+import { runtimeStatusFromAuthoritativeThread } from "../thread-utils/status";
 import type { ThreadSnapshotMessage } from "./transport";
 
 export function applyOpenedThreadResult(threadId: string, result: ThreadOpenResult) {
@@ -117,8 +117,9 @@ function syncRuntimeStatusFromResult(
   const hostId = useGatewayNavigationStore().selectedHostId;
   if (hostId === null || threadId === "") return;
   const status =
+    runtimeStatusFromAuthoritativeThread(result.thread, fallbackState.history) ??
     result.runtimeStatus ??
-    runtimeStatusFromThreadState(fallbackState.thread, fallbackState.history);
+    runtimeStatusFromAuthoritativeThread(fallbackState.thread, fallbackState.history);
   if (status !== null) useGatewayThreadRuntimeStore().setThreadStatus(hostId, threadId, status);
 }
 

@@ -65,6 +65,22 @@ export function runtimeStatusFromTopLevelThreadState(thread: unknown): ThreadRun
   return runtimeStatusFromAppThreadStatus(topLevelThreadStatus(thread) ?? { type: "idle" });
 }
 
+/**
+ * Prefer live app-server `thread.status` over cached history or replayed events.
+ * A stale inProgress turn must not keep the composer running after thread/read
+ * reports idle.
+ */
+export function runtimeStatusFromAuthoritativeThread(
+  thread: unknown,
+  history: unknown = null,
+  events: GatewayEvent[] = [],
+): ThreadRuntimeStatus | null {
+  if (topLevelThreadStatus(thread) !== null) {
+    return runtimeStatusFromTopLevelThreadState(thread);
+  }
+  return runtimeStatusFromThreadState(thread, history, events);
+}
+
 export function runtimeStatusFromSnapshotState(
   thread: unknown,
   history: unknown,
