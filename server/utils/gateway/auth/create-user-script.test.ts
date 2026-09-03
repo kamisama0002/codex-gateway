@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -14,6 +14,16 @@ afterEach(() => {
 });
 
 describe("create-user", () => {
+  it("ships a bundled production helper instead of unresolved TypeScript imports", () => {
+    const dockerfile = readFileSync("Dockerfile", "utf8");
+    expect(dockerfile).toContain(
+      "pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild ../../scripts/create-user.mjs",
+    );
+    expect(dockerfile).toContain(
+      "COPY --from=build /app/.runtime-scripts/create-user.mjs ./scripts/create-user.mjs",
+    );
+  });
+
   it("assigns admin to the first user and user to later users unless a role is explicit", () => {
     const directory = mkdtempSync(join(tmpdir(), "codex-gateway-create-user-"));
     temporaryDirectories.push(directory);

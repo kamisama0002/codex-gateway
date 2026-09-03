@@ -2,7 +2,7 @@
 import ThreadRow from "./ThreadRow.vue";
 import { formatRelative, pinnedThreadId, pinnedThreadKey } from "../sidebar-utils";
 import type { HostRecord, PinnedThreadRecord } from "../sidebar-types";
-import type { ThreadRuntimeStatus } from "@/stores/gateway/types";
+import type { ThreadRuntimePhase } from "@/stores/gateway/types";
 
 const props = defineProps<{
   threads: PinnedThreadRecord[];
@@ -10,7 +10,7 @@ const props = defineProps<{
   selectedHostId: number | null;
   selectedThreadId: string | null;
   longPressHandlers?: Record<string, unknown>;
-  runtimeStatus: (thread: PinnedThreadRecord) => ThreadRuntimeStatus;
+  runtimeStatus: (thread: PinnedThreadRecord) => ThreadRuntimePhase;
   completionAttention: (thread: PinnedThreadRecord) => boolean;
 }>();
 

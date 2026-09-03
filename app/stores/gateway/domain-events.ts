@@ -4,6 +4,7 @@ import type {
   BrowserPreviewResourceFailure,
   ThreadHistoryItem,
   ThreadHistoryTurn,
+  ThreadRuntimePhase,
   RealtimeServerMessage,
   ServerNotification,
   ThreadSettingsState,
@@ -93,6 +94,7 @@ export type GatewayDomainEventMap = {
     hostId: number;
     threadId: string;
     status: ThreadRuntimeStatus;
+    phase?: ThreadRuntimePhase;
     turnId?: string | null;
   };
   "terminal-process-detected": {

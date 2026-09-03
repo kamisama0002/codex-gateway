@@ -29,6 +29,7 @@ services:
       RUNTIME_MANAGER_BASE_URL: ${RUNTIME_MANAGER_BASE_URL:-http://agent-runtime-manager:8787}
       RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS: ${RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS:-stable}
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:?RUNTIME_MANAGER_SHARED_SECRET is required}
+      RUNTIME_PROVIDER_PROXY_BASE_URL: ${RUNTIME_PROVIDER_PROXY_BASE_URL:-http://codex-gateway:3000/api/internal/providers}
     volumes:
       - ./data:/data
     # Keep liveness probes side-effect free. Nitro owns periodic GC so probe retries or Docker
@@ -86,9 +87,15 @@ networks:
   runtime-manager:
     name: ${RUNTIME_MANAGER_NETWORK_NAME:-runtime-manager}
     internal: true
+    ipam:
+      config:
+        - subnet: ${RUNTIME_MANAGER_NETWORK_SUBNET:-10.254.250.0/24}
   agent-runtime:
     name: ${RUNTIME_MANAGER_AGENT_NETWORK:-agent-runtime}
     internal: true
+    ipam:
+      config:
+        - subnet: ${RUNTIME_MANAGER_AGENT_NETWORK_SUBNET:-10.254.251.0/24}
 
 volumes:
   runtime-manager-data:

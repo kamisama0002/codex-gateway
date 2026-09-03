@@ -23,15 +23,54 @@ export const providerNameSchema = z.string().trim().min(1).max(128);
 
 export const providerBaseUrlSchema = z.url().superRefine((value, ctx) => {
   const url = new URL(value);
-  const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  const development = process.env.NODE_ENV !== "production";
-  if (url.protocol !== "https:" && !(development && local && url.protocol === "http:")) {
-    ctx.addIssue({ code: "custom", message: "Provider base URL must use HTTPS" });
+  if (
+    url.protocol !== "https:" &&
+    !(url.protocol === "http:" && isPrivateProviderHostname(url.hostname))
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Provider base URL must use HTTPS unless it targets a private network",
+    });
   }
   if (url.username !== "" || url.password !== "" || url.search !== "" || url.hash !== "") {
-    ctx.addIssue({ code: "custom", message: "Provider base URL must not contain credentials or query" });
+    ctx.addIssue({
+      code: "custom",
+      message: "Provider base URL must not contain credentials or query",
+    });
   }
 });
+
+export function isPrivateProviderHostname(hostname: string) {
+  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    (normalized.includes(":") &&
+      (normalized.startsWith("fc") ||
+        normalized.startsWith("fd") ||
+        normalized.startsWith("fe80:"))) ||
+    normalized.endsWith(".local") ||
+    normalized.endsWith(".internal") ||
+    !normalized.includes(".")
+  ) {
+    return true;
+  }
+  const octets = normalized.split(".").map(Number);
+  if (
+    octets.length !== 4 ||
+    octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
+  ) {
+    return false;
+  }
+  const [first, second] = octets;
+  return (
+    first === 10 ||
+    first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second !== undefined && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
 
 export const providerCreateSchema = z
   .object({

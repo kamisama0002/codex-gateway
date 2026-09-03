@@ -11,11 +11,19 @@ export const requestEventHandlers: GatewayEventHandlerRegistry = {
   ...pendingServerRequestHandlers,
   "serverRequest/resolved": (event, params, threadId) => {
     const requestId = idFromUnknown(params.requestId);
+    const turnId = idFromUnknown(params.turnId);
     if (requestId === null) return;
     gatewayDomainEvents.emit("history-server-request-resolved", {
       hostId: event.hostId,
       threadId,
       requestId,
+    });
+    gatewayDomainEvents.emit("thread-status-detected", {
+      hostId: event.hostId,
+      threadId,
+      status: "running",
+      phase: "running",
+      turnId: turnId === null ? null : String(turnId),
     });
   },
   "currentTime/read": () => {
@@ -31,6 +39,13 @@ function upsertPendingServerRequest(
   const turnId = idFromUnknown(params.turnId);
   const stableItemId = idFromUnknown(params.itemId) ?? idFromUnknown(event.payload.id);
   if (stableItemId === null) return;
+  gatewayDomainEvents.emit("thread-status-detected", {
+    hostId: event.hostId,
+    threadId,
+    status: "running",
+    phase: requestPhase(event.method),
+    turnId: turnId === null ? null : String(turnId),
+  });
   gatewayDomainEvents.emit("history-item-upsert", {
     hostId: event.hostId,
     threadId,
@@ -44,4 +59,12 @@ function upsertPendingServerRequest(
       params,
     },
   });
+}
+
+function requestPhase(method: string) {
+  if (method === "item/permissions/requestApproval") return "waitingForApproval" as const;
+  if (method === "item/tool/requestUserInput" || method === "mcpServer/elicitation/request") {
+    return "waitingForInput" as const;
+  }
+  return "waitingForClient" as const;
 }

@@ -69,6 +69,22 @@ export async function refreshGatewayClient() {
         replaceRoute: true,
       });
       hydrateNavigationDataInBackground(sessionEpoch);
+    } else if (routeHostExists && routeSelection.hostId !== null) {
+      // A Host can spend several minutes installing or upgrading Codex. An explicit Host/Project
+      // route already has enough server-backed catalog data to render its workspace, so do not
+      // hold the entire shell behind that remote lifecycle. The hydration anchor below prevents a
+      // late response from replacing a Thread the user opens while the Host is still connecting.
+      bootstrap.initializing = false;
+      views.loading = false;
+      writeGatewayRouteSelection(
+        {
+          hostId: routeSelection.hostId,
+          projectId: routeSelection.projectId,
+          threadId: null,
+        },
+        { replace: true },
+      );
+      hydrateNavigationDataInBackground(sessionEpoch);
     } else {
       await hydrateNavigationData(sessionEpoch);
       if (

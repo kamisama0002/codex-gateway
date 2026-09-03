@@ -1,5 +1,5 @@
 import type { InjectionKey, Ref } from "vue";
-import type { ThreadRuntimeStatus } from "@/stores/gateway/types";
+import type { ThreadRuntimePhase } from "@/stores/gateway/types";
 import type { HostRecord, ProjectRecord, SidebarThread } from "../sidebar-types";
 
 export interface HostTreeController {
@@ -36,7 +36,7 @@ export interface HostTreeController {
   openArchivedThread: (thread: SidebarThread & { hostId: number; projectId: number }) => void;
   unarchive: (thread: SidebarThread & { hostId: number }) => void;
   deleteThread: (thread: SidebarThread & { hostId: number }) => void;
-  threadRuntimeStatus: (hostId: number, threadId: string) => ThreadRuntimeStatus;
+  threadRuntimeStatus: (hostId: number, threadId: string) => ThreadRuntimePhase;
   threadCompletionAttention: (hostId: number, threadId: string) => boolean;
 }
 

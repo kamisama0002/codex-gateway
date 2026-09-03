@@ -1,5 +1,6 @@
 import type { GatewayEvent } from "~~/shared/types";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
+import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { threadIdFromParams } from "../thread-utils/identity";
 import { appServerEventDispatcher } from "./registry";
 import { idFromUnknown, recordFromUnknown } from "~~/shared/utils/records";
@@ -21,7 +22,12 @@ function clearRecoveredTransientError(
   threadId: string,
 ) {
   const gateway = useGatewayBootstrapStore();
-  const current = gateway.error;
+  const current = [...gateway.errors]
+    .reverse()
+    .find(
+      (entry) =>
+        entry.hostId === event.hostId && entry.threadId === threadId && entry.transient === true,
+    );
   if (current?.transient !== true || transientErrorRecoveryBlockedMethods.has(event.method)) return;
   const value = params.turnId ?? recordFromUnknown(params.turn)?.id;
   const eventTurnIdValue = idFromUnknown(value);
@@ -32,6 +38,11 @@ function clearRecoveredTransientError(
     current.hostId === event.hostId &&
     current.threadId === threadId
   ) {
-    gateway.clearError();
+    gateway.clearError({
+      hostId: current.hostId,
+      projectId: current.projectId,
+      threadId: current.threadId,
+    });
+    useGatewayThreadRuntimeStore().setThreadPhase(event.hostId, threadId, "running");
   }
 }

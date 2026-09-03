@@ -1,13 +1,10 @@
 import type {
-  ContextMenuItem,
   DockviewApi,
   DockviewGroupPanel,
   DockviewPanelApi,
   IDockviewPanel,
 } from "dockview-vue";
 import { toast } from "@codex-gateway/ui/sonner";
-import { workspaceDockPanelParamsFromUnknown } from "./types";
-import { workspacePanelPolicy } from "./panel-registry";
 
 export function floatDockItem(api: DockviewApi, item: IDockviewPanel | DockviewGroupPanel) {
   api.addFloatingGroup(item, floatingBounds());
@@ -28,41 +25,6 @@ export async function popoutDockItem(
 
 export function notifyPopoutBlocked(message: { title: string; description: string }) {
   toast.error(message.title, { description: message.description });
-}
-
-export function createDockTabMenu(options: {
-  api: DockviewApi;
-  panel: IDockviewPanel;
-  labels: {
-    splitRight: string;
-    maximize: string;
-    float: string;
-    popout: string;
-    close: string;
-    popupBlocked: string;
-    popupBlockedDescription: string;
-  };
-  closeDynamic: (panel: IDockviewPanel) => void;
-}): ContextMenuItem[] {
-  const { api, panel, labels } = options;
-  const items: ContextMenuItem[] = [
-    { label: labels.splitRight, action: () => splitDockPanelRight(panel.api) },
-    { label: labels.maximize, action: () => panel.api.maximize() },
-    { label: labels.float, action: () => floatDockItem(api, panel) },
-    {
-      label: labels.popout,
-      action: () =>
-        void popoutDockItem(api, panel, {
-          title: labels.popupBlocked,
-          description: labels.popupBlockedDescription,
-        }),
-    },
-  ];
-  const params = workspaceDockPanelParamsFromUnknown(panel.params);
-  if (params !== null && workspacePanelPolicy(params.kind).closable) {
-    items.push("separator", { label: labels.close, action: () => options.closeDynamic(panel) });
-  }
-  return items;
 }
 
 function floatingBounds() {

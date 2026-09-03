@@ -1,7 +1,12 @@
 import type { HostRecord, PinnedThreadRecord } from "./sidebar-types";
 
 const threadStatusClassByStatus: Record<string, string> = {
+  submitting: "text-primary",
   running: "text-primary",
+  waitingForApproval: "text-accent-orange",
+  waitingForInput: "text-accent-orange",
+  waitingForClient: "text-accent-orange",
+  retrying: "text-accent-orange",
   completedUnviewed: "text-primary",
   completed: "text-accent-green",
   failed: "text-destructive",
@@ -9,7 +14,12 @@ const threadStatusClassByStatus: Record<string, string> = {
 };
 
 const threadStatusLabelKeyByStatus: Record<string, string> = {
+  submitting: "app.submitting",
   running: "app.running",
+  waitingForApproval: "app.waitingForApproval",
+  waitingForInput: "app.waitingForInput",
+  waitingForClient: "app.waitingForClient",
+  retrying: "app.retrying",
   completedUnviewed: "app.completedUnviewed",
   completed: "app.completed",
   failed: "app.failed",

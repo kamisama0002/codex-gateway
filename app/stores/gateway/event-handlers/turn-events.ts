@@ -3,6 +3,7 @@ import { threadHistoryTurnFromUnknown } from "~~/shared/runtime/app-server";
 import { idFromUnknown, stringFromUnknown } from "~~/shared/utils/records";
 import { gatewayDomainEvents } from "../domain-events";
 import { runtimeStatusFromCompletedTurn } from "../thread-utils/status";
+import { runtimePhaseFromStatus } from "~~/shared/thread-runtime-status";
 import type { GatewayEventHandlerRegistry } from "./types";
 import { useGatewayTurnRecoveryStore } from "@/stores/gateway-turn-recovery";
 
@@ -14,6 +15,7 @@ export const turnEventHandlers: GatewayEventHandlerRegistry = {
       hostId: event.hostId,
       threadId,
       status: "running",
+      phase: "running",
       turnId: turn === null ? null : String(turn.id),
     });
     if (turn !== null) {
@@ -26,10 +28,12 @@ export const turnEventHandlers: GatewayEventHandlerRegistry = {
   },
   "turn/completed": (event, params, threadId) => {
     const turn = threadHistoryTurnFromUnknown(params.turn);
+    const status = runtimeStatusFromCompletedTurn(turn);
     gatewayDomainEvents.emit("thread-status-detected", {
       hostId: event.hostId,
       threadId,
-      status: runtimeStatusFromCompletedTurn(turn),
+      status,
+      phase: runtimePhaseFromStatus(status),
       turnId: turn === null ? null : String(turn.id),
     });
     if (turn === null) return;

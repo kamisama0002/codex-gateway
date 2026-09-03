@@ -21,37 +21,37 @@ async function logout() {
 </script>
 
 <template>
-  <div class="max-w-2xl space-y-5">
-    <div class="space-y-1">
+  <div class="mx-auto w-full max-w-3xl">
+    <div class="border-b border-hairline pb-4">
       <div class="font-medium">{{ $t("app.appearanceSettings") }}</div>
-      <p class="text-sm text-ink-secondary">
+      <p class="mt-1 text-sm text-ink-secondary">
         {{ $t("app.appearanceSettingsDescription") }}
       </p>
     </div>
 
-    <div class="rounded-xl border border-hairline bg-canvas-soft/70 p-4">
-      <div class="flex items-center justify-between gap-4">
+    <div class="divide-y divide-hairline">
+      <section class="flex items-center justify-between gap-4 py-4">
         <div class="min-w-0">
           <div class="text-sm font-medium">{{ $t("app.interfaceLanguage") }}</div>
-          <p class="text-sm text-ink-secondary">
+          <p class="mt-0.5 text-sm leading-5 text-ink-secondary">
             {{ $t("app.interfaceLanguageDescription") }}
           </p>
         </div>
-        <LanguageSwitcher />
-      </div>
-    </div>
+        <LanguageSwitcher class="shrink-0" />
+      </section>
 
-    <div class="space-y-3 rounded-xl border border-danger/30 bg-danger/5 p-4">
-      <div class="space-y-1">
-        <div class="text-sm font-medium">{{ $t("app.accountSession") }}</div>
-        <p class="text-sm text-ink-secondary">
-          {{ $t("app.logoutDescription") }}
-        </p>
-      </div>
-      <Button variant="destructive" :disabled="loggingOut" @click="logout">
-        <LogOutIcon class="size-4" />
-        {{ loggingOut ? $t("app.loggingOut") : $t("app.logout") }}
-      </Button>
+      <section class="flex items-center justify-between gap-4 py-4">
+        <div class="min-w-0">
+          <div class="text-sm font-medium">{{ $t("app.accountSession") }}</div>
+          <p class="mt-0.5 text-sm leading-5 text-ink-secondary">
+            {{ $t("app.logoutDescription") }}
+          </p>
+        </div>
+        <Button class="shrink-0" variant="destructive" :disabled="loggingOut" @click="logout">
+          <LogOutIcon class="size-4" />
+          {{ loggingOut ? $t("app.loggingOut") : $t("app.logout") }}
+        </Button>
+      </section>
     </div>
   </div>
 </template>

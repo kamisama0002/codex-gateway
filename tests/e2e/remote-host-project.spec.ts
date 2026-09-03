@@ -252,7 +252,7 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
     .click();
   await expect(page.getByRole("tab", { name: project.name })).toBeHidden();
 
-  await page.getByPlaceholder("输入后续修改要求").fill("/");
+  await page.getByTestId("composer-input").fill("/");
   await expect(page.getByTestId("slash-command-menu")).toBeVisible();
   await expect(page.getByTestId("slash-command-new")).toBeVisible();
   await expect(page.getByTestId("slash-command-plan")).toBeHidden();
@@ -261,7 +261,7 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
   await expect(page.getByTestId(`thread-button-${slashNewThreadId}`)).toBeVisible({
     timeout: 30_000,
   });
-  await page.getByPlaceholder("输入后续修改要求").fill("/");
+  await page.getByTestId("composer-input").fill("/");
   await expect(page.getByTestId("slash-command-menu")).toBeVisible();
   await expect(page.getByTestId("slash-command-plan")).toBeVisible();
   const planSettingsResponsePromise = page.waitForResponse(

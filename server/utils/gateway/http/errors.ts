@@ -16,6 +16,7 @@ import {
 } from "../state/memory";
 import { recordFromUnknown } from "~~/shared/utils/records";
 import { firstNonEmptyString } from "~~/shared/utils/strings";
+import { ZodError } from "zod";
 
 export class CodexRpcError extends Error {
   constructor(
@@ -171,6 +172,7 @@ function statusCodeFromError(error: unknown) {
   if (isStaleThreadCursorErrorLike(error)) {
     return 409;
   }
+  if (validationErrorMessage(error) !== null) return 400;
   const statusCodeValue = recordFromUnknown(error)?.statusCode;
   const statusCode = typeof statusCodeValue === "number" ? statusCodeValue : null;
   if (statusCode !== null && statusCode >= 400 && statusCode < 600) {
@@ -190,7 +192,9 @@ function publicErrorCode(error: unknown) {
   return undefined;
 }
 
-function publicErrorMessage(error: unknown) {
+export function publicErrorMessage(error: unknown) {
+  const validationMessage = validationErrorMessage(error);
+  if (validationMessage !== null) return validationMessage;
   if (error instanceof CodexRpcError) {
     return firstNonEmptyString([error.message]) ?? `Codex RPC ${error.rpcMethod} failed`;
   }
@@ -204,6 +208,34 @@ function publicErrorMessage(error: unknown) {
     return "Gateway request failed";
   }
   return JSON.stringify(error);
+}
+
+function validationErrorMessage(error: unknown): string | null {
+  if (error instanceof ZodError) return issueMessages(error.issues);
+  if (error instanceof Error && error.cause instanceof ZodError) {
+    return issueMessages(error.cause.issues);
+  }
+  const message = error instanceof Error ? error.message : null;
+  if (message === null || !message.trimStart().startsWith("[")) return null;
+  try {
+    const parsed: unknown = JSON.parse(message);
+    if (!Array.isArray(parsed)) return null;
+    return issueMessages(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function issueMessages(issues: unknown[]) {
+  const messages = [
+    ...new Set(
+      issues.flatMap((issue) => {
+        const message = recordFromUnknown(issue)?.message;
+        return typeof message === "string" && message.trim() !== "" ? [message.trim()] : [];
+      }),
+    ),
+  ];
+  return messages.length === 0 ? null : messages.join("\n");
 }
 
 function publicErrorDetails(event: H3Event, scope: string, details: Record<string, unknown>) {

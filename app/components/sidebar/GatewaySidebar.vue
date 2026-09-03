@@ -27,6 +27,7 @@ import { useSidebarTree } from "./host-tree/useSidebarTree";
 import { useThreadRename } from "./thread-list/useThreadRename";
 import { useThreadLifecycle } from "./thread-list/useThreadLifecycle";
 import SidebarWorkspaceToolbar from "./SidebarWorkspaceToolbar.vue";
+import RealtimeConnectionIndicator from "./RealtimeConnectionIndicator.vue";
 import { useTmuxMonitorLauncher } from "@/composables/workspace/useTmuxMonitorLauncher";
 import type { HostTreeController } from "./host-tree/controller";
 import type { HostRecord, ProjectRecord } from "./sidebar-types";
@@ -164,15 +165,18 @@ async function openHostMonitor(hostId: number) {
     </div>
 
     <SidebarFooter class="shrink-0 border-t border-hairline p-3">
-      <Button
-        data-testid="settings-toggle"
-        variant="ghost"
-        class="h-8 w-full justify-start gap-2 rounded-lg px-2 text-sm font-normal hover:bg-muted"
-        @click="showSettings = !showSettings"
-      >
-        <SettingsIcon class="size-4" />
-        {{ t("app.settings") }}
-      </Button>
+      <div class="flex min-w-0 items-center gap-1.5">
+        <Button
+          data-testid="settings-toggle"
+          variant="ghost"
+          class="h-8 min-w-0 flex-1 justify-start gap-2 rounded-lg px-2 text-sm font-normal hover:bg-muted"
+          @click="showSettings = !showSettings"
+        >
+          <SettingsIcon class="size-4" />
+          {{ t("app.settings") }}
+        </Button>
+        <RealtimeConnectionIndicator />
+      </div>
     </SidebarFooter>
 
     <BrowserOpenDialog
@@ -183,13 +187,13 @@ async function openHostMonitor(hostId: number) {
 
     <Dialog v-model:open="showSettings">
       <DialogContent
-        class="flex h-[min(54rem,calc(100vh-3rem))] w-[min(70rem,calc(100vw-3rem))] !max-w-[min(70rem,calc(100vw-3rem))] flex-col overflow-hidden p-0"
+        class="flex h-[min(50rem,calc(100dvh-2rem))] w-[min(50rem,calc(100vw-2rem))] !max-w-[min(50rem,calc(100vw-2rem))] flex-col overflow-hidden p-0"
         data-testid="settings-dialog"
         close-button-test-id="settings-close-button"
       >
-        <DialogHeader class="border-b border-hairline px-6 py-5">
-          <DialogTitle class="text-lg">{{ t("app.settings") }}</DialogTitle>
-          <DialogDescription>{{ t("app.settingsDescription") }}</DialogDescription>
+        <DialogHeader class="border-b border-hairline px-5 py-4">
+          <DialogTitle class="text-base">{{ t("app.settings") }}</DialogTitle>
+          <DialogDescription class="sr-only">{{ t("app.settingsDescription") }}</DialogDescription>
         </DialogHeader>
         <div class="flex min-h-0 flex-1 overflow-hidden">
           <SettingsPanel @close="showSettings = false" />

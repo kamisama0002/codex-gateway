@@ -161,16 +161,22 @@ model_base_url=${shellQuote(modelBaseUrl)}
 provider_secret=/run/codex-provider-key
 if [ -s "$provider_secret" ]; then
   cp "$provider_secret" "$codex_home/provider.key"
-  chmod 600 "$codex_home/provider.key"
-  if [ -f "$config_file" ]; then
-    sed -i -E 's#^args[[:space:]]*=[[:space:]]*\\["/etc/codex/providers/[^" ]+"\\]#args = ["'"$codex_home"'/provider.key"]#' "$config_file"
-  fi
+else
+  printf '%s\n' 'codex-gateway-e2e-provider-key' > "$codex_home/provider.key"
 fi
-if [ -n "$model_base_url" ] && [ -f "$config_file" ]; then
-  awk -v replacement="$model_base_url" '
-    !done && $0 ~ /^[[:space:]]*base_url[[:space:]]*=/ {
-      print "base_url = \\"" replacement "\\"";
-      done = 1;
+chmod 600 "$codex_home/provider.key"
+if [ -f "$config_file" ]; then
+  awk -v base_url="$model_base_url" -v provider_key="$codex_home/provider.key" '
+    /^\\[/ {
+      in_provider = $0 ~ /^\\[model_providers\\..+\\]$/ && $0 !~ /\\.auth\\]$/;
+      in_provider_auth = $0 ~ /^\\[model_providers\\..+\\.auth\\]$/;
+    }
+    in_provider && base_url != "" && $0 ~ /^[[:space:]]*base_url[[:space:]]*=/ {
+      print "base_url = \\"" base_url "\\"";
+      next;
+    }
+    in_provider_auth && $0 ~ /^[[:space:]]*args[[:space:]]*=/ {
+      print "args = [\\"" provider_key "\\"]";
       next;
     }
     { print }

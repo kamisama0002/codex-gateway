@@ -21,6 +21,7 @@ export function createThreadPinningActions() {
       );
       const thread = navigation.threads.find((candidate) => String(candidate.id) === threadId);
       const key = pinnedKey(navigation.selectedHostId, threadId);
+      const activity = useGatewayThreadActivityStore().summariesByKey[key];
       const previousPinnedThread = gateway.gatewayConfig.pinnedThreads.find(
         (item) => pinnedKey(item.hostId, item.threadId) === key,
       );
@@ -31,10 +32,12 @@ export function createThreadPinningActions() {
         hostId: navigation.selectedHostId,
         projectId: navigation.selectedProjectId,
         threadId,
-        title: titleForThread(thread),
-        subtitle: project?.remotePath ?? null,
-        projectName: project?.name ?? null,
-        updatedAt: Number(thread?.recencyAt ?? thread?.updatedAt ?? Date.now() / 1000),
+        title: titleForThread(thread ?? activity),
+        subtitle: project?.remotePath ?? activity?.cwd ?? null,
+        projectName: project?.name ?? activity?.projectName ?? null,
+        updatedAt: Number(
+          thread?.recencyAt ?? thread?.updatedAt ?? activity?.updatedAt ?? Date.now() / 1000,
+        ),
       };
       if (pinned) gateway.gatewayConfig.pinnedThreads.unshift(nextPinnedThread);
       navigation.threads = sortThreads(

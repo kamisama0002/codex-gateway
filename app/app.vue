@@ -85,7 +85,11 @@ watch(
     class="sr-only"
     >ready</span
   >
-  <Toaster rich-colors position="top-right" />
+  <Toaster
+    rich-colors
+    position="top-right"
+    :mobile-offset="{ top: '4.5rem', right: '1rem', left: '1rem' }"
+  />
   <LoginScreen v-if="mounted && !isAuthenticated" />
   <NuxtLayout v-else :name="layoutName" />
 </template>

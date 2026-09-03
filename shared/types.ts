@@ -27,6 +27,7 @@ export type {
   ThreadGoalTimelineItem,
   ThreadOpenResult,
   ThreadRuntimeStatus,
+  ThreadRuntimePhase,
   ThreadRuntimeStatusUpdate,
   ThreadCollaborationMode,
   ThreadSettingsState,

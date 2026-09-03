@@ -34,7 +34,7 @@ export async function interruptThreadTurn(
   }
 
   views.loading = true;
-  gateway.clearError();
+  gateway.clearError({ hostId: input.hostId, projectId, threadId: input.threadId });
   try {
     await requestTurnInterrupt(input.hostId, input.threadId, turnId);
   } catch (error: unknown) {

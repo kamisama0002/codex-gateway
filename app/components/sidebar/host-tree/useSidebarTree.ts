@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch, type Ref } from "vue";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayPinnedThreads } from "@/stores/gateway-config";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
+import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import {
@@ -11,13 +12,14 @@ import {
   sortPinnedThreadsForDisplay,
   threadKey,
 } from "../sidebar-utils";
-import type { PinnedThreadRecord, ProjectRecord } from "../sidebar-types";
+import type { PinnedThreadRecord, ProjectRecord, SidebarThread } from "../sidebar-types";
 import { firstNonEmptyString } from "~~/shared/utils/strings";
 import { isManagedWorkspaceRootProject } from "~~/shared/runtime/managed-runtime";
 
 export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   const store = useGatewayCatalogStore();
   const navigation = useGatewayNavigationStore();
+  const activity = useGatewayThreadActivityStore();
   const runtime = useGatewayThreadRuntimeStore();
   const threadView = useGatewayThreadViewStore();
   const { hosts, projects, projectDirectoryAvailability, hostConnectionStatuses } =
@@ -31,7 +33,8 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     selectedProjectId,
     selectedThreadId,
   } = storeToRefs(navigation);
-  const { unviewedCompletedThreadKeys, threadStatuses } = storeToRefs(runtime);
+  const { unviewedCompletedThreadKeys } = storeToRefs(runtime);
+  const { observedRunningThreadKeys, summariesByKey } = storeToRefs(activity);
   const expandedHostIds = ref<Set<number>>(new Set());
   const expandedProjectIds = ref<Set<number>>(new Set());
   const expandedMissingProjectHostIds = ref<Set<number>>(new Set());
@@ -45,11 +48,40 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   );
 
   function threadsForProject(projectId: number) {
+    const selectedSource = projectThreads.value.filter((thread) => thread.projectId === projectId);
     const source =
-      projectId === selectedProjectId.value ? projectThreads.value : hostThreads.value;
-    return source
-      .filter((thread) => thread.projectId === projectId && thread.pinned !== true)
-      .slice(0, 20);
+      projectId === selectedProjectId.value && selectedSource.length > 0
+        ? selectedSource
+        : hostThreads.value;
+    const catalogThreads = source.filter(
+      (thread) => thread.projectId === projectId && thread.pinned !== true,
+    );
+    const catalogIds = new Set(catalogThreads.map((thread) => String(thread.id)));
+    const pinnedKeys = new Set(pinnedThreads.value.map(pinnedThreadKey));
+    const activityThreads = observedRunningThreadKeys.value
+      .flatMap((key): SidebarThread[] => {
+        const summary = summariesByKey.value[key];
+        if (
+          summary === undefined ||
+          summary.projectId !== projectId ||
+          summary.isSubAgent ||
+          catalogIds.has(summary.threadId) ||
+          pinnedKeys.has(threadKey(summary.hostId, summary.threadId))
+        ) {
+          return [];
+        }
+        return [
+          {
+            id: summary.threadId,
+            hostId: summary.hostId,
+            projectId: summary.projectId,
+            title: summary.title,
+            updatedAt: summary.updatedAt,
+          },
+        ];
+      })
+      .toSorted((left, right) => Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0));
+    return [...activityThreads, ...catalogThreads].slice(0, 20);
   }
   const selectedThreadIsPinned = computed(() => {
     if (
@@ -181,7 +213,7 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   }
 
   function threadRuntimeStatus(hostId: number, threadId: string) {
-    return threadStatuses.value[threadKey(hostId, threadId)] ?? "idle";
+    return runtime.phaseFor(hostId, threadId);
   }
 
   function threadCompletionAttention(hostId: number, threadId: string) {
@@ -191,7 +223,7 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   function pinnedRuntimeStatus(thread: PinnedThreadRecord) {
     const key = pinnedThreadKey(thread);
     if (openingPinnedThreadKey.value === key) {
-      return "running";
+      return "submitting";
     }
     return threadRuntimeStatus(thread.hostId, String(thread.threadId));
   }
@@ -223,9 +255,18 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   );
 
   watch(selectedThreadIsPinned, (isPinned) => {
-    if (!isPinned) return;
-    expandedHostIds.value = new Set();
-    expandedProjectIds.value = new Set();
+    if (isPinned) {
+      expandedHostIds.value = new Set();
+      expandedProjectIds.value = new Set();
+      return;
+    }
+    if (suppressTreeAutoExpand.value) return;
+    if (selectedHostId.value !== null) {
+      expandedHostIds.value = new Set(expandedHostIds.value).add(selectedHostId.value);
+    }
+    if (selectedProjectId.value !== null) {
+      expandedProjectIds.value = new Set(expandedProjectIds.value).add(selectedProjectId.value);
+    }
   });
 
   watch(

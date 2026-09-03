@@ -20,6 +20,7 @@ export const itemEventHandlers: GatewayEventHandlerRegistry = {
     emitRemoteFilesChanged(event, params, threadId);
   },
   "item/commandExecution/requestApproval": (event, params, threadId) => {
+    emitActivePhase(event, params, threadId, "waitingForApproval");
     const itemId = idFromUnknown(params.itemId);
     const turnId = idFromUnknown(params.turnId);
     if (itemId === null || turnId === null) return;
@@ -38,6 +39,7 @@ export const itemEventHandlers: GatewayEventHandlerRegistry = {
     });
   },
   "item/fileChange/requestApproval": (event, params, threadId) => {
+    emitActivePhase(event, params, threadId, "waitingForApproval");
     const itemId = idFromUnknown(params.itemId);
     const turnId = idFromUnknown(params.turnId);
     if (itemId === null || turnId === null) return;
@@ -77,6 +79,22 @@ function emitRunning(event: GatewayEvent, params: AppServerEventParams, threadId
     hostId: event.hostId,
     threadId,
     status: "running",
+    phase: "running",
+    turnId: stringIdFromUnknown(params.turnId),
+  });
+}
+
+function emitActivePhase(
+  event: GatewayEvent,
+  params: AppServerEventParams,
+  threadId: string,
+  phase: "waitingForApproval",
+) {
+  gatewayDomainEvents.emit("thread-status-detected", {
+    hostId: event.hostId,
+    threadId,
+    status: "running",
+    phase,
     turnId: stringIdFromUnknown(params.turnId),
   });
 }

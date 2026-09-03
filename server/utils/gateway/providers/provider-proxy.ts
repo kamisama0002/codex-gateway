@@ -7,14 +7,27 @@ import { ChatStreamAssembler } from "./protocol/chat-stream-assembler";
 import { encodeResponsesSse } from "./protocol/responses-sse";
 import type { ProviderTool, ResponsesInputItem, ResponsesRequestInput } from "./protocol/types";
 import { runtimeStore } from "../runtime-manager/runtime-store";
+import { classifyUpstreamProviderFailure, providerErrorMessage } from "~~/shared/provider-failure";
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
-const HOP_BY_HOP_HEADERS = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
 
 export interface ProviderProxyOptions {
   store?: Pick<ProviderStore, "listForUser" | "getWithSecret">;
   fetch?: typeof globalThis.fetch;
-  verifyToken?: (token: string, scope: { userId: number; providerId: string; modelId: string }) => RuntimeModelTokenClaims;
+  verifyToken?: (
+    token: string,
+    scope: { userId: number; providerId: string; modelId: string },
+  ) => RuntimeModelTokenClaims;
   runtimeStore?: { getByUserId(userId: number): { status: string } | null };
 }
 
@@ -35,18 +48,24 @@ export async function handleProviderResponses(
   const runtime = activeRuntimeStore.getByUserId(claims.userId);
   if (runtime === null || runtime.status !== "ready") return jsonError(401, "runtime_not_ready");
   const models = store.listForUser(claims.userId);
-  const model = models.find((entry) => entry.providerId === providerId && entry.modelId === modelId);
+  const model = models.find(
+    (entry) => entry.providerId === providerId && entry.modelId === modelId,
+  );
   if (model === undefined) return jsonError(403, "model_not_granted");
   const provider = store.getWithSecret(providerId);
   if (provider === null || !provider.enabled) return jsonError(503, "provider_unavailable");
   const upstreamPath = provider.wireApi === "responses" ? "/responses" : "/chat/completions";
   let upstreamBody: string;
   try {
-    upstreamBody = provider.wireApi === "responses"
-      ? new TextDecoder().decode(body)
-      : JSON.stringify(toChatCompletionRequest(parseResponsesRequest(payload, modelId), model.capabilities));
+    upstreamBody =
+      provider.wireApi === "responses"
+        ? new TextDecoder().decode(body)
+        : JSON.stringify(
+            toChatCompletionRequest(parseResponsesRequest(payload, modelId), model.capabilities),
+          );
   } catch (error) {
-    if (error instanceof Error && error.name === "ProviderCapabilityError") return jsonError(400, "provider_capability_unsupported");
+    if (error instanceof Error && error.name === "ProviderCapabilityError")
+      return jsonError(400, "provider_capability_unsupported");
     return jsonError(400, "invalid_request");
   }
   const controller = new AbortController();
@@ -58,7 +77,7 @@ export async function handleProviderResponses(
       body: upstreamBody,
       signal: controller.signal,
     });
-    if (!upstream.ok) return jsonError(upstream.status === 429 ? 429 : 502, upstream.status === 429 ? "provider_rate_limited" : "provider_request_failed");
+    if (!upstream.ok) return await providerFailureResponse(upstream);
     if (provider.wireApi === "responses") return passthrough(upstream);
     if (payload.stream === true) return translateChatStream(upstream);
     const value: unknown = await upstream.json();
@@ -89,13 +108,15 @@ function extractClaims(
 
 function bearer(value: string | null): string {
   const match = value?.match(/^Bearer\s+(.+)$/i);
-  if (match?.[1] === undefined || match[1].trim() === "") throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+  if (match?.[1] === undefined || match[1].trim() === "")
+    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
   return match[1].trim();
 }
 
 async function readBody(request: Request): Promise<Uint8Array> {
   const body = new Uint8Array(await request.arrayBuffer());
-  if (body.byteLength > MAX_BODY_BYTES) throw createError({ statusCode: 413, statusMessage: "Request too large" });
+  if (body.byteLength > MAX_BODY_BYTES)
+    throw createError({ statusCode: 413, statusMessage: "Request too large" });
   return body;
 }
 
@@ -112,7 +133,9 @@ function parsePayload(body: Uint8Array): Record<string, unknown> {
 
 function passthrough(upstream: Response): Response {
   const headers = new Headers();
-  upstream.headers.forEach((value, key) => { if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) headers.set(key, value); });
+  upstream.headers.forEach((value, key) => {
+    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) headers.set(key, value);
+  });
   return new Response(upstream.body, { status: upstream.status, headers });
 }
 
@@ -129,11 +152,16 @@ function translateChatStream(upstream: Response): Response {
         if (done) {
           pending += decoder.decode();
           if (pending.trim() !== "") {
-            const data = pending.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n");
+            const data = pending
+              .split("\n")
+              .filter((line) => line.startsWith("data:"))
+              .map((line) => line.slice(5).trim())
+              .join("\n");
             if (data !== "" && data !== "[DONE]") {
               const chunk: unknown = JSON.parse(data);
               if (!isRecord(chunk)) throw new Error("Invalid Chat stream chunk");
-              for (const event of assembler.push(chunk)) controller.enqueue(encodeResponsesSse(event));
+              for (const event of assembler.push(chunk))
+                controller.enqueue(encodeResponsesSse(event));
             }
           }
           for (const event of assembler.finish()) controller.enqueue(encodeResponsesSse(event));
@@ -144,7 +172,11 @@ function translateChatStream(upstream: Response): Response {
         const frames = pending.split(/\n\n+/);
         pending = frames.pop() ?? "";
         for (const frame of frames) {
-          const data = frame.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n");
+          const data = frame
+            .split("\n")
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice(5).trim())
+            .join("\n");
           if (data === "" || data === "[DONE]") continue;
           const chunk: unknown = JSON.parse(data);
           if (!isRecord(chunk)) throw new Error("Invalid Chat stream chunk");
@@ -154,13 +186,41 @@ function translateChatStream(upstream: Response): Response {
         controller.error(error);
       }
     },
-    cancel() { void reader.cancel(); },
+    cancel() {
+      void reader.cancel();
+    },
   });
-  return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" } });
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    },
+  });
 }
 
 function jsonError(status: number, code: string): Response {
   return Response.json({ error: { code, message: code } }, { status });
+}
+
+async function providerFailureResponse(upstream: Response) {
+  const responseBody = await upstream.text();
+  const failure = classifyUpstreamProviderFailure(upstream.status, responseBody);
+  const message = providerErrorMessage(responseBody, upstream.status);
+  const headers = new Headers();
+  const retryAfter = upstream.headers.get("retry-after");
+  if (retryAfter !== null && failure.retryable) headers.set("retry-after", retryAfter);
+  return Response.json(
+    {
+      error: {
+        code: failure.code,
+        message,
+        type: failure.retryable ? "provider_transient_error" : "provider_configuration_error",
+      },
+    },
+    { status: failure.responseStatus, headers },
+  );
 }
 
 function parseResponsesRequest(payload: Record<string, unknown>, model: string) {
@@ -174,7 +234,8 @@ function parseResponsesRequest(payload: Record<string, unknown>, model: string) 
   if (typeof payload.stream === "boolean") input.stream = payload.stream;
   if (typeof payload.temperature === "number") input.temperature = payload.temperature;
   if (typeof payload.top_p === "number") input.top_p = payload.top_p;
-  if (typeof payload.max_output_tokens === "number") input.max_output_tokens = payload.max_output_tokens;
+  if (typeof payload.max_output_tokens === "number")
+    input.max_output_tokens = payload.max_output_tokens;
   if (isUnknownArray(payload.tools)) {
     if (!payload.tools.every(isProviderTool)) throw new Error("Invalid Responses tool");
     input.tools = payload.tools;
@@ -190,7 +251,9 @@ function isProviderTool(value: unknown): value is ProviderTool {
   return isRecord(value) && typeof value.type === "string";
 }
 
-function isChatCompletionResponse(value: unknown): value is Parameters<typeof toResponsesResult>[0] {
+function isChatCompletionResponse(
+  value: unknown,
+): value is Parameters<typeof toResponsesResult>[0] {
   return isRecord(value);
 }
 

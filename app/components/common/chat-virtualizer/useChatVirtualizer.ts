@@ -4,10 +4,15 @@ import {
   nextTick,
   ref,
   toValue,
+  watch,
   type ComponentPublicInstance,
   type MaybeRefOrGetter,
 } from "vue";
-import { createChatVirtualizerBehavior } from "./anchoring";
+import {
+  createChatVirtualizerBehavior,
+  resolveChatFollowLatest,
+  shouldAdjustChatScrollForSizeChange,
+} from "./anchoring";
 import { useDirectDomVirtualizer } from "./direct-dom-virtualizer";
 
 interface ChatVirtualizerOptions {
@@ -22,6 +27,9 @@ interface ChatVirtualizerOptions {
 
 export function useChatVirtualizer(options: ChatVirtualizerOptions) {
   const threshold = () => toValue(options.threshold) ?? 120;
+  let detachedWhileUnderfilled = false;
+  let backwardWheelActive = false;
+  const detachedStartPadding = ref(0);
   // Mirror core's at-end result only from real scroll transactions. Reading isAtEnd from a
   // computed during setOptions can observe core's eagerly resolved anchor against Vue's previous
   // DOM height; that transient geometry must not drive UI policy such as intermediate collapse.
@@ -41,14 +49,32 @@ export function useChatVirtualizer(options: ChatVirtualizerOptions) {
         getItemKey,
         estimateSize: options.estimateSize,
         overscan: toValue(options.overscan) ?? 0,
-        ...createChatVirtualizerBehavior(threshold()),
+        paddingStart: detachedStartPadding.value,
+        ...createChatVirtualizerBehavior({
+          followLatest: followLatest.value,
+          scrollEndThreshold: threshold(),
+        }),
       };
     }),
   );
   const virtualizer = directVirtualizer.virtualizer;
+  virtualizer.value.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
+    shouldAdjustChatScrollForSizeChange(item, instance, followLatest.value, backwardWheelActive);
   const virtualItems = computed(() => virtualizer.value.getVirtualItems());
   const isScrolling = computed(() => virtualizer.value.isScrolling);
   const userDetached = computed(() => !followLatest.value);
+
+  useEventListener(
+    viewportElement,
+    "wheel",
+    (event) => {
+      backwardWheelActive = event.deltaY < 0;
+    },
+    { passive: true },
+  );
+  watch(isScrolling, (scrolling) => {
+    if (!scrolling) backwardWheelActive = false;
+  });
 
   // Virtual Core intentionally coalesces onChange by range/isScrolling. A single very tall Agent
   // row can scroll without changing either value, so onChange is not an offset event stream. Use
@@ -69,7 +95,20 @@ export function useChatVirtualizer(options: ChatVirtualizerOptions) {
         0,
         viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight,
       );
-      followLatest.value = distanceFromEnd <= threshold();
+      const scrollRange = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+      if (detachedWhileUnderfilled && scrollRange <= threshold()) {
+        followLatest.value = false;
+        options.onViewportScroll?.(viewport);
+        return;
+      }
+      detachedWhileUnderfilled = false;
+      if (distanceFromEnd <= threshold()) detachedStartPadding.value = 0;
+      followLatest.value = resolveChatFollowLatest({
+        currentlyFollowing: followLatest.value,
+        distanceFromEnd,
+        scrollEndThreshold: threshold(),
+        scrollingBackward: backwardWheelActive || virtualizer.value.scrollDirection === "backward",
+      });
       options.onViewportScroll?.(viewport);
     },
     { passive: true },
@@ -96,10 +135,28 @@ export function useChatVirtualizer(options: ChatVirtualizerOptions) {
     directVirtualizer.refresh({ forceStyles: true, remeasure: false });
   }
 
+  function detachFromLatest() {
+    const viewport = options.getViewport();
+    detachedWhileUnderfilled =
+      viewport !== null && viewport.scrollHeight - viewport.clientHeight <= threshold();
+    if (detachedWhileUnderfilled && viewport !== null) {
+      // `mt-auto` bottom-aligns an underfilled chat outside Virtual Core's size model. Convert that
+      // visual gap into Core-owned padding before content begins to overflow, so a later stream or
+      // history prepend can preserve the same keyed row at the same screen coordinate.
+      detachedStartPadding.value = Math.max(
+        0,
+        viewport.clientHeight - (virtualizer.value.getTotalSize() - detachedStartPadding.value),
+      );
+    }
+    followLatest.value = false;
+  }
+
   async function scrollToLatest() {
     // Explicit navigation/submission intent takes ownership before Vue commits the appended row.
     // Setting this after nextTick leaves the intervening append classified as detached and is the
     // reason a newly submitted user message could remain hidden behind the composer.
+    detachedWhileUnderfilled = false;
+    detachedStartPadding.value = 0;
     followLatest.value = true;
     await nextTick();
     refresh();
@@ -111,6 +168,7 @@ export function useChatVirtualizer(options: ChatVirtualizerOptions) {
 
   return {
     containerRef: directVirtualizer.containerRef,
+    detachFromLatest,
     followLatest,
     isScrolling,
     measureElement,

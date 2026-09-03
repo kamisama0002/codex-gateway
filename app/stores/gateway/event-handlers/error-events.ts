@@ -1,11 +1,7 @@
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
-import { useGatewayConfigStore } from "@/stores/gateway-config";
-import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
-import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { useGatewayTurnRecoveryStore } from "@/stores/gateway-turn-recovery";
 import { appServerTurnErrorFromNotification, misalignmentDetailsFromNotification } from "../errors";
-import { pinnedKey, titleForThread } from "../thread-utils/identity";
 import type { GatewayEventHandlerRegistry } from "./types";
 import { idFromUnknown } from "~~/shared/utils/records";
 import { gatewayDomainEvents } from "../domain-events";
@@ -18,6 +14,13 @@ export const errorEventHandlers: GatewayEventHandlerRegistry = {
     const turnId = turnIdValue === null ? "" : String(turnIdValue);
     const misalignment = misalignmentDetailsFromNotification(params);
     if (misalignment?.steer !== null && misalignment !== null) {
+      gatewayDomainEvents.emit("thread-status-detected", {
+        hostId: event.hostId,
+        threadId,
+        status: "running",
+        phase: "waitingForInput",
+        turnId: turnId === "" ? null : turnId,
+      });
       useGatewayTurnRecoveryStore().setRequest({
         hostId: event.hostId,
         threadId,
@@ -36,57 +39,30 @@ export const errorEventHandlers: GatewayEventHandlerRegistry = {
       )
     )
       return;
-    if (!error.willRetry) {
-      gatewayDomainEvents.emit("thread-status-detected", {
-        hostId: event.hostId,
-        threadId,
-        status: "failed",
-        turnId: turnId === "" ? null : turnId,
-      });
-    }
-    gateway.setError(threadScopedErrorMessage(event.hostId, threadId, error.toDisplayMessage()), {
+    gatewayDomainEvents.emit("thread-status-detected", {
+      hostId: event.hostId,
+      threadId,
+      status: error.willRetry ? "running" : "failed",
+      phase: error.willRetry ? "retrying" : "failed",
+      turnId: turnId === "" ? null : turnId,
+    });
+    gateway.setError(error.toDisplayMessage(), {
       hostId: event.hostId,
       threadId,
       turnId: turnId === "" ? null : turnId,
       transient: error.willRetry,
+      category: error.category,
+      code: error.code,
+      details: error.additionalDetails,
+      retryable: error.willRetry,
+      toast: false,
     });
   },
   "thread/realtime/error": (event, params, threadId) => {
     const gateway = useGatewayBootstrapStore();
     gateway.setError(
-      threadScopedErrorMessage(
-        event.hostId,
-        threadId,
-        typeof params.message === "string" ? params.message : gateway.t("app.appServerError"),
-      ),
-      { hostId: event.hostId, threadId },
+      typeof params.message === "string" ? params.message : gateway.t("app.appServerError"),
+      { hostId: event.hostId, threadId, category: "unavailable", toast: false },
     );
   },
 };
-
-function threadScopedErrorMessage(hostId: number, threadId: string, message: string) {
-  const gateway = useGatewayBootstrapStore();
-  return [
-    gateway.t("app.threadErrorContext", { title: threadErrorTitle(hostId, threadId) }),
-    message,
-  ]
-    .filter((value) => value !== "")
-    .join("\n");
-}
-
-function threadErrorTitle(hostId: number, threadId: string) {
-  const config = useGatewayConfigStore();
-  const navigation = useGatewayNavigationStore();
-  const views = useGatewayThreadViewStore();
-  const key = pinnedKey(hostId, threadId);
-  const selected =
-    navigation.selectedHostId === hostId && navigation.selectedThreadId === threadId
-      ? views.currentThread
-      : null;
-  const view = views.threadViews[key]?.currentThread;
-  const listed = navigation.threads.find((thread) => String(thread.id) === threadId);
-  const pinned = config.gatewayConfig.pinnedThreads.find(
-    (thread) => thread.hostId === hostId && thread.threadId === threadId,
-  );
-  return titleForThread(selected ?? view ?? listed ?? pinned ?? { id: threadId });
-}

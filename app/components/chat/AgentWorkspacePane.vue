@@ -6,9 +6,11 @@ import ChatPanelScrollArea from "@/components/chat/ChatPanelScrollArea.vue";
 import ProjectThreadList from "@/components/chat/ProjectThreadList.vue";
 import ThreadChatHeader from "@/components/thread/ThreadChatHeader.vue";
 import ThreadVirtualTimeline from "@/components/thread/ThreadVirtualTimeline.vue";
+import ThreadEmptyState from "@/components/thread/ThreadEmptyState.vue";
 import ActiveSubAgentsBar from "@/components/thread/subagent/ActiveSubAgentsBar.vue";
 import MisalignmentRecoveryCard from "@/components/thread/MisalignmentRecoveryCard.vue";
 import McpRuntimeStatusBar from "@/components/thread/McpRuntimeStatusBar.vue";
+import ThreadRuntimeNotice from "@/components/thread/ThreadRuntimeNotice.vue";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { useChatWorkspaceState } from "./chat-workspace-state";
 
@@ -17,6 +19,7 @@ const {
   openingThread,
   selectedThreadId,
   selectedThreadStatus,
+  selectedThreadPhase,
   selectedProjectId,
   selectedHostId,
   currentThread,
@@ -31,11 +34,15 @@ const {
 const threadTurns = useGatewayThreadTurnsStore();
 
 const { t } = useI18n();
+const runtimeError = computed(() => {
+  const error = visibleError.value;
+  return error !== null && error.threadId === selectedThreadId.value ? error : null;
+});
 const showThreadLoading = computed(
   () =>
     initializing.value ||
     openingThread.value ||
-    (Boolean(selectedThreadId.value) && !selectedThreadViewReady.value && !visibleError.value),
+    (Boolean(selectedThreadId.value) && !selectedThreadViewReady.value && !runtimeError.value),
 );
 </script>
 
@@ -63,6 +70,11 @@ const showThreadLoading = computed(
           <span>{{ t("app.loadingGateway") }}</span>
         </div>
       </ChatPanelScrollArea>
+
+      <ThreadEmptyState
+        v-else-if="selectedThreadId && historyTurns.length === 0"
+        :workspace="currentThread?.cwd"
+      />
 
       <ThreadVirtualTimeline
         v-else-if="selectedThreadId"
@@ -94,6 +106,14 @@ const showThreadLoading = computed(
       </ChatPanelScrollArea>
 
       <MisalignmentRecoveryCard v-if="selectedThreadId" />
+      <ThreadRuntimeNotice
+        v-if="selectedThreadId"
+        :host-id="selectedHostId"
+        :project-id="selectedProjectId"
+        :thread-id="selectedThreadId"
+        :phase="selectedThreadPhase"
+        :error="runtimeError"
+      />
       <ChatComposer v-if="selectedThreadId || selectedProjectId" />
     </div>
   </div>

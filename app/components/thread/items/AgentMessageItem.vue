@@ -16,12 +16,7 @@ const props = defineProps<{
 
 const text = computed(() => threadItemText(props.item));
 const inProgress = computed(() => isItemInProgress(props.item));
-const hasFooter = computed(
-  () =>
-    Boolean(text.value) &&
-    props.agentActionsAvailable === true &&
-    (props.turnTiming != null || (props.responseUsage?.length ?? 0) > 0),
-);
+const hasFooter = computed(() => Boolean(text.value) && props.agentActionsAvailable === true);
 </script>
 
 <template>

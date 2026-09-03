@@ -48,7 +48,6 @@ const props = defineProps<{
   labelEffortOption: (option: { value: ReasoningEffort; label?: string }) => string;
   modelOptionValue: (modelOption: { model?: string; id: string }) => string;
   hasComposerInput: boolean;
-  isThreadRunning: boolean;
   canInterruptTurn: boolean;
   canUsePrimaryAction: boolean;
   interruptingTurn: boolean;
@@ -114,7 +113,9 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
         @resume-goal="emit('resumeGoal')"
         @clear-goal="emit('clearGoal')"
       />
-      <div class="relative flex flex-col gap-3 rounded-[1.375rem] border border-hairline bg-surface px-3 pb-2.5 pt-2.5 shadow-[0_0.25rem_1rem_rgba(15,17,21,0.06)]">
+      <div
+        class="relative flex flex-col gap-3 rounded-[1.375rem] border border-hairline bg-surface px-3 pb-2.5 pt-2.5 shadow-[0_0.25rem_1rem_rgba(15,17,21,0.06)]"
+      >
         <SlashCommandMenu
           :open="slashMenuOpen"
           :commands="filteredSlashCommands"
@@ -161,7 +162,6 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           :label-effort-option="labelEffortOption"
           :model-option-value="modelOptionValue"
           :has-composer-input="hasComposerInput"
-          :is-thread-running="isThreadRunning"
           :can-interrupt-turn="canInterruptTurn"
           :can-use-primary-action="canUsePrimaryAction"
           :interrupting-turn="interruptingTurn"

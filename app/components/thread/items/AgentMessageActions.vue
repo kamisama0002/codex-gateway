@@ -36,11 +36,8 @@ async function copyText() {
 </script>
 
 <template>
-  <!-- The parent mounts actions only after the existing intermediate-process disclosure closes. -->
-  <MessageActions
-    data-testid="agent-message-actions"
-    class="mt-1.5 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-  >
+  <!-- The parent withholds actions only while the Agent loop can still append a continuation. -->
+  <MessageActions data-testid="agent-message-actions" class="mt-1.5 flex items-center gap-2">
     <TurnDurationLabel v-if="turnTiming" :timing="turnTiming" />
     <TurnUsageAmountLabel :usage="responseUsage" />
     <MessageAction

@@ -621,7 +621,9 @@ function requiredEnvironment(name: string): string {
 function providerConfigForUser(userId: number, runtimeId: string) {
   const model = providerStore.listForUser(userId)[0];
   if (model === undefined) return null;
-  const proxyBase = process.env.RUNTIME_PROVIDER_PROXY_BASE_URL ?? "http://gateway:3100/api/internal/providers";
+  const proxyBase =
+    process.env.RUNTIME_PROVIDER_PROXY_BASE_URL ??
+    "http://codex-gateway:3000/api/internal/providers";
   const baseUrl = `${proxyBase.replace(/\/$/, "")}/${encodeURIComponent(model.providerId)}/v1`;
   return {
     providerId: model.providerId,

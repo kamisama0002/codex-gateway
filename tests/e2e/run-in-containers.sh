@@ -135,9 +135,10 @@ verify_agent_image() {
 }
 
 verify_managed_runtime_docker_state() {
-  local manager_id gateway_id
+  local manager_id gateway_id user_hash
   local agent_ids=()
   local volume_names=()
+  local -A user_hashes=()
   manager_id="$(docker compose -p "$project_name" -f "$compose_file" ps --quiet agent-runtime-manager)"
   gateway_id="$(docker compose -p "$project_name" -f "$compose_file" ps --quiet gateway-under-test)"
   assert_no_port_bindings "Runtime Manager" "$manager_id"
@@ -150,8 +151,16 @@ verify_managed_runtime_docker_state() {
   while IFS= read -r container_id; do
     [ -n "$container_id" ] && agent_ids+=("$container_id")
   done < <(docker ps --all --quiet --filter "label=$e2e_managed_label")
-  assert_equal "managed Agent container count" "2" "${#agent_ids[@]}"
+  # The suite signs in its primary admin plus two explicit isolation users. Since the built-in
+  # local workspace now provisions one long-lived Agent per user, all three must remain present.
+  assert_equal "managed Agent container count" "3" "${#agent_ids[@]}"
   for container_id in "${agent_ids[@]}"; do
+    user_hash="$(docker inspect --format '{{index .Config.Labels "com.codex-gateway.user-hash"}}' "$container_id")"
+    if [ -z "$user_hash" ]; then
+      printf 'E2E assertion failed: managed Agent is missing its user identity label\n' >&2
+      return 1
+    fi
+    user_hashes["$user_hash"]=1
     wait_for_agent_health "$container_id"
     assert_no_port_bindings "managed Agent" "$container_id"
     assert_equal "managed Agent image" "$agent_image" \
@@ -182,11 +191,12 @@ verify_managed_runtime_docker_state() {
     assert_equal "managed Agent named volume mount markers" "11" \
       "$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}1{{end}}{{end}}' "$container_id")"
   done
+  assert_equal "managed Agent isolated user count" "3" "${#user_hashes[@]}"
 
   while IFS= read -r volume_name; do
     [ -n "$volume_name" ] && volume_names+=("$volume_name")
   done < <(docker volume ls --quiet --filter "label=$e2e_managed_label")
-  assert_equal "managed Agent volume count" "4" "${#volume_names[@]}"
+  assert_equal "managed Agent volume count" "6" "${#volume_names[@]}"
 }
 
 cleanup() {

@@ -236,9 +236,10 @@ export async function startRemoteThreadFromProjectMenu(
   remote: RemoteCodexEnv,
   projectId: number,
 ) {
+  const previousThreadId = new URL(page.url()).searchParams.get("threadId");
   await page.getByTestId(`project-button-${projectId}`).click({ button: "right" });
   await page.getByRole("menuitem", { name: /新建/ }).click();
-  const threadId = await waitForSelectedThreadId(page);
+  const threadId = await waitForSelectedThreadId(page, previousThreadId);
   await expect(page.getByPlaceholder("输入后续修改要求")).toBeEnabled();
   await expect(page.getByTestId(`thread-button-${threadId}`)).toBeVisible({ timeout: 30_000 });
   if (remote.testModel !== undefined && remote.testModel !== "") {
@@ -253,10 +254,13 @@ export async function startRemoteThreadFromProjectMenu(
   return threadId;
 }
 
-export async function waitForSelectedThreadId(page: Page) {
+export async function waitForSelectedThreadId(page: Page, previousThreadId: string | null = null) {
   const handle = await page.waitForFunction(
-    () => new URLSearchParams(window.location.search).get("threadId"),
-    undefined,
+    (previous) => {
+      const current = new URLSearchParams(window.location.search).get("threadId");
+      return current !== null && current !== previous ? current : null;
+    },
+    previousThreadId,
     { timeout: 30_000 },
   );
   const threadId = await handle.jsonValue();

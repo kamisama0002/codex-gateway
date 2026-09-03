@@ -11,6 +11,7 @@ import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import type { ThreadListResponse } from "@/stores/gateway/types";
 import { messageFromError, sortThreads } from "@/stores/gateway/thread-utils/identity";
 import { runtimeStatusFromAppThreadStatus } from "@/stores/gateway/thread-utils/status";
+import { runtimePhaseFromAppThreadStatus } from "~~/shared/thread-runtime-status";
 import { isAppServerSubAgentThread } from "~~/shared/runtime/app-server";
 import { captureSessionEpoch } from "@/utils/session-epoch";
 import { listArchivedThreads } from "./thread-lifecycle";
@@ -142,8 +143,7 @@ function mergeHostThreads(
   projectId: number | null,
 ) {
   const kept = existing.filter(
-    (thread) =>
-      thread.hostId === hostId && (projectId === null || thread.projectId !== projectId),
+    (thread) => thread.hostId === hostId && (projectId === null || thread.projectId !== projectId),
   );
   return sortThreads([...kept, ...incoming]);
 }
@@ -160,6 +160,8 @@ function applyProjectDirectoryAvailability(response: ThreadListResponse) {
 function syncThreadStatusesFromList(hostId: number, threads: GatewayThread[]) {
   const runtime = useGatewayThreadRuntimeStore();
   for (const thread of threads) {
-    runtime.setThreadStatus(hostId, thread.id, runtimeStatusFromAppThreadStatus(thread.status));
+    runtime.setThreadStatus(hostId, thread.id, runtimeStatusFromAppThreadStatus(thread.status), {
+      phase: runtimePhaseFromAppThreadStatus(thread.status),
+    });
   }
 }

@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@codex-gateway/ui/dropdown-menu";
-import type { ThreadRuntimeStatus } from "@/stores/gateway/types";
+import type { ThreadRuntimePhase } from "@/stores/gateway/types";
 import { titleForThread } from "@/stores/gateway/thread-utils/identity";
 import { selectedRowClass } from "../sidebar-utils";
 import SidebarRowLabel from "../SidebarRowLabel.vue";
@@ -27,7 +27,7 @@ const props = defineProps<{
   thread: SidebarThreadRow;
   testId: string;
   selected: boolean;
-  status: ThreadRuntimeStatus;
+  status: ThreadRuntimePhase;
   completionAttention?: boolean;
   subtitle?: string;
   pinLabel: string;
@@ -48,9 +48,7 @@ const emit = defineEmits<{
 
 const pressHandlers = computed(() => props.longPressHandlers ?? {});
 const compactMenuOpen = ref(false);
-const showStatus = computed(
-  () => props.status !== "idle" || Boolean(props.completionAttention),
-);
+const showStatus = computed(() => props.status !== "idle" || Boolean(props.completionAttention));
 
 function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarchive" | "delete") {
   compactMenuOpen.value = false;
@@ -83,10 +81,7 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
         ]"
         @click="emit('open')"
       >
-        <span
-          v-if="compact"
-          class="flex min-w-0 flex-1 items-center overflow-hidden text-left"
-        >
+        <span v-if="compact" class="flex min-w-0 flex-1 items-center overflow-hidden text-left">
           <span class="inline-flex size-4 shrink-0 items-center justify-center">
             <ThreadStatusIndicator
               v-if="showStatus"

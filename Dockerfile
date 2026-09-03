@@ -38,6 +38,12 @@ COPY app ./app
 # Nuxt 4.5.1 buildCache can restore the Vue bundle without wiring its renderer virtual modules
 # (nuxt/nuxt#35894). Keep dependency layers cached, but always produce a complete app bundle.
 RUN pnpm exec nuxt build
+RUN pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild ../../scripts/create-user.mjs \
+    --bundle \
+    --platform=node \
+    --format=esm \
+    --target=node24 \
+    --outfile=/app/.runtime-scripts/create-user.mjs
 
 FROM node:${NODE_VERSION} AS runner
 ARG DEBIAN_MIRROR=
@@ -52,6 +58,7 @@ RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
 WORKDIR /app
 COPY --from=build /app/.output ./.output
 COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/.runtime-scripts/create-user.mjs ./scripts/create-user.mjs
 EXPOSE 3000
 ENTRYPOINT ["/usr/bin/tini", "--"]
 # The 1 GiB container also hosts SSH/TLS/native buffers. Keep V8 old-space bounded to leave room

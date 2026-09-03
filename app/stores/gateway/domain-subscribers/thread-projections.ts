@@ -26,6 +26,7 @@ export function registerThreadProjectionSubscribers() {
   });
   gatewayDomainEvents.on("thread-status-detected", (event) => {
     useGatewayThreadRuntimeStore().setThreadStatus(event.hostId, event.threadId, event.status, {
+      phase: event.phase,
       turnId: event.turnId,
     });
   });

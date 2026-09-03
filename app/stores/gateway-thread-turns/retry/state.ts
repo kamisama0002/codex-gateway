@@ -13,17 +13,24 @@ export function markPendingRetryTurn(hostId: number, threadId: string, turnId: s
 export function updateRetryAttempt(
   request: Pick<SubmittedTurnRequestState, "hostId" | "threadId">,
   attempt: number,
+  retryAt: number | null = null,
 ) {
   useGatewayThreadTurnsStore().patchRequest(request.hostId, request.threadId, {
     retryCount: attempt,
     pendingRetryTurnId: null,
+    retryAt,
   });
 }
 
-export function storeRetryTimer(request: SubmittedTurnRequestState, retryTimer: number) {
+export function storeRetryTimer(
+  request: SubmittedTurnRequestState,
+  retryTimer: number,
+  retryAt: number,
+) {
   useGatewayThreadTurnsStore().patchRequest(request.hostId, request.threadId, {
     retryTimer,
     retryCount: request.retryCount + 1,
+    retryAt,
   });
 }
 
@@ -33,11 +40,17 @@ export function clearPendingTurnRequest(hostId: number, threadId: string) {
 
 export function clearThreadScopedError(hostId: number, threadId: string) {
   const gateway = useGatewayBootstrapStore();
-  const current = gateway.error;
-  if (!current || current.hostId !== hostId || current.threadId !== threadId) {
+  const current = [...gateway.errors]
+    .reverse()
+    .find((entry) => entry.hostId === hostId && entry.threadId === threadId);
+  if (!current) {
     return;
   }
-  gateway.clearError();
+  gateway.clearError({
+    hostId: current.hostId,
+    projectId: current.projectId,
+    threadId: current.threadId,
+  });
 }
 
 export function isTerminalTurnStatus(status: unknown) {

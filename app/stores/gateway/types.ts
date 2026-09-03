@@ -6,11 +6,13 @@ import type {
   TerminalOpenTarget,
   TerminalSessionSnapshot,
   ThreadRuntimeStatus,
+  ThreadRuntimePhase,
   UploadedFileRecord,
   FileReference,
 } from "~~/shared/types";
+import type { ProviderFailureKind } from "~~/shared/provider-failure";
 
-export type { ThreadRuntimeStatus };
+export type { ThreadRuntimePhase, ThreadRuntimeStatus };
 export type HostConnectionStatus =
   | "idle"
   | "checkingVersion"
@@ -74,11 +76,16 @@ export interface GatewayErrorState {
   threadId: string | null;
   turnId: string | null;
   transient: boolean;
+  category: ProviderFailureKind;
+  code: string | null;
+  details: string | null;
+  retryable: boolean;
   updatedAt: number;
 }
 
 export interface ThreadStatusUpdateOptions {
   turnId?: string | null;
+  phase?: ThreadRuntimePhase;
 }
 
 export type TerminalOpenInput = Omit<TerminalOpenTarget, "cols" | "rows"> & {

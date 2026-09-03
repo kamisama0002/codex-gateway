@@ -423,7 +423,11 @@ async function syncOpenThreadFromServer(input: {
   const views = useGatewayThreadViewStore();
   const sessionIsCurrent = captureSessionEpoch();
   if (input.showLoading) views.loading = true;
-  gateway.clearError();
+  gateway.clearError({
+    hostId: input.hostId,
+    projectId: input.projectId,
+    threadId: input.threadId,
+  });
   try {
     const result = await requestActivateThreadSnapshot(input);
     if (

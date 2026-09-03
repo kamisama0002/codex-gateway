@@ -9,70 +9,240 @@ describe("provider proxy", () => {
   it("translates a Chat Completions upstream into Responses JSON", async () => {
     const db = new DatabaseSync(":memory:");
     migrateGatewayDatabase(db);
-    db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')").run();
+    db.prepare(
+      "INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')",
+    ).run();
     const store = createProviderStore(db);
-    const provider = store.create({ id: "p1", name: "Provider", baseUrl: "https://upstream.test/v1", wireApi: "chat_completions", apiKey: "secret-key" });
-    store.upsertModel(provider.id, { modelId: "m1", displayName: "Model", capabilities: { tools: true, streamingTools: true, vision: false, reasoning: false, maxContextTokens: null } });
+    const provider = store.create({
+      id: "p1",
+      name: "Provider",
+      baseUrl: "https://upstream.test/v1",
+      wireApi: "chat_completions",
+      apiKey: "secret-key",
+    });
+    store.upsertModel(provider.id, {
+      modelId: "m1",
+      displayName: "Model",
+      capabilities: {
+        tools: true,
+        streamingTools: true,
+        vision: false,
+        reasoning: false,
+        maxContextTokens: null,
+      },
+    });
     store.grant({ userId: 1, providerId: provider.id, modelId: "m1" });
     expect(store.listForUser(1)).toMatchObject([{ providerId: "p1", modelId: "m1" }]);
-    const token = issueRuntimeModelToken({ userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" }, "test-secret");
+    const token = issueRuntimeModelToken(
+      { userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" },
+      "test-secret",
+    );
     let seen: RequestInit | undefined;
     const response = await handleProviderResponses(
-      new Request("http://gateway/api/internal/providers/p1/v1/responses", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ model: "m1", input: "hello" }) }),
+      new Request("http://gateway/api/internal/providers/p1/v1/responses", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "m1", input: "hello" }),
+      }),
       "p1",
       {
         store,
         verifyToken: (value, scope) => {
           expect(value).toBe(token);
           expect(scope).toEqual({ userId: 0, providerId: "p1", modelId: "m1" });
-          return { userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1", jti: "j", exp: Date.now() + 10_000 };
+          return {
+            userId: 1,
+            runtimeId: "r1",
+            providerId: "p1",
+            modelId: "m1",
+            jti: "j",
+            exp: Date.now() + 10_000,
+          };
         },
         fetch: async (url, init) => {
           expect(url).toBe("https://upstream.test/v1/chat/completions");
           seen = init;
-          return new Response(JSON.stringify({ id: "chat-1", model: "m1", choices: [{ message: { role: "assistant", content: "OK" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }), { status: 200, headers: { "content-type": "application/json" } });
+          return new Response(
+            JSON.stringify({
+              id: "chat-1",
+              model: "m1",
+              choices: [{ message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
+              usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
         },
         runtimeStore: { getByUserId: () => ({ status: "ready" }) },
       },
     );
-    expect(await response.json()).toMatchObject({ object: "response", output_text: "OK", status: "completed" });
+    expect(await response.json()).toMatchObject({
+      object: "response",
+      output_text: "OK",
+      status: "completed",
+    });
     expect(seen?.headers).toMatchObject({ authorization: "Bearer secret-key" });
   });
 
   it("rejects a revoked model grant before contacting upstream", async () => {
     const db = new DatabaseSync(":memory:");
     migrateGatewayDatabase(db);
-    db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')").run();
+    db.prepare(
+      "INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')",
+    ).run();
     const store = createProviderStore(db);
-    const provider = store.create({ id: "p1", name: "Provider", baseUrl: "https://upstream.test/v1", wireApi: "responses", apiKey: "secret-key" });
-    store.upsertModel(provider.id, { modelId: "m1", displayName: "Model", capabilities: { tools: false, streamingTools: false, vision: false, reasoning: false, maxContextTokens: null } });
-    const token = issueRuntimeModelToken({ userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" }, "test-secret");
-    const response = await handleProviderResponses(new Request("http://gateway", { method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ model: "m1" }) }), "p1", { store, fetch: async () => { throw new Error("must not call"); }, verifyToken: () => ({ userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1", jti: "j", exp: Date.now() + 10_000 }), runtimeStore: { getByUserId: () => ({ status: "ready" }) } });
+    const provider = store.create({
+      id: "p1",
+      name: "Provider",
+      baseUrl: "https://upstream.test/v1",
+      wireApi: "responses",
+      apiKey: "secret-key",
+    });
+    store.upsertModel(provider.id, {
+      modelId: "m1",
+      displayName: "Model",
+      capabilities: {
+        tools: false,
+        streamingTools: false,
+        vision: false,
+        reasoning: false,
+        maxContextTokens: null,
+      },
+    });
+    const token = issueRuntimeModelToken(
+      { userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" },
+      "test-secret",
+    );
+    const response = await handleProviderResponses(
+      new Request("http://gateway", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: "m1" }),
+      }),
+      "p1",
+      {
+        store,
+        fetch: async () => {
+          throw new Error("must not call");
+        },
+        verifyToken: () => ({
+          userId: 1,
+          runtimeId: "r1",
+          providerId: "p1",
+          modelId: "m1",
+          jti: "j",
+          exp: Date.now() + 10_000,
+        }),
+        runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+      },
+    );
     expect(response.status).toBe(403);
   });
 
   it("rejects a token after its runtime is removed", async () => {
     const response = await handleProviderResponses(
-      new Request("http://gateway", { method: "POST", headers: { authorization: "Bearer token" }, body: JSON.stringify({ model: "m1" }) }),
+      new Request("http://gateway", {
+        method: "POST",
+        headers: { authorization: "Bearer token" },
+        body: JSON.stringify({ model: "m1" }),
+      }),
       "p1",
       {
         store: { listForUser: () => [], getWithSecret: () => null },
-        verifyToken: () => ({ userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1", jti: "j", exp: Date.now() + 10_000 }),
+        verifyToken: () => ({
+          userId: 1,
+          runtimeId: "r1",
+          providerId: "p1",
+          modelId: "m1",
+          jti: "j",
+          exp: Date.now() + 10_000,
+        }),
         runtimeStore: { getByUserId: () => null },
       },
     );
     expect(response.status).toBe(401);
   });
 
+  it.each([
+    [401, '{"error":{"message":"Invalid API key"}}', 400, "provider_unauthorized"],
+    [403, '{"error":{"message":"Model access denied"}}', 400, "provider_forbidden"],
+    [
+      429,
+      '{"error":{"code":"insufficient_quota","message":"No balance"}}',
+      400,
+      "provider_quota_exhausted",
+    ],
+    [429, '{"error":{"message":"Rate limited"}}', 429, "provider_rate_limited"],
+    [503, '{"error":{"message":"Temporarily unavailable"}}', 503, "provider_unavailable"],
+  ] as const)(
+    "maps upstream HTTP %s to an actionable provider failure",
+    async (upstreamStatus, upstreamBody, expectedStatus, expectedCode) => {
+      const { store, token } = providerFixture("responses");
+      const response = await handleProviderResponses(
+        new Request("http://gateway", {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+          body: JSON.stringify({ model: "m1" }),
+        }),
+        "p1",
+        {
+          store,
+          fetch: async () =>
+            new Response(upstreamBody, {
+              status: upstreamStatus,
+              headers: { "retry-after": "3" },
+            }),
+          verifyToken: () => ({
+            userId: 1,
+            runtimeId: "r1",
+            providerId: "p1",
+            modelId: "m1",
+            jti: "j",
+            exp: Date.now() + 10_000,
+          }),
+          runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+        },
+      );
+
+      expect(response.status).toBe(expectedStatus);
+      expect(await response.json()).toMatchObject({
+        error: { code: expectedCode },
+      });
+      expect(response.headers.get("retry-after")).toBe(
+        expectedStatus === upstreamStatus && upstreamStatus >= 429 ? "3" : null,
+      );
+    },
+  );
+
   it("keeps SSE frames split across upstream chunks", async () => {
     const db = new DatabaseSync(":memory:");
     migrateGatewayDatabase(db);
-    db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')").run();
+    db.prepare(
+      "INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')",
+    ).run();
     const store = createProviderStore(db);
-    const provider = store.create({ id: "p1", name: "Provider", baseUrl: "https://upstream.test/v1", wireApi: "chat_completions", apiKey: "secret-key" });
-    store.upsertModel(provider.id, { modelId: "m1", displayName: "Model", capabilities: { tools: true, streamingTools: true, vision: false, reasoning: false, maxContextTokens: null } });
+    const provider = store.create({
+      id: "p1",
+      name: "Provider",
+      baseUrl: "https://upstream.test/v1",
+      wireApi: "chat_completions",
+      apiKey: "secret-key",
+    });
+    store.upsertModel(provider.id, {
+      modelId: "m1",
+      displayName: "Model",
+      capabilities: {
+        tools: true,
+        streamingTools: true,
+        vision: false,
+        reasoning: false,
+        maxContextTokens: null,
+      },
+    });
     store.grant({ userId: 1, providerId: provider.id, modelId: "m1" });
-    const token = issueRuntimeModelToken({ userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" }, "test-secret");
+    const token = issueRuntimeModelToken(
+      { userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" },
+      "test-secret",
+    );
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -83,14 +253,65 @@ describe("provider proxy", () => {
         controller.close();
       },
     });
-    const response = await handleProviderResponses(new Request("http://gateway", { method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ model: "m1", stream: true }) }), "p1", {
-      store,
-      runtimeStore: { getByUserId: () => ({ status: "ready" }) },
-      fetch: async () => new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
-      verifyToken: () => ({ userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1", jti: "j", exp: Date.now() + 10_000 }),
-    });
+    const response = await handleProviderResponses(
+      new Request("http://gateway", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: "m1", stream: true }),
+      }),
+      "p1",
+      {
+        store,
+        runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+        fetch: async () =>
+          new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+        verifyToken: () => ({
+          userId: 1,
+          runtimeId: "r1",
+          providerId: "p1",
+          modelId: "m1",
+          jti: "j",
+          exp: Date.now() + 10_000,
+        }),
+      },
+    );
     const text = await response.text();
     expect(text).toContain('"delta":"OK"');
     expect(text).toContain("response.completed");
   });
 });
+
+function providerFixture(wireApi: "responses" | "chat_completions") {
+  const db = new DatabaseSync(":memory:");
+  migrateGatewayDatabase(db);
+  db.prepare(
+    "INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')",
+  ).run();
+  const store = createProviderStore(db);
+  const provider = store.create({
+    id: "p1",
+    name: "Provider",
+    baseUrl: "https://upstream.test/v1",
+    wireApi,
+    apiKey: "secret-key",
+  });
+  store.upsertModel(provider.id, {
+    modelId: "m1",
+    displayName: "Model",
+    capabilities: {
+      tools: false,
+      streamingTools: false,
+      vision: false,
+      reasoning: false,
+      maxContextTokens: null,
+    },
+  });
+  store.grant({ userId: 1, providerId: provider.id, modelId: "m1" });
+  return {
+    store,
+    token: issueRuntimeModelToken(
+      { userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" },
+      "test-secret",
+    ),
+  };
+}

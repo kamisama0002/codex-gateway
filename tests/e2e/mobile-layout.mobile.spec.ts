@@ -49,7 +49,8 @@ test("uses the mobile layout with hidden sidebar and usable composer shell", asy
   await expect(page.getByTestId("settings-toggle")).toBeHidden();
 
   await expect(page.getByTestId("chat-scroll-area")).toBeVisible();
-  await expect(page.getByText("先选择一个项目")).toBeVisible();
+  await expect(page.getByTestId("project-thread-list")).toBeVisible();
+  await expect(page.getByText("这个项目还没有会话")).toBeVisible();
 });
 
 test("shows effort and compact context usage without mobile approval controls", async ({

@@ -37,6 +37,7 @@ test("toggles an expanded project closed from the desktop sidebar", async ({ pag
       {
         id: "toggle-thread",
         title: "Toggle Thread",
+        projectId: 201,
         pinned: false,
         updatedAt: Date.now(),
       },
@@ -228,7 +229,7 @@ test("long expanded tree labels truncate without displacing trailing statuses", 
     hostId,
     snapshots: {
       [threadId]: {
-        thread: { id: threadId, name: longTitle },
+        thread: { id: threadId, name: longTitle, status: { type: "active", activeFlags: [] } },
         history: { thread: { id: threadId, turns: [] } },
         projectId,
         runtimeStatus: "running",

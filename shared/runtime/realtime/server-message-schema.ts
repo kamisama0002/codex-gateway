@@ -124,6 +124,20 @@ const threadRuntimeStatusUpdateSchema = z
     hostId: positiveId,
     threadId: nonEmptyString,
     status: z.enum(["idle", "running", "completed", "failed", "interrupted"]),
+    phase: z
+      .enum([
+        "idle",
+        "submitting",
+        "running",
+        "waitingForApproval",
+        "waitingForInput",
+        "waitingForClient",
+        "retrying",
+        "completed",
+        "failed",
+        "interrupted",
+      ])
+      .optional(),
     turnId: z.string().nullable().optional(),
   })
   .strict();

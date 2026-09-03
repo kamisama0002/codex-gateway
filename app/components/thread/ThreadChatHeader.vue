@@ -7,6 +7,9 @@ import { projectById } from "@/stores/gateway-catalog/selectors";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { titleForThread } from "@/stores/gateway/thread-utils/identity";
+import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
+import { statusLabelKey } from "@/components/sidebar/sidebar-utils";
+import ThreadStatusIndicator from "@/components/sidebar/thread-list/ThreadStatusIndicator.vue";
 
 const dockUi = inject(WORKSPACE_DOCK_UI_CONTEXT);
 const navigation = useGatewayNavigationStore();
@@ -18,6 +21,12 @@ const visible = computed(
   () => dockUi?.layout.value !== "mobile" && Boolean(selectedThreadId.value),
 );
 const title = computed(() => titleForThread(currentThread.value));
+const runtime = useGatewayThreadRuntimeStore();
+const phase = computed(() => {
+  if (navigation.selectedHostId === null || selectedThreadId.value === null) return "idle";
+  return runtime.phaseFor(navigation.selectedHostId, selectedThreadId.value);
+});
+const showPhase = computed(() => phase.value !== "idle" && phase.value !== "completed");
 </script>
 
 <template>
@@ -26,11 +35,21 @@ const title = computed(() => titleForThread(currentThread.value));
     data-testid="thread-chat-header"
     class="flex min-h-8 shrink-0 items-center border-b border-hairline px-3"
   >
-    <div class="min-w-0">
+    <div class="flex min-w-0 flex-1 items-center gap-2">
       <p class="truncate text-sm leading-5 text-ink">
         {{ title }}
-        <span v-if="selectedProject?.name" class="text-ink-faint"> · {{ selectedProject.name }}</span>
+        <span v-if="selectedProject?.name" class="text-ink-faint">
+          · {{ selectedProject.name }}</span
+        >
       </p>
+      <div
+        v-if="showPhase"
+        data-testid="thread-runtime-phase"
+        class="inline-flex shrink-0 items-center gap-1 text-xs text-ink-muted"
+      >
+        <ThreadStatusIndicator :status="phase" />
+        <span>{{ $t(statusLabelKey(phase)) }}</span>
+      </div>
     </div>
   </header>
 </template>

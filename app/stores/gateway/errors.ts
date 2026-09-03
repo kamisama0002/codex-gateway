@@ -2,6 +2,11 @@ import type { ErrorMessageLabels } from "./thread-utils/identity";
 import type { MisalignmentErrorDetails } from "~~/shared/types";
 import { gatewayErrorMessage, gatewayErrorPayload } from "@/utils/gateway-error";
 import { recordFromUnknown } from "~~/shared/utils/records";
+import {
+  codexErrorHttpStatus,
+  providerFailureKindFromAppServerError,
+  type ProviderFailureKind,
+} from "~~/shared/provider-failure";
 
 export type GatewayErrorKind = "appServerTurn" | "http" | "rpc" | "realtime" | "unknown";
 
@@ -36,6 +41,8 @@ export class AppServerTurnDisplayError extends GatewayDisplayError {
     readonly willRetry: boolean,
     readonly code: string | null,
     readonly additionalDetails: string | null,
+    readonly category: ProviderFailureKind,
+    readonly httpStatus: number | null,
   ) {
     super(message, context);
   }
@@ -61,7 +68,14 @@ export function appServerTurnErrorFromNotification(
   const turnError = recordFromUnknown(params.error) ?? {};
   const message = stringValue(turnError.message) ?? t("app.appServerError");
   const additionalDetails = stringValue(turnError.additionalDetails);
-  const code = codexErrorCode(turnError.codexErrorInfo);
+  const codexErrorInfo = turnError.codexErrorInfo;
+  const code = codexErrorCode(codexErrorInfo);
+  const category = providerFailureKindFromAppServerError({
+    codexErrorInfo,
+    message,
+    additionalDetails,
+  });
+  const httpStatus = codexErrorHttpStatus(codexErrorInfo);
   const willRetry = params.willRetry === true;
   const display = [
     message,
@@ -81,6 +95,8 @@ export function appServerTurnErrorFromNotification(
     willRetry,
     code,
     additionalDetails,
+    category,
+    httpStatus,
   );
 }
 

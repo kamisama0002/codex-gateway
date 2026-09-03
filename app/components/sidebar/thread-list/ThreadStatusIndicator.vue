@@ -4,20 +4,29 @@ import {
   CheckCircle2Icon,
   CircleAlertIcon,
   CirclePauseIcon,
+  Clock3Icon,
   Loader2Icon,
+  MessageCircleIcon,
+  MonitorIcon,
+  RefreshCwIcon,
 } from "@lucide/vue";
 import { computed } from "vue";
-import type { ThreadRuntimeStatus } from "@/stores/gateway/types";
+import type { ThreadRuntimePhase } from "@/stores/gateway/types";
 import { statusClass, statusLabelKey } from "../sidebar-utils";
 
 const props = defineProps<{
-  status: ThreadRuntimeStatus;
+  status: ThreadRuntimePhase;
   completionAttention?: boolean;
 }>();
 
 const { t } = useI18n();
 const statusIconByStatus = {
+  submitting: Loader2Icon,
   running: Loader2Icon,
+  waitingForApproval: Clock3Icon,
+  waitingForInput: MessageCircleIcon,
+  waitingForClient: MonitorIcon,
+  retrying: RefreshCwIcon,
   completedUnviewed: BellDotIcon,
   completed: CheckCircle2Icon,
   failed: CircleAlertIcon,
@@ -43,7 +52,9 @@ const icon = computed(
       :is="icon"
       v-if="icon"
       class="size-3.5"
-      :class="{ 'animate-spin': status === 'running' }"
+      :class="{
+        'animate-spin': status === 'submitting' || status === 'running' || status === 'retrying',
+      }"
     />
     <span v-else class="size-2 rounded-full bg-current opacity-50" />
   </span>

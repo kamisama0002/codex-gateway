@@ -118,6 +118,11 @@ export function applyThreadCatalogUpdate(update: ThreadCatalogUpdate) {
         navigation.hostThreads = sortThreads([update.thread, ...navigation.hostThreads]);
       }
     }
+    // Once an archived item returns to the active catalog, reveal the destination list in every
+    // connected browser instead of leaving the restored row hidden behind the archived filter.
+    navigation.archivedFilterActive = false;
+    navigation.archivedThreads = [];
+    navigation.archivedLoadedKey = null;
     return;
   }
 
@@ -151,7 +156,11 @@ function leaveThreadIfOpen(hostId: number, threadId: string) {
   removeThreadView(hostId, threadId);
   navigation.selectedThreadId = null;
   useGatewayThreadViewStore().resetCurrentView();
-  useGatewayBootstrapStore().clearError();
+  useGatewayBootstrapStore().clearError({
+    hostId,
+    projectId: navigation.selectedProjectId,
+    threadId,
+  });
   const selection = {
     hostId: navigation.selectedHostId,
     projectId: navigation.selectedProjectId,

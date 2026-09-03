@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures/remote-workspace";
 import { openApp } from "./helpers/app";
+import { sendTextTurn } from "./helpers/remote-codex";
 
 test.describe.configure({ mode: "serial" });
 
@@ -14,6 +15,12 @@ test("archives a thread and restores it from the host-tree Archived filter", asy
   const threadButton = page.getByTestId(`thread-button-${threadId}`);
   await expect(threadButton).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`threadId=${threadId}`));
+  await sendTextTurn(page, `E2E archive rollout ${Date.now()}`, {
+    hostId: host.id,
+    threadId,
+    cwd: remoteWorkspace.remote.projectPath,
+  });
+  await expect(threadButton.getByLabel("已完成")).toBeVisible({ timeout: 120_000 });
 
   await threadButton.click({ button: "right" });
   await page.getByRole("menuitem", { name: /归档会话|Archive thread/ }).click();
@@ -49,10 +56,16 @@ test("deletes an archived thread after confirmation and keeps cancel as the safe
   remoteWorkspace,
 }) => {
   await openApp(page);
-  const { project } = await remoteWorkspace.provision();
+  const { host, project } = await remoteWorkspace.provision();
   const threadId = await remoteWorkspace.startThread(project.id);
   const threadButton = page.getByTestId(`thread-button-${threadId}`);
   await expect(threadButton).toBeVisible();
+  await sendTextTurn(page, `E2E delete rollout ${Date.now()}`, {
+    hostId: host.id,
+    threadId,
+    cwd: remoteWorkspace.remote.projectPath,
+  });
+  await expect(threadButton.getByLabel("已完成")).toBeVisible({ timeout: 120_000 });
 
   await threadButton.click({ button: "right" });
   await page.getByRole("menuitem", { name: /归档会话|Archive thread/ }).click();

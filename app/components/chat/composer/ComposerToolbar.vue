@@ -27,7 +27,6 @@ defineProps<{
   labelEffortOption: (option: { value: ReasoningEffort; label?: string }) => string;
   modelOptionValue: (modelOption: { model?: string; id: string }) => string;
   hasComposerInput: boolean;
-  isThreadRunning: boolean;
   canInterruptTurn: boolean;
   canUsePrimaryAction: boolean;
   interruptingTurn: boolean;
@@ -91,10 +90,7 @@ const emit = defineEmits<{
         @click="emit('primaryAction')"
       >
         <Loader2Icon v-if="uploadingAttachments" class="size-3.5 animate-spin" />
-        <Loader2Icon
-          v-else-if="interruptingTurn || (isThreadRunning && hasComposerInput)"
-          class="size-3.5 animate-spin"
-        />
+        <Loader2Icon v-else-if="interruptingTurn" class="size-3.5 animate-spin" />
         <SendIcon v-else-if="hasComposerInput" class="size-3.5" />
         <SquareIcon v-else-if="canInterruptTurn" class="size-3.5 fill-current" />
         <CheckIcon v-else-if="selectedThreadStatus === 'completed'" class="size-3.5" />

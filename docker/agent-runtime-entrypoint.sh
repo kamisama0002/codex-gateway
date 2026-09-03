@@ -18,12 +18,15 @@ if [ -n "${CODEX_GATEWAY_PROVIDER_BASE_URL:-}" ]; then
   # The token stays in the environment and is referenced by Codex's env_key; it is not written to
   # config.toml or argv. Provider values are validated by Runtime Manager before container create.
   printf '%s\n' \
+    "model = \"${CODEX_GATEWAY_MODEL}\"" \
     'model_provider = "codex_gateway"' \
     '[model_providers.codex_gateway]' \
     'name = "Codex Gateway"' \
     "base_url = \"${CODEX_GATEWAY_PROVIDER_BASE_URL}\"" \
     'env_key = "CODEX_GATEWAY_PROVIDER_TOKEN"' \
     'wire_api = "responses"' \
+    'request_max_retries = 2' \
+    'stream_max_retries = 2' \
     > /codex-home/config.toml
 fi
 

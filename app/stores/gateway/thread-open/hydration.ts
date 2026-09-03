@@ -10,6 +10,11 @@ import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { threadIdFromParams } from "../thread-utils/identity";
 import { runtimeStatusFromAuthoritativeThread } from "../thread-utils/status";
+import {
+  isActiveThreadRuntimePhase,
+  runtimePhaseFromAppThreadStatus,
+  runtimePhaseFromStatus,
+} from "~~/shared/thread-runtime-status";
 import type { ThreadSnapshotMessage } from "./transport";
 
 export function applyOpenedThreadResult(threadId: string, result: ThreadOpenResult) {
@@ -120,7 +125,16 @@ function syncRuntimeStatusFromResult(
     runtimeStatusFromAuthoritativeThread(result.thread, fallbackState.history) ??
     result.runtimeStatus ??
     runtimeStatusFromAuthoritativeThread(fallbackState.thread, fallbackState.history);
-  if (status !== null) useGatewayThreadRuntimeStore().setThreadStatus(hostId, threadId, status);
+  if (status !== null) {
+    const appThreadPhase = runtimePhaseFromAppThreadStatus(result.thread.status);
+    const phase =
+      status === "running" && isActiveThreadRuntimePhase(appThreadPhase)
+        ? appThreadPhase
+        : runtimePhaseFromStatus(status);
+    useGatewayThreadRuntimeStore().setThreadStatus(hostId, threadId, status, {
+      phase,
+    });
+  }
 }
 
 function syncTokenUsageFromRecentEvents(events: ThreadOpenResult["recentEvents"]) {
