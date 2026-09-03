@@ -3,7 +3,7 @@ import type { AgentContainerStats } from "./contracts.js";
 export function parseDockerContainerStats(
   value: unknown,
   sampledAtMs = Date.now(),
-): AgentContainerStats {
+): Omit<AgentContainerStats, "cpuQuotaCpus"> {
   const stats = asRecord(value);
   const cpu = asRecord(stats.cpu_stats);
   const preCpu = asRecord(stats.precpu_stats);
