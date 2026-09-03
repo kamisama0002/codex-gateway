@@ -8,7 +8,7 @@ import { useGatewayBrowserStore } from "@/stores/gateway-browser";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { useGatewayWorkspaceLayoutStore } from "@/stores/gateway-workspace-layout";
-import { titleForThread } from "@/stores/gateway/thread-utils/identity";
+import { threadTitleFallbacks, titleForThread } from "@/stores/gateway/thread-utils/identity";
 import { browserWorkspacePanelId } from "@/stores/gateway/workspace-panels";
 import { HOST_METRICS_WORKSPACE_PANEL_ID } from "@/stores/gateway/workspace-panels";
 import { useGatewayHostMetricsPanelStore } from "@/stores/gateway-host-metrics/panels";
@@ -43,7 +43,11 @@ export function useWorkspaceLaunchActions() {
         projectId: selectedProjectId.value,
         threadId: selectedThreadId.value,
         cwd: thread?.cwd ?? selectedProject.value?.remotePath ?? null,
-        title: titleForThread(thread ?? { id: selectedThreadId.value }),
+        title: titleForThread(
+          thread ?? { id: selectedThreadId.value },
+          threadTitleFallbacks(t),
+          threadView.history,
+        ),
       });
       return;
     }

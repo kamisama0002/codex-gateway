@@ -15,6 +15,10 @@ import {
 import type { PinnedThreadRecord, ProjectRecord, SidebarThread } from "../sidebar-types";
 import { firstNonEmptyString } from "~~/shared/utils/strings";
 import { isManagedWorkspaceRootProject } from "~~/shared/runtime/managed-runtime";
+import {
+  findReusableEmptyThread,
+  isEmptyThreadHistory,
+} from "@/stores/gateway/thread-utils/identity";
 
 export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   const store = useGatewayCatalogStore();
@@ -39,9 +43,24 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   const expandedProjectIds = ref<Set<number>>(new Set());
   const expandedMissingProjectHostIds = ref<Set<number>>(new Set());
   const suppressTreeAutoExpand = ref(false);
+  const newConversationPending = ref(false);
   const pinnedThreads = computed(() =>
     sortPinnedThreadsForDisplay(storedPinnedThreads.value, hosts.value),
   );
+  const newConversationProject = computed(() => {
+    const hostId = selectedHostId.value;
+    if (hostId === null) return undefined;
+    const selected = projects.value.find(
+      (project) => project.id === selectedProjectId.value && project.hostId === hostId,
+    );
+    return (
+      selected ??
+      projects.value.find(
+        (project) => project.hostId === hostId && isManagedWorkspaceRootProject(project),
+      )
+    );
+  });
+  const canStartNewConversation = computed(() => newConversationProject.value !== undefined);
 
   const projectThreads = computed(() =>
     threads.value.filter((thread) => thread.pinned !== true).slice(0, 20),
@@ -189,7 +208,7 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   }
 
   function startThreadInProject(project: ProjectRecord) {
-    void threadView.startThread(
+    return threadView.startThread(
       {
         model:
           firstNonEmptyString([store.defaultModel?.model, store.defaultModel?.id]) ?? undefined,
@@ -201,15 +220,55 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     );
   }
 
-  function startNewConversation() {
-    const selected =
-      selectedProjectId.value === null
-        ? undefined
-        : projects.value.find((project) => project.id === selectedProjectId.value);
-    const managedRoot = projects.value.find((project) => isManagedWorkspaceRootProject(project));
-    const project = selected ?? managedRoot;
-    if (!project) return;
-    startThreadInProject(project);
+  async function startNewConversation() {
+    if (newConversationPending.value) return;
+    const project = newConversationProject.value;
+    if (project === undefined) return;
+    threadView.cacheSelectedThreadView();
+    if (
+      selectedHostId.value === project.hostId &&
+      selectedProjectId.value === project.id &&
+      selectedThreadId.value !== null &&
+      isEmptyThreadHistory(threadView.history)
+    ) {
+      return;
+    }
+    const cachedThreads = Object.values(threadView.threadViews).flatMap((view) =>
+      view.currentThread === null
+        ? []
+        : [
+            {
+              ...view.currentThread,
+              hostId: view.hostId,
+              projectId: view.projectId,
+              history: view.history,
+            },
+          ],
+    );
+    const reusable = findReusableEmptyThread(cachedThreads, {
+      hostId: project.hostId,
+      projectId: project.id,
+    });
+    newConversationPending.value = true;
+    try {
+      if (reusable !== null) {
+        await threadView.openThread(String(reusable.id), {
+          hostId: project.hostId,
+          projectId: project.id,
+        });
+        return;
+      }
+      await startThreadInProject(project);
+    } finally {
+      newConversationPending.value = false;
+    }
+  }
+
+  function threadHistory(hostId: number, threadId: string) {
+    if (selectedHostId.value === hostId && selectedThreadId.value === threadId) {
+      return threadView.history;
+    }
+    return threadView.threadViews[threadKey(hostId, threadId)]?.history ?? null;
   }
 
   function threadRuntimeStatus(hostId: number, threadId: string) {
@@ -287,6 +346,8 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     threads,
     projects,
     pinnedThreads,
+    canStartNewConversation,
+    newConversationPending,
     hostConnectionStatuses,
     selectedHostId,
     selectedProjectId,
@@ -306,6 +367,7 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     toggleMissingProjects,
     startThreadInProject,
     startNewConversation,
+    threadHistory,
     threadRuntimeStatus,
     threadCompletionAttention,
     pinnedRuntimeStatus,

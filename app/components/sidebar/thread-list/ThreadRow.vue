@@ -17,11 +17,12 @@ import {
   DropdownMenuTrigger,
 } from "@codex-gateway/ui/dropdown-menu";
 import type { ThreadRuntimePhase } from "@/stores/gateway/types";
-import { titleForThread } from "@/stores/gateway/thread-utils/identity";
+import { threadTitleFallbacks, titleForThread } from "@/stores/gateway/thread-utils/identity";
 import { selectedRowClass } from "../sidebar-utils";
 import SidebarRowLabel from "../SidebarRowLabel.vue";
 import ThreadStatusIndicator from "./ThreadStatusIndicator.vue";
 import type { SidebarThreadRow } from "../sidebar-types";
+import type { ThreadHistoryState } from "~~/shared/types";
 
 const props = defineProps<{
   thread: SidebarThreadRow;
@@ -35,7 +36,9 @@ const props = defineProps<{
   archived?: boolean;
   compact?: boolean;
   longPressHandlers?: Record<string, unknown>;
+  history?: ThreadHistoryState | null;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   open: [];
@@ -49,6 +52,9 @@ const emit = defineEmits<{
 const pressHandlers = computed(() => props.longPressHandlers ?? {});
 const compactMenuOpen = ref(false);
 const showStatus = computed(() => props.status !== "idle" || Boolean(props.completionAttention));
+const threadTitle = computed(() =>
+  titleForThread(props.thread, threadTitleFallbacks(t), props.history),
+);
 
 function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarchive" | "delete") {
   compactMenuOpen.value = false;
@@ -93,11 +99,8 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
               class="size-3 shrink-0 fill-current text-accent-orange"
             />
           </span>
-          <span
-            class="ml-1 min-w-0 flex-1 truncate text-sm leading-5"
-            :title="titleForThread(thread)"
-          >
-            {{ titleForThread(thread) }}
+          <span class="ml-1 min-w-0 flex-1 truncate text-sm leading-5" :title="threadTitle">
+            {{ threadTitle }}
           </span>
           <span
             v-if="subtitle"
@@ -153,7 +156,7 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
             </DropdownMenu>
           </span>
         </span>
-        <SidebarRowLabel v-else :title="titleForThread(thread)" :subtitle="subtitle">
+        <SidebarRowLabel v-else :title="threadTitle" :subtitle="subtitle">
           <template #title-prefix>
             <StarIcon
               v-if="showPinnedIcon"

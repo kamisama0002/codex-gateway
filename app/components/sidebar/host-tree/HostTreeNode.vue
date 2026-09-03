@@ -111,6 +111,7 @@ function projectThreadsExpanded(project: { id: number; hostId: number; remotePat
               :thread="thread"
               :test-id="`archived-thread-button-${thread.id}`"
               :selected="false"
+              :history="controller.threadHistory(project.hostId, String(thread.id))"
               :status="controller.threadRuntimeStatus(project.hostId, String(thread.id))"
               :subtitle="formatRelative(thread.updatedAt)"
               :pin-label="$t('app.pinThread')"
@@ -147,6 +148,7 @@ function projectThreadsExpanded(project: { id: number; hostId: number; remotePat
               :thread="thread"
               :test-id="`thread-button-${thread.id}`"
               :selected="String(thread.id) === String(controller.selectedThreadId)"
+              :history="controller.threadHistory(project.hostId, String(thread.id))"
               :status="controller.threadRuntimeStatus(project.hostId, String(thread.id))"
               :completion-attention="
                 controller.threadCompletionAttention(project.hostId, String(thread.id))

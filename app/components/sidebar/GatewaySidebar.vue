@@ -51,6 +51,8 @@ const {
   pinnedThreads,
   selectedHostId,
   selectedThreadId,
+  canStartNewConversation,
+  newConversationPending,
   openPinnedThread,
   pinnedRuntimeStatus,
   pinnedCompletionAttention,
@@ -95,6 +97,7 @@ const hostTreeController = computed<HostTreeController>(() => ({
     void threadLifecycle.unarchiveAndOpen(thread, thread.projectId ?? null),
   unarchive: threadLifecycle.unarchive,
   deleteThread: threadLifecycle.startDelete,
+  threadHistory: sidebarTree.threadHistory,
   threadRuntimeStatus: sidebarTree.threadRuntimeStatus,
   threadCompletionAttention: sidebarTree.threadCompletionAttention,
 }));
@@ -141,7 +144,7 @@ async function openHostMonitor(hostId: number) {
       <SidebarScrollArea>
         <div class="min-w-0 max-w-full space-y-3 overflow-hidden pr-1">
           <NewConversationButton
-            :disabled="!projects.length"
+            :disabled="!canStartNewConversation || newConversationPending"
             @click="sidebarTree.startNewConversation"
           />
 
@@ -153,6 +156,7 @@ async function openHostMonitor(hostId: number) {
             :long-press-handlers="longPressContextMenuHandlers"
             :runtime-status="pinnedRuntimeStatus"
             :completion-attention="pinnedCompletionAttention"
+            :thread-history="sidebarTree.threadHistory"
             @open="openPinnedThread"
             @unpin="navigation.setPinnedThread($event, false)"
             @rename="threadRename.startRename"

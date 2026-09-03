@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PlusIcon } from "@lucide/vue";
+import { MessageCirclePlusIcon } from "@lucide/vue";
 import { Button } from "@codex-gateway/ui/button";
 
 defineProps<{
@@ -15,16 +15,12 @@ const emit = defineEmits<{
   <Button
     data-testid="new-conversation-button"
     type="button"
-    variant="secondary"
+    variant="outline"
     :disabled="disabled"
-    class="h-10 w-full justify-start gap-2 rounded-xl px-3 text-sm font-normal text-ink shadow-none"
+    class="h-[2.375rem] w-full justify-center gap-1.5 rounded-xl border-hairline bg-surface px-4 text-sm font-medium text-ink shadow-none hover:bg-canvas-soft"
     @click="emit('click')"
   >
-    <span
-      class="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-ink-muted/40"
-    >
-      <PlusIcon class="size-3.5" />
-    </span>
+    <MessageCirclePlusIcon class="size-3.5" />
     {{ $t("app.newChat") }}
   </Button>
 </template>
