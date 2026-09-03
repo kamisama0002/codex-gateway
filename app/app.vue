@@ -10,7 +10,7 @@ import { resetGatewayClientSession } from "@/stores/gateway-bootstrap/session-re
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { useGatewayRealtimeStore } from "@/stores/gateway-realtime";
-import { titleForThread } from "@/stores/gateway/thread-utils/identity";
+import { threadTitleFallbacks, titleForThread } from "@/stores/gateway/thread-utils/identity";
 
 const bootstrap = useGatewayBootstrapStore();
 const navigation = useGatewayNavigationStore();
@@ -18,9 +18,10 @@ const threadView = useGatewayThreadViewStore();
 const realtime = useGatewayRealtimeStore();
 const auth = useAuthStore();
 const device = useDevice();
+const { t } = useI18n();
 const { initializing } = storeToRefs(bootstrap);
 const { selectedThreadId } = storeToRefs(navigation);
-const { currentThread } = storeToRefs(threadView);
+const { currentThread, history } = storeToRefs(threadView);
 const { initialized, isAuthenticated, token } = storeToRefs(auth);
 const mounted = ref(false);
 let activeSessionToken = "";
@@ -29,7 +30,7 @@ const pageTitle = computed(() => {
   if (!selectedThreadId.value || !currentThread.value) {
     return "Codex Gateway";
   }
-  return `${titleForThread(currentThread.value)} - Codex Gateway`;
+  return `${titleForThread(currentThread.value, threadTitleFallbacks(t), history.value)} - Codex Gateway`;
 });
 
 useHead({

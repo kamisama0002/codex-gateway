@@ -21,7 +21,11 @@ import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { projectById } from "@/stores/gateway-catalog/selectors";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
-import { titleForThread } from "@/stores/gateway/thread-utils/identity";
+import {
+  pinnedKey,
+  threadTitleFallbacks,
+  titleForThread,
+} from "@/stores/gateway/thread-utils/identity";
 import type { GatewayThread } from "~~/shared/types";
 
 const catalog = useGatewayCatalogStore();
@@ -30,7 +34,7 @@ const threadView = useGatewayThreadViewStore();
 const { t } = useI18n();
 const { projects } = storeToRefs(catalog);
 const { selectedHostId, selectedProjectId, selectedThreadId, threads } = storeToRefs(navigation);
-const { currentThread, loading } = storeToRefs(threadView);
+const { currentThread, history, loading, threadViews } = storeToRefs(threadView);
 const selectedProject = computed(() => projectById(projects.value, selectedProjectId.value));
 const { longPressTriggered, longPressContextMenuHandlers } = useLongPressContextMenu();
 
@@ -42,9 +46,18 @@ const sortedThreads = computed(() => {
 
 function titleFor(thread: GatewayThread) {
   if (String(thread.id) === String(selectedThreadId.value) && currentThread.value) {
-    return titleForThread({ ...thread, ...currentThread.value });
+    return titleForThread(
+      { ...thread, ...currentThread.value },
+      threadTitleFallbacks(t),
+      history.value,
+    );
   }
-  return titleForThread(thread);
+  const cached = threadViews.value[pinnedKey(thread.hostId, String(thread.id))];
+  return titleForThread(
+    cached?.currentThread ? { ...thread, ...cached.currentThread } : thread,
+    threadTitleFallbacks(t),
+    cached?.history,
+  );
 }
 
 function formatDate(seconds?: number | null) {

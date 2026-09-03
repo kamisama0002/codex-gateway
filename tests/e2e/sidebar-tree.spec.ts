@@ -2,7 +2,15 @@ import { expect, test } from "@playwright/test";
 import { openApp } from "./helpers/app";
 import { installRealtimeThreadSnapshotMock, seedGatewayThread } from "./helpers/gateway-store";
 import { defaultGatewayHost, defaultGatewayProject } from "./fixtures/thread-history";
-import { MANAGED_RUNTIME_HOST_ID, MANAGED_RUNTIME_PROJECT_ID } from "../../shared/runtime/managed-runtime";
+import { gatewayThreadFixture } from "./fixtures/gateway-thread";
+import {
+  MANAGED_RUNTIME_HOST_ID,
+  MANAGED_RUNTIME_PROJECT_ID,
+} from "../../shared/runtime/managed-runtime";
+import {
+  installRealtimeThreadStartCapture,
+  realtimeThreadStartRequests,
+} from "./helpers/realtime-route";
 
 test("collapses the desktop sidebar and restores the saved layout", async ({ page }) => {
   await openApp(page);
@@ -129,6 +137,250 @@ test("shows a new conversation action instead of recent activity", async ({ page
   await expect(page.getByText("新会话", { exact: true })).toBeVisible();
   await expect(page.getByText("最近运行", { exact: true })).toHaveCount(0);
   await expect(page.getByText("工作区", { exact: true }).first()).toBeVisible();
+});
+
+test("labels an empty conversation without exposing its internal id", async ({ page }) => {
+  await openApp(page);
+  const emptyThreadId = "01a067f4-9f0a-7961-93f5-a824064e3380";
+  await seedGatewayThread(page, {
+    hostId: MANAGED_RUNTIME_HOST_ID,
+    projectId: MANAGED_RUNTIME_PROJECT_ID,
+    threadId: emptyThreadId,
+    host: {
+      ...defaultGatewayHost(MANAGED_RUNTIME_HOST_ID),
+      name: "Local",
+      connectionKind: "managed",
+    },
+    project: {
+      ...defaultGatewayProject(MANAGED_RUNTIME_HOST_ID, MANAGED_RUNTIME_PROJECT_ID),
+      name: "workspace",
+      remotePath: "/workspace",
+    },
+    currentThread: {
+      id: emptyThreadId,
+      title: null,
+      name: null,
+      preview: "",
+      cwd: "/workspace",
+      turns: [],
+    },
+    threads: [
+      {
+        id: emptyThreadId,
+        title: null,
+        name: null,
+        preview: "",
+        cwd: "/workspace",
+        turns: [],
+      },
+    ],
+  });
+
+  await expect(page.getByTestId(`thread-button-${emptyThreadId}`)).toContainText("新会话");
+  await expect(page.getByTestId("thread-chat-header")).toContainText("新会话");
+  await expect(page.getByText(emptyThreadId, { exact: true })).toHaveCount(0);
+});
+
+test("reopens the newest empty conversation instead of starting another thread", async ({
+  page,
+}) => {
+  await openApp(page);
+  const existingThreadId = "existing-conversation";
+  const emptyThreadId = "01a067f4-9f0a-7961-93f5-a824064e3380";
+  const completedTurn = {
+    id: "turn-existing",
+    items: [],
+    itemsView: "full" as const,
+    status: "completed" as const,
+    error: null,
+    startedAt: null,
+    completedAt: null,
+    durationMs: null,
+  };
+  const cachedEmptyThread = gatewayThreadFixture(
+    {
+      id: emptyThreadId,
+      title: null,
+      name: null,
+      preview: "",
+      cwd: "/workspace",
+      turns: [],
+      recencyAt: 300,
+      updatedAt: 300,
+    },
+    { hostId: MANAGED_RUNTIME_HOST_ID, projectId: MANAGED_RUNTIME_PROJECT_ID },
+  );
+  await seedGatewayThread(page, {
+    hostId: MANAGED_RUNTIME_HOST_ID,
+    projectId: MANAGED_RUNTIME_PROJECT_ID,
+    threadId: existingThreadId,
+    host: {
+      ...defaultGatewayHost(MANAGED_RUNTIME_HOST_ID),
+      name: "Local",
+      connectionKind: "managed",
+    },
+    project: {
+      ...defaultGatewayProject(MANAGED_RUNTIME_HOST_ID, MANAGED_RUNTIME_PROJECT_ID),
+      name: "workspace",
+      remotePath: "/workspace",
+    },
+    currentThread: {
+      id: existingThreadId,
+      name: "已有会话",
+      cwd: "/workspace",
+      turns: [completedTurn],
+    },
+    history: { thread: { id: existingThreadId, turns: [completedTurn] } },
+    threads: [
+      {
+        id: existingThreadId,
+        name: "已有会话",
+        cwd: "/workspace",
+        turns: [],
+        recencyAt: 400,
+        updatedAt: 400,
+      },
+      {
+        id: emptyThreadId,
+        title: null,
+        name: null,
+        preview: "",
+        cwd: "/workspace",
+        turns: [],
+        recencyAt: 300,
+        updatedAt: 300,
+      },
+    ],
+    threadViews: {
+      [`${MANAGED_RUNTIME_HOST_ID}:${emptyThreadId}`]: {
+        hostId: MANAGED_RUNTIME_HOST_ID,
+        projectId: MANAGED_RUNTIME_PROJECT_ID,
+        threadId: emptyThreadId,
+        currentThread: cachedEmptyThread,
+        history: { thread: { id: emptyThreadId, turns: [] } },
+        events: [],
+        olderTurnsCursor: null,
+        newerTurnsCursor: null,
+        lastEventId: 0,
+        eventEpoch: "e2e-event-epoch",
+        loading: false,
+        error: null,
+      },
+    },
+  });
+  await installRealtimeThreadSnapshotMock(page, {
+    hostId: MANAGED_RUNTIME_HOST_ID,
+    snapshots: {
+      [emptyThreadId]: {
+        thread: {
+          id: emptyThreadId,
+          title: null,
+          name: null,
+          preview: "",
+          cwd: "/workspace",
+          turns: [],
+        },
+        history: { thread: { id: emptyThreadId, turns: [] } },
+        projectId: MANAGED_RUNTIME_PROJECT_ID,
+        runtimeStatus: "idle",
+      },
+    },
+  });
+  installRealtimeThreadStartCapture(page);
+
+  await page.getByTestId("new-conversation-button").click();
+  await expect
+    .poll(() => page.evaluate(() => window.__codexGatewayE2e?.navigation.selectedThreadId ?? null))
+    .toBe(emptyThreadId);
+  await expect(page.getByTestId("thread-chat-header")).toContainText("新会话");
+  await page.getByTestId("new-conversation-button").click();
+
+  await expect.poll(() => realtimeThreadStartRequests(page).length).toBe(0);
+  await expect
+    .poll(() => page.evaluate(() => window.__codexGatewayE2e?.navigation.selectedThreadId ?? null))
+    .toBe(emptyThreadId);
+});
+
+test("starts only one conversation while the first start is pending", async ({ page }) => {
+  await openApp(page);
+  const existingThreadId = "existing-before-double-click";
+  const completedTurn = {
+    id: "turn-existing-before-double-click",
+    items: [],
+    itemsView: "full" as const,
+    status: "completed" as const,
+    error: null,
+    startedAt: null,
+    completedAt: null,
+    durationMs: null,
+  };
+  await seedGatewayThread(page, {
+    hostId: MANAGED_RUNTIME_HOST_ID,
+    projectId: MANAGED_RUNTIME_PROJECT_ID,
+    threadId: existingThreadId,
+    host: {
+      ...defaultGatewayHost(MANAGED_RUNTIME_HOST_ID),
+      name: "Local",
+      connectionKind: "managed",
+    },
+    project: {
+      ...defaultGatewayProject(MANAGED_RUNTIME_HOST_ID, MANAGED_RUNTIME_PROJECT_ID),
+      name: "workspace",
+      remotePath: "/workspace",
+    },
+    currentThread: {
+      id: existingThreadId,
+      name: "已有会话",
+      cwd: "/workspace",
+      turns: [],
+    },
+    history: { thread: { id: existingThreadId, turns: [completedTurn] } },
+    threads: [{ id: existingThreadId, name: "已有会话", cwd: "/workspace", turns: [] }],
+  });
+  installRealtimeThreadStartCapture(page);
+
+  await page.getByTestId("new-conversation-button").evaluate((element) => {
+    if (!(element instanceof HTMLButtonElement)) throw new Error("Expected a button");
+    element.click();
+    element.click();
+  });
+
+  await expect.poll(() => realtimeThreadStartRequests(page).length).toBe(1);
+  await expect(page.getByTestId("new-conversation-button")).toBeDisabled();
+});
+
+test("does not start a managed conversation for a selected host without a project", async ({
+  page,
+}) => {
+  await openApp(page);
+  const remoteHostId = 901;
+  await seedGatewayThread(page, {
+    hostId: remoteHostId,
+    projectId: null,
+    threadId: null,
+    host: { ...defaultGatewayHost(remoteHostId), name: "Remote without project" },
+    project: null,
+  });
+  await page.evaluate(
+    ({ managedHostId, managedProjectId, project }) => {
+      const driver = window.__codexGatewayE2e;
+      if (!driver) throw new Error("Gateway E2E driver is unavailable");
+      driver.catalog.projects = [{ ...project, hostId: managedHostId, id: managedProjectId }];
+    },
+    {
+      managedHostId: MANAGED_RUNTIME_HOST_ID,
+      managedProjectId: MANAGED_RUNTIME_PROJECT_ID,
+      project: defaultGatewayProject(MANAGED_RUNTIME_HOST_ID, MANAGED_RUNTIME_PROJECT_ID),
+    },
+  );
+  installRealtimeThreadStartCapture(page);
+
+  await expect(page.getByTestId("new-conversation-button")).toBeDisabled();
+  await page.getByTestId("new-conversation-button").evaluate((element) => {
+    if (!(element instanceof HTMLButtonElement)) throw new Error("Expected a button");
+    element.click();
+  });
+  await expect.poll(() => realtimeThreadStartRequests(page).length).toBe(0);
 });
 
 test("hides the default workspace folder and lists its threads under 工作区", async ({ page }) => {

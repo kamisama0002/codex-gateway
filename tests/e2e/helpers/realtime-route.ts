@@ -36,6 +36,8 @@ export interface MockThreadSnapshotInput {
 interface RealtimeRouteState {
   snapshots: MockThreadSnapshotInput | null;
   activateRequests: RealtimeClientMessage[];
+  captureThreadStarts: boolean;
+  threadStartRequests: Array<Extract<RealtimeClientMessage, { type: "thread.start" }>>;
   captureInterrupts: boolean;
   interruptRequest: Extract<RealtimeClientMessage, { type: "turn.interrupt" }> | null;
   serverRequestResponse: ServerRequestResponseRouteState | null;
@@ -78,6 +80,8 @@ export async function installRealtimeRoute(page: Page) {
   const state: RealtimeRouteState = {
     snapshots: null,
     activateRequests: [],
+    captureThreadStarts: false,
+    threadStartRequests: [],
     captureInterrupts: false,
     interruptRequest: null,
     serverRequestResponse: null,
@@ -103,6 +107,16 @@ export function installRealtimeInterruptRoute(page: Page) {
   const state = requireRealtimeRoute(page);
   state.captureInterrupts = true;
   state.interruptRequest = null;
+}
+
+export function installRealtimeThreadStartCapture(page: Page) {
+  const state = requireRealtimeRoute(page);
+  state.captureThreadStarts = true;
+  state.threadStartRequests = [];
+}
+
+export function realtimeThreadStartRequests(page: Page) {
+  return [...(routes.get(page)?.threadStartRequests ?? [])];
 }
 
 export function installRealtimeServerRequestResponseRoute(
@@ -171,6 +185,10 @@ function handleClientMessage(
   const message = parseRealtimeClientMessage(JSON.parse(raw.toString()));
   if (message.type === "thread.activate" && state.snapshots !== null) {
     handleThreadActivate(state, connection, message);
+    return;
+  }
+  if (message.type === "thread.start" && state.captureThreadStarts) {
+    state.threadStartRequests.push(message);
     return;
   }
   if (message.type === "turn.interrupt" && state.captureInterrupts) {
