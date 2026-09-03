@@ -13,6 +13,7 @@ allowBuilds:
   cpu-features: true
   esbuild: true
   maplibre-gl: false
+  protobufjs: true
   ssh2: true
   vue-demi: true
 

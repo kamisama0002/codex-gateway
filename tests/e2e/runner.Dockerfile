@@ -16,12 +16,17 @@ WORKDIR /workspace/codex-gateway
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY patches ./patches
 COPY packages ./packages
+# The full Contracts typecheck intentionally imports the browser boundary from root shared types.
+# Copy only that real package dependency here; the rest of the mutable application stays below.
+COPY shared ./shared
 RUN --mount=type=cache,id=codex-gateway-e2e-pnpm-store,target=/pnpm/store \
   pnpm install --frozen-lockfile
 
 COPY . /workspace/source
 
 COPY tests/e2e/runner-entrypoint.sh /usr/local/bin/codex-gateway-e2e-runner
-RUN chmod +x /usr/local/bin/codex-gateway-e2e-runner
+COPY tests/e2e/gateway-supervisor.sh /usr/local/bin/codex-gateway-e2e-supervisor
+RUN chmod +x /usr/local/bin/codex-gateway-e2e-runner \
+  /usr/local/bin/codex-gateway-e2e-supervisor
 
 ENTRYPOINT ["codex-gateway-e2e-runner"]

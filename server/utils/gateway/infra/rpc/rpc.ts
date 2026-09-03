@@ -6,7 +6,7 @@ import { codexRuntime } from "../host-services";
 import { hostLifecycleBus } from "../../state/host-events";
 import { RpcRequestBroker } from "./rpc-request-broker";
 import {
-  CodexRpcTransport,
+  createCodexRpcTransport,
   type CodexRpcTransportOptions,
   type RpcTransport,
 } from "./rpc-transport";
@@ -72,8 +72,9 @@ export class CodexRpcClient extends EventEmitter<CodexRpcClientEvents> {
       return;
     }
 
+    const managed = (this.host.connectionKind ?? "ssh") === "managed";
     let versionState =
-      this.options.skipVersionCheck === true
+      this.options.skipVersionCheck === true || managed
         ? null
         : await codexRuntime.ensureCodexVersion(this.host);
     this.assertCurrentConnection(generation);
@@ -83,7 +84,7 @@ export class CodexRpcClient extends EventEmitter<CodexRpcClientEvents> {
       await this.connectRemoteProxyWebSocket(generation);
     } catch (error) {
       this.assertCurrentConnection(generation);
-      if (this.options.skipVersionCheck === true) {
+      if (this.options.skipVersionCheck === true || managed) {
         throw error;
       }
       versionState = await codexRuntime.repairAfterProxyFailure(this.host, error);
@@ -221,7 +222,7 @@ export class CodexRpcClient extends EventEmitter<CodexRpcClientEvents> {
     };
     const transport =
       this.options.transportFactory?.(this.host, transportOptions) ??
-      new CodexRpcTransport(this.host, transportOptions);
+      createCodexRpcTransport(this.host, transportOptions);
     this.transport = transport;
     try {
       await transport.connect();

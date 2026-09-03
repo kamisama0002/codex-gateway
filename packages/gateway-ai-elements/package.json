@@ -8,10 +8,7 @@
   ],
   "exports": {
     "./tailwind.css": "./tailwind.css",
-    "./*": {
-      "types": "./dist/types/*/index.d.ts",
-      "import": "./dist/*/index.js"
-    }
+    "./*": "./src/*/index.ts"
   },
   "scripts": {
     "build": "rimraf dist && vite build && vue-tsc -p tsconfig.json --declaration --emitDeclarationOnly --outDir dist/types",

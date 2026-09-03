@@ -4,6 +4,7 @@ import { PlugZapIcon } from "@lucide/vue";
 import { Badge } from "@codex-gateway/ui/badge";
 import { useGatewayMcpRuntimeStore } from "@/stores/gateway-mcp-runtime";
 import { pinnedKey } from "@/stores/gateway/thread-utils/identity";
+import { isAppServerThreadId } from "~~/shared/runtime/app-server";
 
 const props = defineProps<{ hostId: number | null; threadId: string }>();
 const runtime = useGatewayMcpRuntimeStore();
@@ -24,7 +25,9 @@ const attention = computed(() =>
 watch(
   () => [props.hostId, props.threadId] as const,
   ([hostId, threadId]) => {
-    if (hostId !== null) void runtime.refreshStatuses(hostId, threadId);
+    if (hostId !== null && isAppServerThreadId(threadId)) {
+      void runtime.refreshStatuses(hostId, threadId);
+    }
   },
   { immediate: true },
 );
@@ -33,7 +36,7 @@ watch(
 <template>
   <div
     v-if="attention.length"
-    class="flex min-h-9 shrink-0 items-center gap-2 overflow-x-auto border-b border-hairline bg-canvas-soft/55 px-3 text-xs"
+    class="flex min-h-8 shrink-0 items-center gap-2 overflow-x-auto border-b border-hairline px-3 text-xs"
     data-testid="mcp-runtime-status"
   >
     <PlugZapIcon class="size-3.5 shrink-0 text-ink-muted" />

@@ -7,7 +7,9 @@ export function formatByteRate(value: number | null) {
 }
 
 export function formatPercent(value: number | null) {
-  return value === null ? "-" : `${value.toFixed(1)}%`;
+  if (value === null) return "-";
+  const digits = value > 0 && value < 1 ? 2 : 1;
+  return `${value.toFixed(digits)}%`;
 }
 
 export function formatMetricDuration(seconds: number | null) {

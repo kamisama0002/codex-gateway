@@ -88,9 +88,9 @@ function run(command: StateCommand) {
 
 <template>
   <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface">
-    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-hairline px-3">
-      <span class="min-w-0 flex-1 truncate text-sm font-medium" :title="path">{{ path }}</span>
-      <span class="text-xs font-semibold" :class="gitStatusTextClass(change.status)">
+    <div class="flex h-8 shrink-0 items-center gap-1.5 border-b border-hairline px-2">
+      <span class="min-w-0 flex-1 truncate text-xs font-medium" :title="path">{{ path }}</span>
+      <span class="text-[0.6875rem] font-semibold" :class="gitStatusTextClass(change.status)">
         {{ gitStatusCode(change.status) }}
       </span>
       <Button

@@ -124,6 +124,20 @@ const threadRuntimeStatusUpdateSchema = z
     hostId: positiveId,
     threadId: nonEmptyString,
     status: z.enum(["idle", "running", "completed", "failed", "interrupted"]),
+    phase: z
+      .enum([
+        "idle",
+        "submitting",
+        "running",
+        "waitingForApproval",
+        "waitingForInput",
+        "waitingForClient",
+        "retrying",
+        "completed",
+        "failed",
+        "interrupted",
+      ])
+      .optional(),
     turnId: z.string().nullable().optional(),
   })
   .strict();
@@ -406,6 +420,15 @@ export const realtimeServerMessageSchema: z.ZodType<RealtimeServerMessage> = z.d
       .object({ type: z.literal("notification.published"), notification: notificationSchema })
       .strict(),
     z.object({ type: z.literal("config.pinnedThreads.changed") }).strict(),
+    z
+      .object({
+        type: z.literal("thread.catalog.updated"),
+        hostId: positiveId,
+        threadId: nonEmptyString,
+        action: z.enum(["archived", "unarchived", "deleted"]),
+        thread: gatewayThreadSchema.nullable(),
+      })
+      .strict(),
     z
       .object({
         type: z.literal("thread.runtime.snapshot"),

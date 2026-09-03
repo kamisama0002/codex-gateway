@@ -84,12 +84,12 @@ function openFile(path: string, view?: "source" | "changes") {
           />
           <div
             v-else
-            class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 bg-canvas text-center text-ink-muted"
+            class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 bg-canvas text-center text-ink-muted"
           >
-            <FilesIcon class="size-9 text-ink-faint" />
+            <FilesIcon class="size-6 text-ink-faint" />
             <div>
               <div class="text-sm font-medium text-ink">{{ $t("app.noOpenFiles") }}</div>
-              <div class="mt-1 text-xs">{{ $t("app.chooseFileFromTree") }}</div>
+              <div class="mt-0.5 text-xs">{{ $t("app.chooseFileFromTree") }}</div>
             </div>
           </div>
         </div>
@@ -102,7 +102,7 @@ function openFile(path: string, view?: "source" | "changes") {
           <Button
             variant="ghost"
             size="sm"
-            class="h-10 shrink-0 rounded-none border-r border-hairline px-3"
+            class="h-8 shrink-0 rounded-none border-r border-hairline px-2.5 text-xs"
             @click="mobileTreeOpen = true"
           >
             <FilesIcon class="size-4" />
@@ -126,9 +126,9 @@ function openFile(path: string, view?: "source" | "changes") {
         />
         <div
           v-else
-          class="flex flex-1 flex-col items-center justify-center gap-3 bg-canvas text-center text-ink-muted"
+          class="flex flex-1 flex-col items-center justify-center gap-2 bg-canvas text-center text-ink-muted"
         >
-          <FilesIcon class="size-9 text-ink-faint" />
+          <FilesIcon class="size-6 text-ink-faint" />
           <Button variant="outline" size="sm" @click="mobileTreeOpen = true">
             {{ $t("app.openFileTree") }}
           </Button>

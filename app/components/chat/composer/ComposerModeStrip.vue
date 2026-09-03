@@ -63,10 +63,10 @@ watch(
 </script>
 
 <template>
-  <div v-if="showStrip" data-testid="composer-mode-strip" class="mb-2 space-y-2">
+  <div v-if="showStrip" data-testid="composer-mode-strip" class="mb-1.5 space-y-1.5">
     <div
       v-if="planModeActive"
-      class="flex min-w-0 items-center gap-2 rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-ink shadow-sm shadow-ink/5 md:text-base"
+      class="flex min-w-0 items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-xs text-ink md:text-sm"
     >
       <span class="shrink-0 font-medium text-primary">{{ $t("app.planModeActive") }}</span>
       <span v-if="planSummary" class="min-w-0 flex-1 truncate text-ink-secondary">
@@ -86,7 +86,7 @@ watch(
 
     <div
       v-if="showGoalInputHint"
-      class="flex min-w-0 items-center gap-2 rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-ink shadow-sm shadow-ink/5 md:text-base"
+      class="flex min-w-0 items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-xs text-ink md:text-sm"
     >
       <span class="shrink-0 font-medium text-primary">{{ $t("app.goalModeActive") }}</span>
       <span class="min-w-0 truncate text-ink-secondary">{{ $t("app.goalInputHint") }}</span>

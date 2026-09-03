@@ -1,5 +1,6 @@
 export type {
   HostAuthMode,
+  HostConnectionKind,
   HostCreateInput,
   HostRecord,
   HostUpdateInput,
@@ -10,6 +11,7 @@ export type {
   RpcEnvelope,
   GatewayEvent,
 } from "./types/records";
+export { MANAGED_RUNTIME_HOST_ID } from "./runtime/managed-runtime";
 export type {
   ApprovalPolicy,
   AppServerSessionSource,
@@ -25,6 +27,7 @@ export type {
   ThreadGoalTimelineItem,
   ThreadOpenResult,
   ThreadRuntimeStatus,
+  ThreadRuntimePhase,
   ThreadRuntimeStatusUpdate,
   ThreadCollaborationMode,
   ThreadSettingsState,
@@ -42,6 +45,15 @@ export type {
   McpServerEvent,
 } from "./types/mcp";
 export type { ModelListResult, ModelRecord } from "./types/models";
+export type {
+  ModelCapabilities,
+  ModelProviderDefinition,
+  ProviderModelDefinition,
+  PublicModelProviderDefinition,
+  UpstreamWireApi,
+  UserModelGrant,
+  UserProviderModel,
+} from "./types/providers";
 export type { TerminalOpenTarget, TerminalScope, TerminalSessionSnapshot } from "./types/terminal";
 export type {
   BrowserPreviewResourceFailure,
@@ -106,6 +118,11 @@ export type {
   ThreadHistoryTurn,
   ThreadResponseUsage,
 } from "./thread-history/types";
+export type {
+  ManagedRuntimeStatus,
+  RuntimeStatus,
+  RuntimeType,
+} from "@codex-gateway/agent-runtime-contracts";
 export type {
   ThreadTimelineHistoryState,
   ThreadTimelineItem,

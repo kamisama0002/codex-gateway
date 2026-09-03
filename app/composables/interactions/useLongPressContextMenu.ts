@@ -9,7 +9,10 @@ interface LongPressContextMenuOptions {
 }
 
 export function useLongPressContextMenu(options: LongPressContextMenuOptions = {}) {
-  const delayMs = options.delayMs ?? 550;
+  // Keep enough distance from a normal 700ms touch release for a busy mobile main thread to run
+  // the timer before pointerup clears it. Movement still cancels the gesture, so 450ms remains
+  // deliberate without making ordinary taps open a menu.
+  const delayMs = options.delayMs ?? 450;
   const menuWidthEstimate = options.menuWidthEstimate ?? 220;
   const moveTolerance = options.moveTolerance ?? 12;
   const longPressTriggered = ref(false);

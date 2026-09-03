@@ -1,0 +1,31 @@
+{
+  "agent": {
+    "appServer": {
+      "command": [
+        "codex",
+        "app-server",
+        "--listen",
+        "ws://0.0.0.0:4500",
+        "--ws-auth",
+        "capability-token",
+        "--ws-token-sha256",
+        "<sha256(CODEX_REMOTE_TOKEN)>"
+      ],
+      "port": 4500
+    },
+    "capDrop": ["ALL"],
+    "codexHome": "/codex-home",
+    "image": "codex-agent-runtime:0.151.0",
+    "labels": {
+      "com.qiancheng.codex.version": "0.151.0"
+    },
+    "publishedPorts": [],
+    "readOnlyRootFilesystem": true,
+    "securityOpt": ["no-new-privileges:true"],
+    "tmpfs": {
+      "/tmp": "rw,nosuid,nodev,noexec,size=64m"
+    },
+    "user": "10001:10001",
+    "workspace": "/workspace"
+  }
+}

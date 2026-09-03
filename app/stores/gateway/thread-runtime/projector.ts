@@ -1,4 +1,8 @@
-import type { ThreadRuntimeStatus } from "~~/shared/types";
+import type { ThreadRuntimePhase, ThreadRuntimeStatus } from "~~/shared/types";
+import {
+  isActiveThreadRuntimePhase,
+  runtimePhaseFromStatus,
+} from "~~/shared/thread-runtime-status";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
@@ -10,6 +14,7 @@ import { syncThreadCompletionAttention } from "./completion-attention";
 export interface ThreadRuntimeProjection {
   key: string;
   status: ThreadRuntimeStatus;
+  phase: ThreadRuntimePhase;
   activeTurnId: string | null;
   canSteer: boolean;
   canInterrupt: boolean;
@@ -17,6 +22,7 @@ export interface ThreadRuntimeProjection {
 
 export interface ThreadRuntimeStatusInput {
   status: ThreadRuntimeStatus;
+  phase?: ThreadRuntimePhase;
   turnId?: string | null;
 }
 
@@ -30,13 +36,16 @@ export function projectThreadRuntime(hostId: number, threadId: string): ThreadRu
   const runtime = useGatewayThreadRuntimeStore();
   const key = pinnedKey(hostId, threadId);
   const status = runtime.threadStatuses[key] ?? "idle";
+  const phase = runtime.threadPhases[key] ?? runtimePhaseFromStatus(status);
   const activeTurnId = activeTurnIdForStatus(hostId, threadId, status);
+  const active = status === "running" && isActiveThreadRuntimePhase(phase);
   return {
     key,
     status,
+    phase,
     activeTurnId,
-    canSteer: status === "running" && Boolean(activeTurnId),
-    canInterrupt: status === "running" && Boolean(activeTurnId),
+    canSteer: active && Boolean(activeTurnId),
+    canInterrupt: active && Boolean(activeTurnId),
   };
 }
 
@@ -51,6 +60,10 @@ export function applyThreadRuntimeStatus(
   const previousStatus = runtime.threadStatuses[key];
 
   runtime.threadStatuses = { ...runtime.threadStatuses, [key]: input.status };
+  runtime.threadPhases = {
+    ...runtime.threadPhases,
+    [key]: input.phase ?? runtimePhaseFromStatus(input.status),
+  };
   useGatewayThreadActivityStore().recordRuntimeStatus(hostId, threadId, input.status);
   syncThreadCompletionAttention(hostId, threadId, previousStatus, input.status);
 
@@ -86,7 +99,11 @@ export function rememberThreadTerminalProcess(
     ...runtime.activeTerminalProcessByThreadKey,
     [key]: input,
   };
-  applyThreadRuntimeStatus(hostId, threadId, { status: "running", turnId: input.turnId });
+  applyThreadRuntimeStatus(hostId, threadId, {
+    status: "running",
+    phase: "running",
+    turnId: input.turnId,
+  });
 }
 
 export function clearThreadTerminalProcess(

@@ -18,7 +18,7 @@ import {
   messageFromRetryFailure,
 } from "./messages";
 import { upsertHistoryItem } from "../history";
-import { createRetryTimer, waitForRetry } from "./scheduler";
+import { createRetryTimer, delayForRetry, waitForRetry } from "./scheduler";
 import type { ThreadHistoryTurn } from "~~/shared/thread-history/types";
 import {
   clearPendingTurnRequest,
@@ -60,10 +60,15 @@ export function queueServerOverloadedRetryNotice(
   }
   if (request.retryCount >= MAX_SERVER_OVERLOADED_RETRIES) {
     clearPendingTurnRequest(hostId, threadId);
+    useGatewayThreadRuntimeStore().setThreadStatus(hostId, threadId, "failed", {
+      phase: "failed",
+    });
     useGatewayBootstrapStore().setError(buildRetryExhaustedMessage(t, error, request.retryCount), {
       hostId,
       projectId: request.projectId,
       threadId,
+      category: "unavailable",
+      toast: false,
     });
     return true;
   }
@@ -110,9 +115,10 @@ async function handleImmediateOverloadRetry<T>(
     throw error;
   }
   for (let attempt = 1; attempt <= MAX_SERVER_OVERLOADED_RETRIES; attempt += 1) {
-    updateRetryAttempt(request, attempt);
+    updateRetryAttempt(request, attempt, Date.now() + delayForRetry(attempt));
     setThreadRetryError(t, request, attempt);
     await waitForRetry(attempt);
+    updateRetryAttempt(request, attempt);
     try {
       const result = await execute();
       updateRetryAttempt(request, attempt);
@@ -132,10 +138,11 @@ async function handleImmediateOverloadRetry<T>(
 }
 
 function scheduleStoredTurnRetry(t: Translate, request: SubmittedTurnRequestState) {
-  const retryTimer = createRetryTimer(request.retryCount + 1, () => {
+  const attempt = request.retryCount + 1;
+  const retryTimer = createRetryTimer(attempt, () => {
     void retryStoredTurnRequest(t, request.hostId, request.threadId);
   });
-  storeRetryTimer(request, retryTimer);
+  storeRetryTimer(request, retryTimer, Date.now() + delayForRetry(attempt));
 }
 
 async function retryStoredTurnRequest(t: Translate, hostId: number, threadId: string) {
@@ -145,9 +152,12 @@ async function retryStoredTurnRequest(t: Translate, hostId: number, threadId: st
   }
   useGatewayThreadTurnsStore().patchRequest(hostId, threadId, {
     retryTimer: null,
+    retryAt: null,
     pendingRetryTurnId: null,
   });
-  useGatewayThreadRuntimeStore().setThreadStatus(hostId, threadId, "running");
+  useGatewayThreadRuntimeStore().setThreadStatus(hostId, threadId, "running", {
+    phase: "retrying",
+  });
   clearThreadScopedError(hostId, threadId);
   try {
     await executeStoredTurnRequest(t, request);
@@ -197,18 +207,30 @@ function handleRetryFailure(t: Translate, request: SubmittedTurnRequestState, er
     return;
   }
   clearPendingTurnRequest(request.hostId, request.threadId);
+  useGatewayThreadRuntimeStore().setThreadStatus(request.hostId, request.threadId, "failed", {
+    phase: "failed",
+  });
   useGatewayBootstrapStore().setError(messageFromRetryFailure(t, request, error), {
     hostId: request.hostId,
     projectId: request.projectId,
     threadId: request.threadId,
+    category: "unavailable",
+    toast: false,
   });
 }
 
 function setThreadRetryError(t: Translate, request: SubmittedTurnRequestInput, attempt: number) {
+  useGatewayThreadRuntimeStore().setThreadStatus(request.hostId, request.threadId, "running", {
+    phase: "retrying",
+  });
   useGatewayBootstrapStore().setError(buildRetryingMessage(t, attempt), {
     hostId: request.hostId,
     projectId: request.projectId,
     threadId: request.threadId,
+    transient: true,
+    category: "unavailable",
+    retryable: true,
+    toast: false,
   });
 }
 

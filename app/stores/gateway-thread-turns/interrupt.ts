@@ -1,16 +1,10 @@
-import { threadTurnsFromHistory } from "~~/shared/thread-history/shape";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
-import {
-  errorMessageLabels,
-  messageFromError,
-  pinnedKey,
-} from "@/stores/gateway/thread-utils/identity";
-import { activeRemoteTurnId } from "@/stores/gateway/thread-turns/active-turn";
+import { errorMessageLabels, messageFromError } from "@/stores/gateway/thread-utils/identity";
+import { isNoActiveTurnToInterruptError } from "~~/shared/turn-interrupt";
 import { requestTurnInterrupt } from "./transport";
-import { historyForThread } from "./history";
 import type { Translate } from "./types";
 
 export async function interruptActiveTurn(t: Translate) {
@@ -36,19 +30,18 @@ export async function interruptThreadTurn(
   const turnId = runtime.threadRuntimeProjection(input.hostId, input.threadId).activeTurnId;
   if (turnId === null) {
     runtime.setThreadStatus(input.hostId, input.threadId, "completed");
-    gateway.setError(noActiveTurnToInterruptMessage(t, input.hostId, input.threadId), {
-      hostId: input.hostId,
-      projectId,
-      threadId: input.threadId,
-    });
     return;
   }
 
   views.loading = true;
-  gateway.clearError();
+  gateway.clearError({ hostId: input.hostId, projectId, threadId: input.threadId });
   try {
     await requestTurnInterrupt(input.hostId, input.threadId, turnId);
   } catch (error: unknown) {
+    if (isNoActiveTurnToInterruptError(error)) {
+      runtime.setThreadStatus(input.hostId, input.threadId, "completed");
+      return;
+    }
     gateway.setError(messageFromError(error, t("app.interruptTurnFailed"), errorMessageLabels(t)), {
       hostId: input.hostId,
       projectId,
@@ -57,22 +50,4 @@ export async function interruptThreadTurn(
   } finally {
     views.loading = false;
   }
-}
-
-function noActiveTurnToInterruptMessage(t: Translate, hostId: number, threadId: string) {
-  const runtime = useGatewayThreadRuntimeStore();
-  const history = historyForThread(hostId, threadId);
-  const turns = threadTurnsFromHistory(history);
-  const lastTurn = turns[turns.length - 1];
-  const key = pinnedKey(hostId, threadId);
-  return [
-    t("app.noActiveTurnToInterrupt"),
-    `hostId=${hostId}`,
-    `threadId=${threadId}`,
-    `runtimeStatus=${runtime.threadStatuses[key] ?? "unknown"}`,
-    `storedActiveTurnId=${runtime.activeTurnIdsByThreadKey[key] ?? "none"}`,
-    `historyActiveTurnId=${activeRemoteTurnId(history) ?? "none"}`,
-    `lastTurnId=${lastTurn?.id ?? "none"}`,
-    `lastTurnStatus=${JSON.stringify(lastTurn?.status ?? null)}`,
-  ].join("\n");
 }

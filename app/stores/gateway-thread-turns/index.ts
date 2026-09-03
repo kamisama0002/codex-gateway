@@ -15,19 +15,22 @@ export interface SubmittedTurnRequestState {
   retryCount: number;
   pendingRetryTurnId: string | null;
   retryTimer: number | null;
+  retryAt: number | null;
 }
 
 export type SubmittedTurnRequestInput = Omit<
   SubmittedTurnRequestState,
-  "retryCount" | "pendingRetryTurnId" | "retryTimer"
+  "retryCount" | "pendingRetryTurnId" | "retryTimer" | "retryAt"
 >;
 
 export const useGatewayThreadTurnsStore = defineStore("gateway-thread-turns", () => {
   const state = reactive<{
     submittedTurnRequestsByKey: Record<string, SubmittedTurnRequestState>;
+    lastTurnRequestsByKey: Record<string, SubmittedTurnRequestInput>;
     loadingTurnItemsByKey: Record<string, boolean>;
   }>({
     submittedTurnRequestsByKey: {},
+    lastTurnRequestsByKey: {},
     loadingTurnItemsByKey: {},
   });
 
@@ -52,7 +55,12 @@ export const useGatewayThreadTurnsStore = defineStore("gateway-thread-turns", ()
         retryCount: 0,
         pendingRetryTurnId: null,
         retryTimer: null,
+        retryAt: null,
       },
+    };
+    state.lastTurnRequestsByKey = {
+      ...state.lastTurnRequestsByKey,
+      [key]: input,
     };
   }
 
@@ -96,6 +104,10 @@ export const useGatewayThreadTurnsStore = defineStore("gateway-thread-turns", ()
     return state.submittedTurnRequestsByKey[key];
   }
 
+  function lastRequestForThread(hostId: number, threadId: string) {
+    return state.lastTurnRequestsByKey[requestKey(hostId, threadId)];
+  }
+
   function resetState() {
     for (const request of Object.values(state.submittedTurnRequestsByKey)) {
       if (request.retryTimer !== null) {
@@ -103,6 +115,7 @@ export const useGatewayThreadTurnsStore = defineStore("gateway-thread-turns", ()
       }
     }
     state.submittedTurnRequestsByKey = {};
+    state.lastTurnRequestsByKey = {};
     state.loadingTurnItemsByKey = {};
   }
 
@@ -131,6 +144,7 @@ export const useGatewayThreadTurnsStore = defineStore("gateway-thread-turns", ()
     patchRequest,
     setRequest,
     requestByKey,
+    lastRequestForThread,
     turnItemsKey,
     setTurnItemsLoading,
     resetState,

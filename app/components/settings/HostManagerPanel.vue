@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { ServerIcon, Trash2Icon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { Badge } from "@codex-gateway/ui/badge";
@@ -7,18 +8,21 @@ import { ScrollArea } from "@codex-gateway/ui/scroll-area";
 import { hostConnectionClass, hostConnectionLabelKey } from "@/components/sidebar/sidebar-utils";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 
 const catalog = useGatewayCatalogStore();
 const navigation = useGatewayNavigationStore();
 const { hosts, hostConnectionStatuses } = storeToRefs(catalog);
 const { selectedHostId } = storeToRefs(navigation);
 const { t } = useI18n();
+const sshHosts = computed(() => hosts.value.filter((host) => !isManagedRuntimeHost(host)));
 
 async function selectHost(hostId: number) {
   await catalog.selectHost(hostId);
 }
 
 async function deleteHost(hostId: number) {
+  if (isManagedRuntimeHost({ id: hostId })) return;
   await catalog.deleteHost(hostId);
 }
 
@@ -50,13 +54,13 @@ function hostStatusClass(hostId: number) {
   <section class="space-y-2">
     <div class="flex items-center justify-between px-1">
       <div class="text-xs font-medium text-ink-secondary">{{ t("app.hosts") }}</div>
-      <Badge variant="secondary">{{ hosts.length }}</Badge>
+      <Badge variant="secondary">{{ sshHosts.length }}</Badge>
     </div>
 
     <ScrollArea class="max-h-56">
       <div class="space-y-1 pr-2">
         <div
-          v-for="host in hosts"
+          v-for="host in sshHosts"
           :key="host.id"
           class="rounded-lg p-1"
           :class="host.id === selectedHostId ? 'bg-primary/10' : 'hover:bg-canvas-soft'"

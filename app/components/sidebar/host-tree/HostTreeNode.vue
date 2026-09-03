@@ -1,13 +1,6 @@
 <script setup lang="ts">
-import {
-  ChevronDownIcon,
-  ChevronRightIcon,
-  FolderIcon,
-  FolderXIcon,
-  ServerIcon,
-  ChartNoAxesCombinedIcon,
-  Trash2Icon,
-} from "@lucide/vue";
+import { computed } from "vue";
+import { FolderIcon, FolderXIcon, ChartNoAxesCombinedIcon, Trash2Icon } from "@lucide/vue";
 import { Button } from "@codex-gateway/ui/button";
 import {
   ContextMenu,
@@ -16,43 +9,54 @@ import {
   ContextMenuTrigger,
 } from "@codex-gateway/ui/context-menu";
 import type { HostRecord } from "../sidebar-types";
-import { formatRelative, selectedRowClass } from "../sidebar-utils";
+import { formatRelative } from "../sidebar-utils";
 import HostStatusIndicator from "./HostStatusIndicator.vue";
-import SidebarRowLabel from "../SidebarRowLabel.vue";
 import SidebarProjectRow from "./SidebarProjectRow.vue";
 import ThreadRow from "../thread-list/ThreadRow.vue";
 import { requireHostTreeController } from "./controller";
+import {
+  isManagedRuntimeHost,
+  isManagedWorkspaceRootProject,
+} from "~~/shared/runtime/managed-runtime";
 
-defineProps<{ host: HostRecord }>();
+const props = defineProps<{ host: HostRecord }>();
 const controller = requireHostTreeController();
+const isLocalHost = computed(() => isManagedRuntimeHost(props.host));
+const hostTitle = computed(() => props.host.name);
+
+function archivedForProject(projectId: number) {
+  return controller.value.archivedThreads.filter((thread) => thread.projectId === projectId);
+}
+
+function hostStatus() {
+  return controller.value.hostConnectionStatuses[props.host.id]?.status ?? "idle";
+}
+
+function projectThreadsExpanded(project: { id: number; hostId: number; remotePath: string }) {
+  return (
+    isManagedWorkspaceRootProject(project) || controller.value.expandedProjectIds.has(project.id)
+  );
+}
 </script>
 
 <template>
-  <div class="min-w-0 overflow-hidden rounded-lg">
-    <ContextMenu>
+  <div class="min-w-0 overflow-hidden">
+    <ContextMenu v-if="!isLocalHost">
       <ContextMenuTrigger as-child>
         <Button
           :data-testid="`host-button-${host.id}`"
           v-bind="controller.longPressHandlers"
           variant="ghost"
-          class="h-11 w-full min-w-0 justify-start gap-2 overflow-hidden rounded-lg px-3 text-left text-[0.9375rem] font-normal hover:bg-surface"
-          :class="selectedRowClass(host.id === controller.selectedHostId)"
+          class="h-8 w-full min-w-0 justify-start gap-1.5 overflow-hidden rounded-lg px-2 text-sm font-medium text-ink-muted hover:bg-muted hover:text-ink"
           @click="controller.selectHost(host.id)"
         >
-          <ChevronDownIcon
-            v-if="controller.expandedHostIds.has(host.id)"
-            class="size-3.5 shrink-0 text-ink-muted"
+          <span class="min-w-0 flex-1 truncate text-left" :title="hostTitle">
+            {{ hostTitle }}
+          </span>
+          <HostStatusIndicator
+            :status="hostStatus()"
+            :label="controller.hostConnectionStatuses[host.id]?.message"
           />
-          <ChevronRightIcon v-else class="size-3.5 shrink-0 text-ink-muted" />
-          <ServerIcon class="size-4 shrink-0" />
-          <SidebarRowLabel :title="host.name" :subtitle="host.sshHost">
-            <template #trailing>
-              <HostStatusIndicator
-                :status="controller.hostConnectionStatuses[host.id]?.status ?? 'idle'"
-                :label="controller.hostConnectionStatuses[host.id]?.message"
-              />
-            </template>
-          </SidebarRowLabel>
         </Button>
       </ContextMenuTrigger>
       <ContextMenuContent :collision-padding="12" prioritize-position class="w-44">
@@ -75,15 +79,16 @@ const controller = requireHostTreeController();
     </ContextMenu>
 
     <div
-      v-if="controller.expandedHostIds.has(host.id)"
-      class="mt-1 min-w-0 space-y-1 overflow-hidden pl-5"
+      v-if="isLocalHost || controller.expandedHostIds.has(host.id)"
+      class="min-w-0 overflow-hidden"
     >
       <div
         v-for="project in controller.availableProjectsByHost.get(host.id) ?? []"
         :key="project.id"
-        class="min-w-0 space-y-1 overflow-hidden"
+        class="min-w-0 overflow-hidden"
       >
         <SidebarProjectRow
+          v-if="!isManagedWorkspaceRootProject(project)"
           :project="project"
           :expanded="controller.expandedProjectIds.has(project.id)"
           :selected="project.id === controller.selectedProjectId"
@@ -94,15 +99,51 @@ const controller = requireHostTreeController();
           @start-thread="controller.startThreadInProject(project)"
         />
         <div
-          v-if="controller.expandedProjectIds.has(project.id)"
-          class="min-w-0 space-y-1 overflow-hidden pl-7"
+          v-if="projectThreadsExpanded(project)"
+          class="min-w-0 space-y-0.5 overflow-hidden"
+          :class="isManagedWorkspaceRootProject(project) ? '' : 'pl-5'"
         >
-          <template
-            v-if="project.id === controller.selectedProjectId && controller.projectThreads.length"
-          >
+          <template v-if="controller.archivedFilterActive">
             <ThreadRow
-              v-for="thread in controller.projectThreads"
+              v-for="thread in archivedForProject(project.id)"
               :key="thread.id"
+              compact
+              :thread="thread"
+              :test-id="`archived-thread-button-${thread.id}`"
+              :selected="false"
+              :status="controller.threadRuntimeStatus(project.hostId, String(thread.id))"
+              :subtitle="formatRelative(thread.updatedAt)"
+              :pin-label="$t('app.pinThread')"
+              archived
+              :long-press-handlers="controller.longPressHandlers"
+              @open="
+                controller.openArchivedThread({
+                  ...thread,
+                  hostId: project.hostId,
+                  projectId: project.id,
+                })
+              "
+              @unarchive="controller.unarchive({ ...thread, hostId: project.hostId })"
+              @delete="controller.deleteThread({ ...thread, hostId: project.hostId })"
+            />
+            <div
+              v-if="
+                !isManagedWorkspaceRootProject(project) && !archivedForProject(project.id).length
+              "
+              class="px-2 py-1 text-sm text-ink-faint"
+            >
+              {{
+                controller.archivedLoading
+                  ? $t("app.loadingArchivedThreads")
+                  : $t("app.noAgentsYet")
+              }}
+            </div>
+          </template>
+          <template v-else>
+            <ThreadRow
+              v-for="thread in controller.threadsForProject(project.id)"
+              :key="thread.id"
+              compact
               :thread="thread"
               :test-id="`thread-button-${thread.id}`"
               :selected="String(thread.id) === String(controller.selectedThreadId)"
@@ -122,40 +163,41 @@ const controller = requireHostTreeController();
               "
               @toggle-pin="controller.toggleThreadPin(String(thread.id), !thread.pinned)"
               @rename="controller.rename({ ...thread, hostId: project.hostId })"
+              @archive="controller.archive({ ...thread, hostId: project.hostId })"
             />
+            <div
+              v-if="
+                !isManagedWorkspaceRootProject(project) &&
+                !controller.threadsForProject(project.id).length
+              "
+              class="px-2 py-1 text-sm text-ink-faint"
+            >
+              {{ $t("app.noAgentsYet") }}
+            </div>
           </template>
-          <div
-            v-else-if="project.id === controller.selectedProjectId"
-            class="rounded-lg px-3 py-2 text-xs leading-5 text-ink-muted"
-          >
-            <div>{{ $t("app.noThreads") }}</div>
-            <div>{{ $t("app.refreshThreadsHint") }}</div>
-          </div>
         </div>
       </div>
 
       <div
         v-if="(controller.missingProjectsByHost.get(host.id)?.length ?? 0) > 0"
-        class="space-y-1"
+        class="min-w-0 overflow-hidden"
       >
         <Button
           :data-testid="`missing-projects-toggle-${host.id}`"
           variant="ghost"
-          class="h-9 w-full justify-start gap-2 rounded-lg px-3 text-xs font-normal text-ink-muted hover:bg-surface"
+          class="h-[2.125rem] w-full justify-start gap-1.5 rounded-lg px-2 text-sm font-normal text-ink-muted hover:bg-muted"
           @click="controller.toggleMissingProjects(host.id)"
         >
-          <ChevronDownIcon
-            v-if="controller.expandedMissingProjectHostIds.has(host.id)"
-            class="size-3.5 shrink-0"
-          />
-          <ChevronRightIcon v-else class="size-3.5 shrink-0" />
-          <FolderXIcon class="size-4 shrink-0 text-destructive/70" />
+          <FolderXIcon class="size-3.5 shrink-0 text-destructive/70" />
           <span class="min-w-0 flex-1 truncate text-left">{{ $t("app.missingProjects") }}</span>
-          <span class="shrink-0 tabular-nums">{{
+          <span class="shrink-0 tabular-nums text-ink-faint">{{
             controller.missingProjectsByHost.get(host.id)?.length ?? 0
           }}</span>
         </Button>
-        <div v-if="controller.expandedMissingProjectHostIds.has(host.id)" class="space-y-1">
+        <div
+          v-if="controller.expandedMissingProjectHostIds.has(host.id)"
+          class="min-w-0 space-y-0.5 overflow-hidden pl-5"
+        >
           <SidebarProjectRow
             v-for="project in controller.missingProjectsByHost.get(host.id) ?? []"
             :key="project.id"
@@ -175,7 +217,7 @@ const controller = requireHostTreeController();
           !controller.availableProjectsByHost.get(host.id)?.length &&
           !controller.missingProjectsByHost.get(host.id)?.length
         "
-        class="rounded-lg px-3 py-2 text-xs text-ink-muted"
+        class="px-2 py-1 text-sm text-ink-faint"
       >
         {{ $t("app.noProjects") }}
       </div>

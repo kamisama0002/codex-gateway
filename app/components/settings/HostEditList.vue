@@ -13,17 +13,21 @@ import {
 } from "./host-connection/form";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { errorMessageLabels, messageFromError } from "@/stores/gateway/thread-utils/identity";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 
 const catalog = useGatewayCatalogStore();
 const { hosts } = storeToRefs(catalog);
 const { t } = useI18n();
 const errorLabels = computed(() => errorMessageLabels(t));
-const expandedHostId = ref<number | null>(hosts.value[0]?.id ?? null);
+const expandedHostId = ref<number | null>(
+  hosts.value.find((host) => !isManagedRuntimeHost(host))?.id ?? null,
+);
 const forms = ref<Record<number, HostConnectionFormValue>>({});
 const savingHostId = ref<number | null>(null);
 const saveErrors = ref<Record<number, string>>({});
 const editableHosts = computed(() =>
   hosts.value.flatMap((host) => {
+    if (isManagedRuntimeHost(host)) return [];
     const form = forms.value[host.id];
     return form ? [{ host, form }] : [];
   }),
@@ -33,9 +37,8 @@ watch(
   hosts,
   (nextHosts) => {
     for (const host of nextHosts) {
-      if (!forms.value[host.id]) {
-        forms.value[host.id] = hostConnectionFormFromRecord(host);
-      }
+      if (isManagedRuntimeHost(host) || forms.value[host.id]) continue;
+      forms.value[host.id] = hostConnectionFormFromRecord(host);
     }
     for (const id of Object.keys(forms.value).map(Number)) {
       if (!nextHosts.some((host) => host.id === id)) {
@@ -70,10 +73,10 @@ async function saveHost(host: HostRecord) {
   <section class="space-y-2">
     <div class="text-sm font-medium text-ink-secondary">{{ t("app.editHosts") }}</div>
     <div
-      v-if="!hosts.length"
+      v-if="!editableHosts.length"
       class="rounded-md border border-hairline bg-canvas-soft p-3 text-sm text-ink-secondary"
     >
-      {{ t("app.noHosts") }}
+      {{ t("app.noRemoteHosts") }}
     </div>
     <Collapsible
       v-for="entry in editableHosts"

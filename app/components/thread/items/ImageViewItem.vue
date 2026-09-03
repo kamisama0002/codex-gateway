@@ -27,7 +27,7 @@ const label = computed(() => String(props.item.path || t("app.imageView")));
 
 <template>
   <div class="max-w-4xl text-ink-secondary">
-    <div class="mb-2 flex items-center gap-2 text-[0.9375rem]">
+    <div class="mb-2 flex items-center gap-2 text-sm">
       <ImageIcon class="size-4 shrink-0" />
       <span class="min-w-0 truncate">{{ label }}</span>
     </div>

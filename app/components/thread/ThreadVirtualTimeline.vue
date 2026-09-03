@@ -81,13 +81,10 @@ const rows = computed<ThreadTimelineRow[]>((previous) => {
     intermediateOpen: isIntermediateOpen(turn.id),
     intermediateLoading: isTurnItemsLoading(turn.id),
   }));
-  // The disclosure controller already owns the Agent-loop lifecycle: active work stays open and
-  // the whole intermediate process collapses only after the thread settles. Footer actions must
-  // consume that result instead of treating one turn/completed event as the end of a Goal or an
-  // automatic continuation. Requiring every disclosure to be closed also keeps the actions hidden
-  // while a reader has explicitly reopened historical intermediate work.
-  const agentActionsAvailable =
-    !threadIsRunning.value && timelineTurns.every((turn) => !turn.intermediateOpen);
+  // The disclosure controller owns only process visibility. A reader reopening completed work
+  // must not lose the answer's copy, duration, or usage actions; those depend solely on whether the
+  // Agent loop is still active across automatic continuations and Goals.
+  const agentActionsAvailable = !threadIsRunning.value;
   const next = buildThreadTimelineRows({
     threadId: props.threadId,
     turns: timelineTurns,

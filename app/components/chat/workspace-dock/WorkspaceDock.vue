@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { GetTabContextMenuItemsParams } from "dockview-vue";
 import { DockviewVue, themeDark, themeLight } from "dockview-vue";
 import { computed, provide, ref, toRefs } from "vue";
 import BrowserOpenDialog from "@/components/browser/BrowserOpenDialog.vue";
@@ -10,7 +9,6 @@ import { useChatWorkspaceState } from "../chat-workspace-state";
 import { fileWorkspaceScopeKey } from "@/stores/file-workspace";
 import { workspaceLayoutScopeKey } from "@/stores/gateway-workspace-layout";
 import MobileWorkspaceHeader from "../MobileWorkspaceHeader.vue";
-import { createDockTabMenu } from "./actions";
 import { WORKSPACE_DOCK_UI_CONTEXT, WORKSPACE_FILES_PANEL_CONTEXT } from "./context";
 import type { WorkspaceDockProps } from "./types";
 import { useWorkspaceDockLifecycle } from "./useWorkspaceDockLifecycle";
@@ -21,7 +19,6 @@ import "dockview-vue/dist/styles/dockview.css";
 const props = defineProps<WorkspaceDockProps>();
 const refs = toRefs(props);
 const workspace = useChatWorkspaceState();
-const { t } = useI18n();
 const { isDark } = useTerminalTheme();
 const scopeKey = computed(() =>
   workspaceLayoutScopeKey(
@@ -92,22 +89,6 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
   closePanel: panels.closeDynamic,
 });
 
-function tabContextMenu({ panel, api }: GetTabContextMenuItemsParams) {
-  return createDockTabMenu({
-    api,
-    panel,
-    closeDynamic: panels.closeDynamic,
-    labels: {
-      splitRight: t("app.splitRight"),
-      maximize: t("app.maximizePanel"),
-      float: t("app.floatPanel"),
-      popout: t("app.popoutPanel"),
-      close: t("app.closeTab"),
-      popupBlocked: t("app.popupBlocked"),
-      popupBlockedDescription: t("app.popupBlockedDescription"),
-    },
-  });
-}
 </script>
 
 <template>
@@ -141,8 +122,6 @@ function tabContextMenu({ panel, api }: GetTabContextMenuItemsParams) {
         floating-group-bounds="boundedWithinViewport"
         :disable-floating-groups="layout === 'mobile'"
         :locked="layout === 'mobile'"
-        :keyboard-navigation="true"
-        :get-tab-context-menu-items="layout === 'desktop' ? tabContextMenu : undefined"
         @ready="lifecycle.ready"
       />
     </div>
@@ -156,15 +135,26 @@ function tabContextMenu({ panel, api }: GetTabContextMenuItemsParams) {
 
 <style scoped>
 .gateway-dockview {
-  --dv-background-color: var(--canvas);
-  --dv-paneview-active-outline-color: var(--primary);
-  --dv-tabs-and-actions-container-background-color: var(--canvas-soft);
-  --dv-activegroup-visiblepanel-tab-background-color: var(--surface);
-  --dv-activegroup-hiddenpanel-tab-background-color: var(--canvas-soft);
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--surface);
-  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--canvas-soft);
+  --dv-background-color: var(--surface);
+  --dv-paneview-active-outline-color: transparent;
+  --dv-tabs-and-actions-container-background-color: var(--surface);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--canvas-soft);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--surface);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--canvas-soft);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--surface);
   --dv-tab-divider-color: var(--hairline);
   --dv-separator-border: var(--hairline);
-  --dv-active-sash-color: var(--primary);
+  --dv-active-sash-color: var(--hairline);
+  --dv-tabs-and-actions-container-height: 2rem;
+}
+
+.gateway-dockview :deep(.dv-tabs-and-actions-container) {
+  height: 2rem;
+  min-height: 2rem;
+}
+
+.gateway-dockview :deep(.dv-tab) {
+  margin: 0;
+  padding-inline: 0.125rem;
 }
 </style>

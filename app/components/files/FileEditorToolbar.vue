@@ -51,7 +51,7 @@ function gitChangesTitle() {
 <template>
   <div
     data-testid="file-editor-toolbar"
-    class="flex min-h-10 shrink-0 items-center gap-1 overflow-hidden border-b border-hairline bg-canvas-soft/60 px-2 sm:gap-2 sm:px-3"
+    class="flex min-h-8 shrink-0 items-center gap-1 overflow-hidden border-b border-hairline px-1.5 sm:gap-1.5 sm:px-2"
   >
     <div
       v-if="markdown || gitVisible || gitLoading"
@@ -60,7 +60,7 @@ function gitChangesTitle() {
       <Button
         size="sm"
         :variant="mode === 'source' ? 'secondary' : 'ghost'"
-        class="h-7 gap-1.5 px-1.5 sm:px-2"
+        class="h-6 gap-1 px-1.5 sm:px-2"
         :title="t('app.fileSource')"
         @click="emit('update:mode', 'source')"
       >
@@ -71,7 +71,7 @@ function gitChangesTitle() {
         v-if="markdown"
         size="sm"
         :variant="mode === 'preview' ? 'secondary' : 'ghost'"
-        class="h-7 gap-1.5 px-1.5 sm:px-2"
+        class="h-6 gap-1 px-1.5 sm:px-2"
         :title="t('app.fileRenderedPreview')"
         @click="emit('update:mode', 'preview')"
       >
@@ -82,7 +82,7 @@ function gitChangesTitle() {
         v-if="gitVisible"
         size="sm"
         :variant="mode === 'changes' ? 'secondary' : 'ghost'"
-        class="h-7 gap-1.5 px-1.5 sm:px-2"
+        class="h-6 gap-1 px-1.5 sm:px-2"
         :disabled="!changesAvailable"
         :title="gitChangesTitle()"
         @click="emit('update:mode', 'changes')"
@@ -96,7 +96,7 @@ function gitChangesTitle() {
       <Button
         variant="ghost"
         size="icon"
-        class="size-7"
+        class="size-6"
         :title="t('app.fileGitPreviousChange')"
         @click="emit('previousChange')"
       >
@@ -105,7 +105,7 @@ function gitChangesTitle() {
       <Button
         variant="ghost"
         size="icon"
-        class="size-7"
+        class="size-6"
         :title="t('app.fileGitNextChange')"
         @click="emit('nextChange')"
       >
@@ -122,7 +122,7 @@ function gitChangesTitle() {
       <Button
         variant="ghost"
         size="icon"
-        class="size-7"
+        class="size-6"
         :title="t('app.fileGitRefresh')"
         @click="emit('refreshGit')"
       >
@@ -138,7 +138,7 @@ function gitChangesTitle() {
       <Button
         variant="ghost"
         size="icon"
-        class="size-7"
+        class="size-6"
         :title="t('app.fileGitRefresh')"
         @click="emit('refreshGit')"
       >
@@ -174,7 +174,7 @@ function gitChangesTitle() {
         v-if="editable"
         variant="ghost"
         size="icon"
-        class="size-7"
+        class="size-6"
         :disabled="document.saving || !document.dirty"
         :title="t('app.saveFile')"
         @click="emit('save')"

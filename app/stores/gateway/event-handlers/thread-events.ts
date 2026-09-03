@@ -6,6 +6,7 @@ import {
 import { gatewayDomainEvents } from "../domain-events";
 import { threadIdFromParams } from "../thread-utils/identity";
 import { runtimeStatusFromAppThreadStatus } from "../thread-utils/status";
+import { runtimePhaseFromAppThreadStatus } from "~~/shared/thread-runtime-status";
 import type { GatewayEventHandlerRegistry } from "./types";
 
 export const threadEventHandlers: GatewayEventHandlerRegistry = {
@@ -25,6 +26,7 @@ export const threadEventHandlers: GatewayEventHandlerRegistry = {
         hostId: event.hostId,
         threadId: String(threadId),
         status: runtimeStatusFromAppThreadStatus(params.status),
+        phase: runtimePhaseFromAppThreadStatus(params.status),
       });
     }
   },

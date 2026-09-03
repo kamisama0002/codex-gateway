@@ -24,5 +24,19 @@
     "typescript/prefer-promise-reject-errors": "error",
     "typescript/strict-boolean-expressions": "error",
     "typescript/switch-exhaustiveness-check": "error"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["tests/e2e/model-target-server.mjs"],
+      "rules": {
+        "typescript/no-misused-promises": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/strict-boolean-expressions": "off"
+      }
+    }
+  ]
 }

@@ -11,8 +11,10 @@ import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import type { ThreadListResponse } from "@/stores/gateway/types";
 import { messageFromError, sortThreads } from "@/stores/gateway/thread-utils/identity";
 import { runtimeStatusFromAppThreadStatus } from "@/stores/gateway/thread-utils/status";
+import { runtimePhaseFromAppThreadStatus } from "~~/shared/thread-runtime-status";
 import { isAppServerSubAgentThread } from "~~/shared/runtime/app-server";
 import { captureSessionEpoch } from "@/utils/session-epoch";
+import { listArchivedThreads } from "./thread-lifecycle";
 
 export function createThreadListActions() {
   async function loadHostOverview(hostId: number) {
@@ -26,6 +28,12 @@ export function createThreadListActions() {
     applyProjectDirectoryAvailability(response);
     useGatewayThreadActivityStore().ingestGatewayThreads(response.data ?? [], catalog.projects);
     syncThreadStatusesFromList(hostId, response.data ?? []);
+    const navigation = useGatewayNavigationStore();
+    if (navigation.selectedHostId === hostId) {
+      navigation.hostThreads = sortThreads(
+        (response.data ?? []).filter((thread) => !isAppServerSubAgentThread(thread)),
+      );
+    }
     return true;
   }
 
@@ -65,6 +73,10 @@ export function createThreadListActions() {
       const projectId = navigation.selectedProjectId;
       const projectCwd = projectById(catalog.projects, projectId)?.remotePath;
       if (hostId === null) return;
+      if (navigation.archivedLoadedKey !== String(hostId)) {
+        navigation.archivedThreads = [];
+        navigation.archivedLoadedKey = null;
+      }
       const sessionIsCurrent = captureSessionEpoch();
       views.loading = true;
       bootstrap.clearError();
@@ -92,7 +104,14 @@ export function createThreadListActions() {
         // browser config here: doing so creates two pin authorities and makes cross-tab updates
         // dependent on which request happened last.
         navigation.threads = sortThreads(mainThreads);
+        navigation.hostThreads = mergeHostThreads(
+          navigation.hostThreads,
+          mainThreads,
+          hostId,
+          projectId,
+        );
         config.setCatalog(catalog.hosts, catalog.projects);
+        if (navigation.archivedFilterActive) await listArchivedThreads();
       } catch (error: unknown) {
         if (!sessionIsCurrent()) return;
         if (navigation.selectedHostId !== hostId || navigation.selectedProjectId !== projectId)
@@ -117,6 +136,18 @@ export function createThreadListActions() {
   };
 }
 
+function mergeHostThreads(
+  existing: GatewayThread[],
+  incoming: GatewayThread[],
+  hostId: number,
+  projectId: number | null,
+) {
+  const kept = existing.filter(
+    (thread) => thread.hostId === hostId && (projectId === null || thread.projectId !== projectId),
+  );
+  return sortThreads([...kept, ...incoming]);
+}
+
 function applyProjectDirectoryAvailability(response: ThreadListResponse) {
   if (response.projectDirectoryAvailability === undefined) return;
   const catalog = useGatewayCatalogStore();
@@ -129,6 +160,8 @@ function applyProjectDirectoryAvailability(response: ThreadListResponse) {
 function syncThreadStatusesFromList(hostId: number, threads: GatewayThread[]) {
   const runtime = useGatewayThreadRuntimeStore();
   for (const thread of threads) {
-    runtime.setThreadStatus(hostId, thread.id, runtimeStatusFromAppThreadStatus(thread.status));
+    runtime.setThreadStatus(hostId, thread.id, runtimeStatusFromAppThreadStatus(thread.status), {
+      phase: runtimePhaseFromAppThreadStatus(thread.status),
+    });
   }
 }

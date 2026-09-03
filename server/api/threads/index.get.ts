@@ -5,23 +5,22 @@ import {
   hostLogContext,
   setGatewayRequestLogContext,
 } from "../../utils/gateway/http/errors";
-import { requireRecord } from "../../utils/gateway/http/validation/common";
 import { threadListSchema } from "../../utils/gateway/http/validation/threads";
-import { hostStore } from "../../utils/gateway/state/hosts";
 import { projectStore } from "../../utils/gateway/state/projects";
 import { threadMetadataStore } from "../../utils/gateway/state/thread-metadata";
 import { threadSnapshotStore } from "../../utils/gateway/state/thread-snapshots";
 import { remoteFiles } from "../../utils/gateway/infra/host-services";
 import { withAllThreadSources } from "../../utils/gateway/protocol/thread-list";
+import { projectGatewayThreadsForList } from "../../utils/gateway/protocol/thread-list-projection";
 import { threadProjectDiscovery } from "../../utils/gateway/runtime/thread-project-discovery";
-import type { AppServerThread, GatewayThread, ProjectRecord } from "~~/shared/types";
-import type { HostWithSecret } from "../../utils/gateway/infra/ssh/ssh-types";
+import { requireWorkspaceHost } from "../../utils/gateway/runtime-manager/local-workspace";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
+import type { HostRecord } from "~~/shared/types";
 import { trimmedOrNull } from "~~/shared/utils/strings";
-import { gatewayThreadFromAppServer } from "../../utils/gateway/protocol/gateway-thread";
 
 export default defineGatewayEventHandler(async (event) => {
   const query = await getValidatedQuery(event, (body) => threadListSchema.parse(body));
-  const host = requireRecord(hostStore.getWithSecret(query.hostId), "Host not found");
+  const host = await requireWorkspaceHost(query.hostId);
   const userId = event.context.auth?.user.id;
   const discoveryGeneration =
     userId === undefined ? null : threadProjectDiscovery.captureGeneration(userId, host.id);
@@ -35,12 +34,14 @@ export default defineGatewayEventHandler(async (event) => {
     useRemoteStateIndexOnly: query.useRemoteStateIndexOnly ?? false,
   });
 
+  const archived = query.archived === true;
   const listParams = withAllThreadSources({
     limit: query.limit,
     cursor: trimmedOrNull(query.cursor),
     cwd: trimmedOrNull(query.cwd) ?? undefined,
     searchTerm: trimmedOrNull(query.searchTerm) ?? undefined,
     useStateDbOnly: query.useRemoteStateIndexOnly ?? false,
+    ...(archived ? { archived: true } : {}),
   });
   const page = await threadBroker.listThreads(host, listParams);
   if (userId !== undefined && discoveryGeneration !== null) {
@@ -55,18 +56,22 @@ export default defineGatewayEventHandler(async (event) => {
     }
   }
   const projects = projectStore.list(host.id);
-  const indexedThreads = threadMetadataStore.list(host.id, {
-    projectId: query.projectId ?? null,
-    cwd: query.cwd ?? null,
-  });
-  const gatewayThreads = gatewayThreadsForList(
-    host.id,
-    page.data,
-    threadSnapshotStore.listForHost(host.id).map((record) => record.snapshot.thread),
+  // Host-wide metadata is the Gateway project binding written at thread/start. Do not pre-filter
+  // it by cwd: a started thread can keep the requested projectId while app-server still reports a
+  // previous workspace path, and cwd-scoped metadata would hide it from both project lists.
+  const indexedThreads = threadMetadataStore.list(host.id);
+  const gatewayThreads = projectGatewayThreadsForList({
+    hostId: host.id,
+    remoteThreads: page.data,
+    cachedThreads: archived
+      ? []
+      : threadSnapshotStore.listForHost(host.id).map((record) => record.snapshot.thread),
     indexedThreads,
     projects,
-    query.searchTerm ?? null,
-  );
+    projectId: query.projectId ?? null,
+    searchTerm: query.searchTerm ?? null,
+    archived,
+  });
   const projectDirectoryAvailability = await inspectProjectAvailability(host, projects);
   return {
     ...page,
@@ -77,9 +82,12 @@ export default defineGatewayEventHandler(async (event) => {
 });
 
 async function inspectProjectAvailability(
-  host: HostWithSecret,
+  host: HostRecord,
   projects: Array<{ id: number; remotePath: string }>,
 ) {
+  if (isManagedRuntimeHost(host)) {
+    return Object.fromEntries(projects.map((project) => [project.id, "available"] as const));
+  }
   try {
     const byPath = await remoteFiles.inspectProjectDirectories(
       host,
@@ -107,54 +115,13 @@ function shouldDiscoverHostProjects(query: {
   cwd?: string | null;
   searchTerm?: string | null;
   cursor?: string | null;
+  archived?: boolean;
 }) {
   return (
+    query.archived !== true &&
     (query.projectId === null || query.projectId === undefined) &&
     trimmedOrNull(query.cwd) === null &&
     trimmedOrNull(query.searchTerm) === null &&
     trimmedOrNull(query.cursor) === null
   );
-}
-
-function gatewayThreadsForList(
-  hostId: number,
-  remoteThreads: AppServerThread[],
-  cachedThreads: AppServerThread[],
-  indexedThreads: ReturnType<typeof threadMetadataStore.list>,
-  projects: ProjectRecord[],
-  searchTerm: string | null,
-) {
-  const metadataById = new Map(indexedThreads.map((thread) => [thread.id, thread]));
-  const threadsById = new Map(remoteThreads.map((thread) => [thread.id, thread]));
-  for (const thread of cachedThreads) {
-    if (metadataById.has(thread.id) && !threadsById.has(thread.id)) {
-      // A freshly started thread can precede rollout materialization and therefore be absent from
-      // thread/list briefly. The open snapshot is the complete official DTO returned by
-      // thread/start; never synthesize an AppServerThread from the metadata index.
-      threadsById.set(thread.id, thread);
-    }
-  }
-  const normalizedSearch = searchTerm?.trim().toLowerCase() ?? "";
-  return [...threadsById.values()]
-    .map((thread) => {
-      const metadata = metadataById.get(thread.id);
-      const projectId =
-        metadata?.projectId ??
-        projects.find((project) => project.remotePath === thread.cwd)?.id ??
-        null;
-      return gatewayThreadFromAppServer(hostId, projectId, thread);
-    })
-    .filter((thread) => {
-      if (!normalizedSearch) {
-        return true;
-      }
-      return [thread.id, thread.title, thread.name, thread.preview, thread.cwd]
-        .filter((value): value is string => typeof value === "string")
-        .some((value) => String(value).toLowerCase().includes(normalizedSearch));
-    })
-    .sort(
-      (left, right) =>
-        Number(right.recencyAt ?? right.updatedAt ?? 0) -
-        Number(left.recencyAt ?? left.updatedAt ?? 0),
-    ) satisfies GatewayThread[];
 }

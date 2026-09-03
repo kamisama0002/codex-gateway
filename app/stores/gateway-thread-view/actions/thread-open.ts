@@ -301,24 +301,38 @@ export function createThreadOpenActions() {
       }
       if (navigation.selectedHostId === null) return;
       const sessionIsCurrent = captureSessionEpoch();
-      const result = await requestStartThread(options);
-      if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
-      const threadId = applyStartedThreadResult(result);
-      cacheSelectedThreadView();
-      rememberOpenThread(threadId);
-      syncSelectedRoute();
-      useGatewayRealtimeStore().connectThreadEvents(
-        navigation.selectedHostId,
-        threadId,
-        useGatewayThreadViewStore().lastEventId,
-        useGatewayThreadViewStore().eventEpoch,
-      );
+      const gateway = useGatewayBootstrapStore();
+      try {
+        const result = await requestStartThread(options, {
+          projectId: navigation.selectedProjectId,
+        });
+        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+        const threadId = applyStartedThreadResult(result);
+        cacheSelectedThreadView();
+        rememberOpenThread(threadId);
+        syncSelectedRoute();
+        useGatewayRealtimeStore().connectThreadEvents(
+          navigation.selectedHostId,
+          threadId,
+          useGatewayThreadViewStore().lastEventId,
+          useGatewayThreadViewStore().eventEpoch,
+        );
 
-      // Creating the thread is the authoritative state transition. Commit its selection and URL
-      // before refreshing the sidebar catalog: that secondary RPC may be slow while a host has
-      // just upgraded/restarted, but it must not leave a successfully created thread unreachable.
-      await navigation.listThreads();
-      cacheSelectedThreadView();
+        // Creating the thread is the authoritative state transition. Commit its selection and URL
+        // before refreshing the sidebar catalog: that secondary RPC may be slow while a host has
+        // just upgraded/restarted, but it must not leave a successfully created thread unreachable.
+        await navigation.listThreads();
+        cacheSelectedThreadView();
+      } catch (error: unknown) {
+        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+        gateway.setError(
+          messageFromError(error, gateway.t("app.startThreadFailed"), gateway.errorLabels),
+          {
+            hostId: navigation.selectedHostId,
+            projectId: navigation.selectedProjectId,
+          },
+        );
+      }
     },
   };
 }
@@ -409,7 +423,11 @@ async function syncOpenThreadFromServer(input: {
   const views = useGatewayThreadViewStore();
   const sessionIsCurrent = captureSessionEpoch();
   if (input.showLoading) views.loading = true;
-  gateway.clearError();
+  gateway.clearError({
+    hostId: input.hostId,
+    projectId: input.projectId,
+    threadId: input.threadId,
+  });
   try {
     const result = await requestActivateThreadSnapshot(input);
     if (

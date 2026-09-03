@@ -481,7 +481,7 @@ done
 
   await agentWorkspaceTab(page).click();
   await page.getByRole("link", { name: "nested python" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  expect(new URL(page.url()).pathname).toBe("/");
   await expect(fileTab(page, nestedPythonPath)).toBeVisible();
   await expect(
     page.locator('[data-testid="workspace-dock-tab"][data-panel-kind="files"]'),

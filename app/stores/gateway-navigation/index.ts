@@ -5,6 +5,7 @@ import type { GatewayThread } from "~~/shared/types";
 import type { GatewayRouteSelection } from "@/stores/gateway/route-state";
 import { createThreadListActions } from "./actions/thread-list";
 import { createThreadPinningActions } from "./actions/thread-pinning";
+import { createThreadLifecycleActions } from "./actions/thread-lifecycle";
 
 const emptySelection = (): GatewayRouteSelection => ({
   hostId: null,
@@ -18,6 +19,11 @@ export const useGatewayNavigationStore = defineStore("gateway-navigation", () =>
     emptySelection(),
   );
   const threads = ref<GatewayThread[]>([]);
+  const hostThreads = ref<GatewayThread[]>([]);
+  const archivedThreads = ref<GatewayThread[]>([]);
+  const archivedFilterActive = ref(false);
+  const archivedLoading = ref(false);
+  const archivedLoadedKey = ref<string | null>(null);
   const selectedHostId = ref<number | null>(null);
   const selectedProjectId = ref<number | null>(null);
   const selectedThreadId = ref<string | null>(null);
@@ -25,6 +31,7 @@ export const useGatewayNavigationStore = defineStore("gateway-navigation", () =>
   const actions = {
     ...createThreadListActions(),
     ...createThreadPinningActions(),
+    ...createThreadLifecycleActions(),
   };
 
   function rememberOpenThread(selection: GatewayRouteSelection) {
@@ -33,6 +40,11 @@ export const useGatewayNavigationStore = defineStore("gateway-navigation", () =>
 
   function resetState() {
     threads.value = [];
+    hostThreads.value = [];
+    archivedThreads.value = [];
+    archivedFilterActive.value = false;
+    archivedLoading.value = false;
+    archivedLoadedKey.value = null;
     selectedHostId.value = null;
     selectedProjectId.value = null;
     selectedThreadId.value = null;
@@ -42,6 +54,11 @@ export const useGatewayNavigationStore = defineStore("gateway-navigation", () =>
   return {
     lastOpenThread: skipHydrate(lastOpenThread),
     threads,
+    hostThreads,
+    archivedThreads,
+    archivedFilterActive,
+    archivedLoading,
+    archivedLoadedKey,
     selectedHostId,
     selectedProjectId,
     selectedThreadId,

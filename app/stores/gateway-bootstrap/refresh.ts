@@ -11,6 +11,7 @@ import {
   writeGatewayRouteSelection,
 } from "@/stores/gateway/route-state";
 import { useGatewayBootstrapStore } from ".";
+import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 
 /** Orchestrates independent stores without making the bootstrap state store import them. */
 export async function refreshGatewayClient() {
@@ -33,6 +34,7 @@ export async function refreshGatewayClient() {
     catalog.projects = [];
     catalog.projectDirectoryAvailability = {};
     navigation.threads = [];
+    navigation.hostThreads = [];
     catalog.models = [];
     catalog.modelsHostId = null;
     if (!(await config.loadConfigFromServer()) || !sessionIsCurrent()) return;
@@ -43,7 +45,10 @@ export async function refreshGatewayClient() {
         : false;
     if (routeHostExists) navigation.selectedHostId = routeSelection.hostId;
     else if (navigation.selectedHostId === null) {
-      navigation.selectedHostId = catalog.hosts[0]?.id ?? null;
+      navigation.selectedHostId =
+        catalog.hosts.find((host) => host.id === MANAGED_RUNTIME_HOST_ID)?.id ??
+        catalog.hosts[0]?.id ??
+        null;
     }
     navigation.selectedProjectId = routeHostExists ? routeSelection.projectId : null;
     navigation.selectedThreadId = routeHostExists ? routeSelection.threadId : null;
@@ -63,6 +68,22 @@ export async function refreshGatewayClient() {
         projectId: routeSelection.projectId,
         replaceRoute: true,
       });
+      hydrateNavigationDataInBackground(sessionEpoch);
+    } else if (routeHostExists && routeSelection.hostId !== null) {
+      // A Host can spend several minutes installing or upgrading Codex. An explicit Host/Project
+      // route already has enough server-backed catalog data to render its workspace, so do not
+      // hold the entire shell behind that remote lifecycle. The hydration anchor below prevents a
+      // late response from replacing a Thread the user opens while the Host is still connecting.
+      bootstrap.initializing = false;
+      views.loading = false;
+      writeGatewayRouteSelection(
+        {
+          hostId: routeSelection.hostId,
+          projectId: routeSelection.projectId,
+          threadId: null,
+        },
+        { replace: true },
+      );
       hydrateNavigationDataInBackground(sessionEpoch);
     } else {
       await hydrateNavigationData(sessionEpoch);

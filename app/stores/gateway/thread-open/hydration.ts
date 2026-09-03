@@ -9,7 +9,12 @@ import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity"
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { threadIdFromParams } from "../thread-utils/identity";
-import { runtimeStatusFromThreadState } from "../thread-utils/status";
+import { runtimeStatusFromAuthoritativeThread } from "../thread-utils/status";
+import {
+  isActiveThreadRuntimePhase,
+  runtimePhaseFromAppThreadStatus,
+  runtimePhaseFromStatus,
+} from "~~/shared/thread-runtime-status";
 import type { ThreadSnapshotMessage } from "./transport";
 
 export function applyOpenedThreadResult(threadId: string, result: ThreadOpenResult) {
@@ -68,6 +73,9 @@ export function applyStartedThreadResult(result: ThreadOpenResult) {
   views.currentThread = result.thread;
   views.history = result.history;
   views.timelineTurns = result.history.thread.turns;
+  if (result.projectId !== null && result.projectId !== undefined) {
+    navigation.selectedProjectId = result.projectId;
+  }
   navigation.selectedThreadId = threadId;
   applyCommonThreadResult(threadId, result, result.lastEventId);
   return threadId;
@@ -114,9 +122,19 @@ function syncRuntimeStatusFromResult(
   const hostId = useGatewayNavigationStore().selectedHostId;
   if (hostId === null || threadId === "") return;
   const status =
+    runtimeStatusFromAuthoritativeThread(result.thread, fallbackState.history) ??
     result.runtimeStatus ??
-    runtimeStatusFromThreadState(fallbackState.thread, fallbackState.history);
-  if (status !== null) useGatewayThreadRuntimeStore().setThreadStatus(hostId, threadId, status);
+    runtimeStatusFromAuthoritativeThread(fallbackState.thread, fallbackState.history);
+  if (status !== null) {
+    const appThreadPhase = runtimePhaseFromAppThreadStatus(result.thread.status);
+    const phase =
+      status === "running" && isActiveThreadRuntimePhase(appThreadPhase)
+        ? appThreadPhase
+        : runtimePhaseFromStatus(status);
+    useGatewayThreadRuntimeStore().setThreadStatus(hostId, threadId, status, {
+      phase,
+    });
+  }
 }
 
 function syncTokenUsageFromRecentEvents(events: ThreadOpenResult["recentEvents"]) {

@@ -44,24 +44,24 @@ function toggleMaximize() {
     data-testid="workspace-dock-tab"
     :data-panel-kind="kind"
     :data-panel-title="title"
-    class="group flex h-full min-w-0 items-center gap-1.5 px-2 text-sm"
+    class="group flex h-full min-w-0 items-center gap-1 px-2 text-sm"
     @dblclick="toggleMaximize"
   >
     <component :is="policy.icon" class="size-3.5 shrink-0" />
-    <span class="max-w-[11rem] truncate" :title="title">{{ title }}</span>
+    <span class="max-w-44 truncate" :title="title">{{ title }}</span>
     <button
       v-if="kind === 'files' && context.layout.value === 'desktop'"
       type="button"
-      class="ml-1 inline-flex size-5 items-center justify-center rounded text-ink-faint opacity-0 hover:bg-canvas-soft hover:text-ink group-hover:opacity-100"
+      class="ml-0.5 inline-flex size-4 items-center justify-center rounded text-ink-faint opacity-0 hover:bg-muted hover:text-ink group-hover:opacity-100"
       :aria-label="$t('app.splitRight')"
       @click="splitRight"
     >
-      <PanelRightOpenIcon class="size-3.5" />
+      <PanelRightOpenIcon class="size-3" />
     </button>
     <button
       v-if="policy.closable"
       type="button"
-      class="ml-1 inline-flex size-5 items-center justify-center rounded text-ink-faint opacity-70 hover:bg-canvas-soft hover:text-ink"
+      class="ml-0.5 inline-flex size-4 items-center justify-center rounded text-ink-faint opacity-70 hover:bg-muted hover:text-ink"
       :aria-label="$t('app.closeTab')"
       @click="closePanel"
     >

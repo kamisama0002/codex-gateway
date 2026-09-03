@@ -60,12 +60,12 @@ function openChange(path: string, change: RemoteGitWorkspaceFile) {
     it so tree expansion and scroll state survive view switches.
   -->
   <Tabs v-model="activeView" class="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
-    <TabsList variant="line" class="h-9 shrink-0 rounded-none border-b border-hairline px-2">
-      <TabsTrigger value="files" class="gap-1.5">
+    <TabsList variant="line" class="h-8 shrink-0 rounded-none border-b border-hairline px-1.5">
+      <TabsTrigger value="files" class="h-7 gap-1 px-2 text-xs">
         <FilesIcon class="size-3.5" />
         {{ $t("app.filesTab") }}
       </TabsTrigger>
-      <TabsTrigger value="changes" class="gap-1.5">
+      <TabsTrigger value="changes" class="h-7 gap-1 px-2 text-xs">
         <GitCompareArrowsIcon class="size-3.5" />
         {{ $t("app.fileGitChanges") }}
         <span v-if="changeCount > 0" class="tabular-nums text-[0.6875rem] text-ink-faint">

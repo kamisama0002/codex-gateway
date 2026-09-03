@@ -1,5 +1,7 @@
 import type { HostRecord, ThreadGoalStatus, ThreadSettingsState } from "~~/shared/types";
 import { INITIAL_TURN_PAGE_LIMIT } from "~~/shared/config";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
+import { buildAppServerThreadStartParams } from "../protocol/thread-payload";
 import type { ServerRequestResponseInput, TurnStartInput, TurnSteerInput } from "./types";
 import { ControllerRegistry, type ThreadSubscriptionLease } from "./controller-registry";
 import { ThreadOpenService } from "./thread-open-service";
@@ -7,6 +9,7 @@ import { ThreadTurnCommandService } from "./turn-commands";
 import { ThreadGoalService } from "./thread-goals";
 import { ThreadSettingsService } from "./thread-settings";
 import { ThreadCatalogService } from "./thread-catalog";
+import { ThreadLifecycleService } from "./thread-lifecycle";
 import { ThreadHistoryReader } from "./thread-history-reader";
 import { McpRuntimeService } from "./mcp-runtime";
 import { AppServerFileService } from "./app-server-files";
@@ -19,6 +22,7 @@ class ThreadBroker {
   private readonly goals = new ThreadGoalService(this.registry);
   private readonly settings = new ThreadSettingsService(this.registry);
   private readonly catalog = new ThreadCatalogService(this.registry);
+  private readonly lifecycle = new ThreadLifecycleService(this.registry);
   private readonly mcp = new McpRuntimeService(this.registry);
   private readonly files = new AppServerFileService(this.registry);
 
@@ -37,13 +41,12 @@ class ThreadBroker {
     // Paginated history is the current App Server storage model that can hydrate indexed Turn
     // pages without replaying an entire rollout JSONL. Keep this policy at the protocol boundary so
     // every Gateway-created thread uses it and browser DTOs do not need to expose storage details.
-    const result = await client.request("thread/start", {
-      ...params,
-      historyMode: "paginated",
-      // This official opt-in is fixed at thread creation and cannot be enabled by thread/resume.
-      // It exposes exact per-response usage metadata without changing persisted rollout history.
-      experimentalRawEvents: true,
-    });
+    const result = await client.request(
+      "thread/start",
+      buildAppServerThreadStartParams(params, {
+        managedRuntime: isManagedRuntimeHost(host),
+      }),
+    );
     const started = this.openService.startedThreadResult(host, projectId, result);
     await this.registry.retainStartedThreadSubscription(host, started.threadId);
     return started.result;
@@ -118,6 +121,18 @@ class ThreadBroker {
     return this.settings.renameThread(host, threadId, name);
   }
 
+  async archiveThread(host: HostRecord, threadId: string, userId: number) {
+    return this.lifecycle.archive(host, threadId, userId);
+  }
+
+  async unarchiveThread(host: HostRecord, threadId: string, userId: number) {
+    return this.lifecycle.unarchive(host, threadId, userId);
+  }
+
+  async deleteThread(host: HostRecord, threadId: string, userId: number) {
+    return this.lifecycle.delete(host, threadId, userId);
+  }
+
   async listThreadTurns(
     host: HostRecord,
     threadId: string,
@@ -145,6 +160,14 @@ class ThreadBroker {
 
   async getHostClient(host: HostRecord) {
     return this.registry.getHostClient(host);
+  }
+
+  async listDirectories(host: HostRecord, path: string) {
+    return this.files.listDirectory(host, path);
+  }
+
+  async createDirectory(host: HostRecord, path: string) {
+    return this.files.createDirectory(host, path);
   }
 
   async searchProjectFiles(

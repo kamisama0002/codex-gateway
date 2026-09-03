@@ -56,8 +56,8 @@ function preventInitialFocus(event: Event) {
       <Button
         type="button"
         variant="ghost"
-        size="lg"
-        class="min-w-0 max-w-full gap-1.5 px-1.5 text-sm font-normal text-ink-secondary hover:bg-canvas-soft sm:gap-2 sm:px-2 md:text-base"
+        size="sm"
+        class="min-w-0 max-w-full gap-1 px-2 text-sm font-medium text-ink-secondary hover:bg-muted sm:px-2"
         data-testid="model-select"
         :disabled="loadingModels || !models.length"
       >
@@ -75,12 +75,12 @@ function preventInitialFocus(event: Event) {
         <span v-if="activeEffortCompactLabel" class="hidden shrink-0 text-ink-muted sm:inline">
           {{ activeEffortCompactLabel }}
         </span>
-        <ChevronDownIcon class="size-4 text-ink-muted" />
+        <ChevronDownIcon class="size-3.5 text-ink-muted" />
       </Button>
     </ModelSelectorTrigger>
     <ModelSelectorContent
       :title="t('app.model')"
-      class="w-[min(92vw,32rem)] overflow-hidden rounded-2xl border-hairline shadow-xl shadow-ink/10"
+      class="w-[min(92vw,32rem)] overflow-hidden rounded-xl border-hairline shadow-sm"
       close-button-test-id="model-selector-close"
       data-testid="model-selector-dialog"
       @open-auto-focus="preventInitialFocus"
@@ -93,7 +93,7 @@ function preventInitialFocus(event: Event) {
             v-for="option in effortOptions"
             :key="option.value"
             :value="`effort:${option.value}`"
-            class="min-h-11 rounded-lg px-3 text-sm text-ink"
+            class="min-h-8 rounded-md px-2.5 text-sm text-ink"
             @select="selectEffort(option.value)"
           >
             <span>{{ labelEffortOption(option) }}</span>
@@ -110,7 +110,7 @@ function preventInitialFocus(event: Event) {
             :key="modelOption.id"
             :value="`model:${modelOptionValue(modelOption)}`"
             :data-testid="`model-option-${modelOptionValue(modelOption)}`"
-            class="min-h-11 rounded-lg px-3 text-sm text-ink"
+            class="min-h-8 rounded-md px-2.5 text-sm text-ink"
             @select="selectModel(modelOptionValue(modelOption))"
           >
             <span class="truncate">{{

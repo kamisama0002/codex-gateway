@@ -24,7 +24,6 @@ const {
   handlePrimaryAction,
   hasComposerInput,
   interruptingTurn,
-  isThreadRunning,
   labelEffortOption,
   loadingModels,
   modelOptionValue,
@@ -88,7 +87,6 @@ const {
     :label-effort-option="labelEffortOption"
     :model-option-value="modelOptionValue"
     :has-composer-input="hasComposerInput"
-    :is-thread-running="isThreadRunning"
     :can-interrupt-turn="canInterruptTurn"
     :can-use-primary-action="canUsePrimaryAction"
     :interrupting-turn="interruptingTurn"

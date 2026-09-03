@@ -1,6 +1,7 @@
 export {
   isTerminalOrIdleThreadStatus,
   isThreadActiveStatus,
+  runtimeStatusFromAuthoritativeThread,
   runtimeStatusFromCompletedTurn,
   runtimeStatusFromAppThreadStatus,
   runtimeStatusFromThreadState,

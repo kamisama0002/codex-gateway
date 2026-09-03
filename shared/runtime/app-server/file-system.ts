@@ -28,8 +28,32 @@ export function parseFuzzyFileSearchResponse(value: unknown) {
   return fuzzyFileSearchResponseSchema.parse(value);
 }
 
+export const fsReadDirectoryResponseSchema = z
+  .object({
+    entries: z.array(
+      z
+        .object({
+          fileName: z.string().min(1),
+          isDirectory: z.boolean(),
+          isFile: z.boolean(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export const fsCreateDirectoryResponseSchema = z.object({}).strict();
+
 export function parseFsWatchResponse(value: unknown) {
   return fsWatchResponseSchema.parse(value);
+}
+
+export function parseFsReadDirectoryResponse(value: unknown) {
+  return fsReadDirectoryResponseSchema.parse(value);
+}
+
+export function parseFsCreateDirectoryResponse(value: unknown) {
+  return fsCreateDirectoryResponseSchema.parse(value);
 }
 
 export function fsChangedNotificationFromUnknown(value: unknown) {

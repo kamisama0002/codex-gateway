@@ -1,13 +1,6 @@
 <script setup lang="ts">
-import {
-  ChevronDownIcon,
-  ChevronRightIcon,
-  FolderIcon,
-  FolderOpenIcon,
-  FolderXIcon,
-  PlusIcon,
-  Trash2Icon,
-} from "@lucide/vue";
+import { computed } from "vue";
+import { ChevronRightIcon, FolderIcon, FolderOpenIcon, FolderXIcon, PlusIcon, Trash2Icon } from "@lucide/vue";
 import type { ProjectRecord } from "~~/shared/types";
 import { Button } from "@codex-gateway/ui/button";
 import {
@@ -16,8 +9,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@codex-gateway/ui/context-menu";
-import { selectedRowClass } from "../sidebar-utils";
-import SidebarRowLabel from "../SidebarRowLabel.vue";
+import { isManagedRuntimeProjectId, workspaceFolderLabel } from "~~/shared/runtime/managed-runtime";
 
 const props = defineProps<{
   project: ProjectRecord;
@@ -39,6 +31,8 @@ function selectProject(event: MouseEvent) {
     emit("select", event);
   }
 }
+
+const folderLabel = computed(() => workspaceFolderLabel(props.project));
 </script>
 
 <template>
@@ -48,30 +42,37 @@ function selectProject(event: MouseEvent) {
         :data-testid="`project-button-${project.id}`"
         v-bind="longPressHandlers"
         variant="ghost"
-        class="h-10 w-full min-w-0 justify-start gap-2 overflow-hidden rounded-lg px-3 text-[0.9375rem] font-normal hover:bg-surface"
-        :class="[selectedRowClass(selected), missing ? 'text-ink-faint' : '']"
+        class="group/project h-[2.125rem] w-full min-w-0 justify-start gap-1.5 overflow-hidden rounded-lg px-2 text-sm font-normal hover:bg-muted focus-visible:ring-0"
+        :class="[
+          missing ? 'text-ink-faint' : 'text-ink',
+          selected && !missing ? 'bg-muted' : '',
+        ]"
         :data-project-missing="missing ? 'true' : 'false'"
         @click="selectProject"
       >
-        <template v-if="!missing">
-          <ChevronDownIcon v-if="expanded" class="size-3.5 shrink-0 text-ink-muted" />
-          <ChevronRightIcon v-else class="size-3.5 shrink-0 text-ink-muted" />
-        </template>
-        <span v-else class="w-3.5 shrink-0" />
         <FolderXIcon v-if="missing" class="size-4 shrink-0 text-destructive/70" />
-        <FolderIcon v-else class="size-4 shrink-0" />
-        <SidebarRowLabel
-          :title="project.name"
-          :subtitle="missing ? $t('app.projectDirectoryMissing') : undefined"
-        >
-          <template v-if="!missing" #trailing>
-            <span class="size-2 shrink-0 rounded-full bg-accent-green" />
-          </template>
-        </SidebarRowLabel>
+        <template v-else>
+          <span
+            class="hidden size-4 shrink-0 items-center justify-center group-hover/project:inline-flex"
+          >
+            <ChevronRightIcon
+              class="size-3.5 text-ink-faint transition-transform"
+              :class="expanded ? 'rotate-90' : ''"
+            />
+          </span>
+          <span
+            class="inline-flex size-4 shrink-0 items-center justify-center group-hover/project:hidden"
+          >
+            <FolderIcon class="size-4 text-ink-muted" />
+          </span>
+        </template>
+        <span class="min-w-0 flex-1 truncate text-left" :title="folderLabel">
+          {{ folderLabel }}
+        </span>
       </Button>
     </ContextMenuTrigger>
     <ContextMenuContent :collision-padding="12" prioritize-position class="w-44">
-      <ContextMenuItem @select="emit('edit')">
+      <ContextMenuItem v-if="!isManagedRuntimeProjectId(project.id)" @select="emit('edit')">
         <FolderOpenIcon class="mr-2 size-4" />
         {{ $t("app.editProject") }}
       </ContextMenuItem>
@@ -79,7 +80,11 @@ function selectProject(event: MouseEvent) {
         <PlusIcon class="mr-2 size-4" />
         {{ $t("app.newThread") }}
       </ContextMenuItem>
-      <ContextMenuItem class="text-destructive focus:text-destructive" @select="emit('delete')">
+      <ContextMenuItem
+        v-if="!isManagedRuntimeProjectId(project.id)"
+        class="text-destructive focus:text-destructive"
+        @select="emit('delete')"
+      >
         <Trash2Icon class="mr-2 size-4" />
         {{ $t("app.deleteProject") }}
       </ContextMenuItem>

@@ -9,6 +9,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
     container_name: codex-gateway
     restart: unless-stopped
     logging: *default-logging
@@ -23,6 +26,10 @@ services:
       BROWSER_PREVIEW_DOMAIN: ${BROWSER_PREVIEW_DOMAIN:-cloudawn.top}
       CODEX_GATEWAY_DB_PATH: /data/codex-gateway.db
       CODEX_GATEWAY_CONFIG_SECRET: ${CODEX_GATEWAY_CONFIG_SECRET:?CODEX_GATEWAY_CONFIG_SECRET is required}
+      RUNTIME_MANAGER_BASE_URL: ${RUNTIME_MANAGER_BASE_URL:-http://agent-runtime-manager:8787}
+      RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS: ${RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS:-stable}
+      RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:?RUNTIME_MANAGER_SHARED_SECRET is required}
+      RUNTIME_PROVIDER_PROXY_BASE_URL: ${RUNTIME_PROVIDER_PROXY_BASE_URL:-http://codex-gateway:3000/api/internal/providers}
     volumes:
       - ./data:/data
     # Keep liveness probes side-effect free. Nitro owns periodic GC so probe retries or Docker
@@ -41,7 +48,54 @@ services:
       start_period: 20s
     networks:
       - web-common
+      - runtime-manager
+      - agent-runtime
+
+  agent-runtime-manager:
+    build:
+      context: .
+      dockerfile: docker/runtime-manager.Dockerfile
+      args:
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
+    image: ${RUNTIME_MANAGER_IMAGE:-codex-runtime-manager:0.151.0}
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${RUNTIME_MANAGER_MEM_LIMIT:-512m}
+    memswap_limit: ${RUNTIME_MANAGER_MEMSWAP_LIMIT:-512m}
+    pids_limit: ${RUNTIME_MANAGER_PIDS_LIMIT:-128}
+    cpus: ${RUNTIME_MANAGER_CPU_LIMIT:-1.0}
+    expose:
+      - "8787"
+    environment:
+      NODE_ENV: production
+      RUNTIME_MANAGER_AGENT_NETWORK: ${RUNTIME_MANAGER_AGENT_NETWORK:-agent-runtime}
+      RUNTIME_MANAGER_IMAGE_ALIASES: ${RUNTIME_MANAGER_IMAGE_ALIASES:?RUNTIME_MANAGER_IMAGE_ALIASES is required}
+      RUNTIME_MANAGER_PORT: 8787
+      RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:?RUNTIME_MANAGER_SHARED_SECRET is required}
+      RUNTIME_AGENT_MEMORY: ${RUNTIME_AGENT_MEMORY:-2g}
+      RUNTIME_AGENT_CPUS: ${RUNTIME_AGENT_CPUS:-2}
+      RUNTIME_AGENT_PIDS: ${RUNTIME_AGENT_PIDS:-256}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runtime-manager-data:/data
+    networks:
+      - runtime-manager
 
 networks:
   web-common:
     external: true
+  runtime-manager:
+    name: ${RUNTIME_MANAGER_NETWORK_NAME:-runtime-manager}
+    internal: true
+    ipam:
+      config:
+        - subnet: ${RUNTIME_MANAGER_NETWORK_SUBNET:-10.254.250.0/24}
+  agent-runtime:
+    name: ${RUNTIME_MANAGER_AGENT_NETWORK:-agent-runtime}
+    internal: true
+    ipam:
+      config:
+        - subnet: ${RUNTIME_MANAGER_AGENT_NETWORK_SUBNET:-10.254.251.0/24}
+
+volumes:
+  runtime-manager-data:

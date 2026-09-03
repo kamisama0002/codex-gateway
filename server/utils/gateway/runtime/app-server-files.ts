@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
-import type { HostRecord, ProjectFileSearchResult, RpcEnvelope } from "~~/shared/types";
+import { posix } from "node:path";
+import type {
+  HostRecord,
+  ProjectFileSearchResult,
+  RemoteDirectoryResult,
+  RpcEnvelope,
+} from "~~/shared/types";
 import {
   fsChangedNotificationFromUnknown,
+  parseFsCreateDirectoryResponse,
+  parseFsReadDirectoryResponse,
   parseFsWatchResponse,
   parseFuzzyFileSearchResponse,
 } from "~~/shared/runtime/app-server/file-system";
@@ -42,6 +50,40 @@ export class AppServerFileService {
   >();
 
   constructor(private readonly registry: ControllerRegistry) {}
+
+  async listDirectory(host: HostRecord, path: string): Promise<RemoteDirectoryResult> {
+    const client = await this.registry.getHostClient(host);
+    const response = await client.request(
+      "fs/readDirectory",
+      { path },
+      FILE_RPC_TIMEOUT_MS,
+      parseFsReadDirectoryResponse,
+    );
+    const entries = response.entries.map((entry) => ({
+      name: entry.fileName,
+      path: posix.join(path, entry.fileName),
+      type: directoryEntryType(entry),
+      size: null,
+      modifiedAt: null,
+    }));
+    entries.sort((left, right) => {
+      if (left.type !== right.type) {
+        return left.type === "directory" ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+    return { path, entries };
+  }
+
+  async createDirectory(host: HostRecord, path: string) {
+    const client = await this.registry.getHostClient(host);
+    await client.request(
+      "fs/createDirectory",
+      { path, recursive: true },
+      FILE_RPC_TIMEOUT_MS,
+      parseFsCreateDirectoryResponse,
+    );
+  }
 
   async search(
     host: HostRecord,
@@ -186,6 +228,12 @@ function requiredUserId() {
   const userId = currentGatewayUserId();
   if (userId === null) throw new Error("App Server file operations require an authenticated user");
   return userId;
+}
+
+function directoryEntryType(entry: { isDirectory: boolean; isFile: boolean }) {
+  if (entry.isDirectory) return "directory" as const;
+  if (entry.isFile) return "file" as const;
+  return "other" as const;
 }
 
 function visibleWatchPath(watch: ActiveFileWatch, path: string) {

@@ -1,4 +1,10 @@
 import type { ProjectCreateInput, ProjectRecord, ProjectUpdateInput } from "~~/shared/types";
+import {
+  MANAGED_RUNTIME_HOST_ID,
+  MANAGED_RUNTIME_PROJECT_ID,
+  MANAGED_WORKSPACE_PATH,
+} from "~~/shared/runtime/managed-runtime";
+import { publicLocalProject, overlayPublicProjects } from "../runtime-manager/local-workspace";
 import { gatewayMemoryState, nextId, nowIso } from "./memory";
 
 function normalizeProject(input: ProjectCreateInput, id = nextId(gatewayMemoryState.projects)) {
@@ -16,12 +22,13 @@ function normalizeProject(input: ProjectCreateInput, id = nextId(gatewayMemorySt
 
 export const projectStore = {
   replaceProjects(projects: ProjectRecord[]) {
-    gatewayMemoryState.projects = projects.map((project) => ({
+    const persisted = projects.filter((project) => project.id !== MANAGED_RUNTIME_PROJECT_ID);
+    gatewayMemoryState.projects = persisted.map((project) => ({
       ...project,
       name: project.name.trim(),
       remotePath: project.remotePath.trim(),
     }));
-    gatewayMemoryState.configuredProjectIds = new Set(projects.map((project) => project.id));
+    gatewayMemoryState.configuredProjectIds = new Set(persisted.map((project) => project.id));
   },
 
   pruneToHosts(hostIds: Set<number>) {
@@ -51,17 +58,22 @@ export const projectStore = {
   },
 
   list(hostId?: number): ProjectRecord[] {
-    return gatewayMemoryState.projects
+    return overlayPublicProjects(gatewayMemoryState.projects)
       .filter((project) => hostId === undefined || project.hostId === hostId)
       .sort((left, right) => left.name.localeCompare(right.name));
   },
 
   listConfigured(): ProjectRecord[] {
-    return this.list().filter((project) => gatewayMemoryState.configuredProjectIds.has(project.id));
+    return gatewayMemoryState.projects
+      .filter((project) => gatewayMemoryState.configuredProjectIds.has(project.id))
+      .sort((left, right) => left.name.localeCompare(right.name));
   },
 
   get(id: number): ProjectRecord | null {
-    return gatewayMemoryState.projects.find((project) => project.id === id) ?? null;
+    return (
+      overlayPublicProjects(gatewayMemoryState.projects).find((project) => project.id === id) ??
+      null
+    );
   },
 
   create(input: ProjectCreateInput): ProjectRecord {
@@ -85,6 +97,9 @@ export const projectStore = {
 
   ensureForPath(hostId: number, remotePath: string): ProjectRecord {
     const normalizedPath = remotePath.trim();
+    if (hostId === MANAGED_RUNTIME_HOST_ID && normalizedPath === MANAGED_WORKSPACE_PATH) {
+      return publicLocalProject();
+    }
     const existing = gatewayMemoryState.projects.find(
       (project) => project.hostId === hostId && project.remotePath === normalizedPath,
     );

@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/remote-workspace";
 import { authenticatedFetch, openApp, reloadApp } from "./helpers/app";
-import { hostRecordSchema, projectRecordSchema } from "./helpers/http-schemas";
+import { projectRecordSchema } from "./helpers/http-schemas";
 import {
   appendAgentStreamLines,
   installSelectedThreadGoalSubmitMock,
@@ -34,11 +34,7 @@ import {
   waitForScrollableChatViewportAtBottom,
   waitForChatScrollToSettle,
 } from "./helpers/scroll";
-import {
-  execRemoteSsh,
-  type RemoteCodexEnv,
-  waitForSelectedThreadId,
-} from "./helpers/remote-codex";
+import { execRemoteSsh, waitForSelectedThreadId } from "./helpers/remote-codex";
 
 test("uses the mobile layout with hidden sidebar and usable composer shell", async ({ page }) => {
   await openApp(page);
@@ -53,7 +49,8 @@ test("uses the mobile layout with hidden sidebar and usable composer shell", asy
   await expect(page.getByTestId("settings-toggle")).toBeHidden();
 
   await expect(page.getByTestId("chat-scroll-area")).toBeVisible();
-  await expect(page.getByText("先选择一个项目")).toBeVisible();
+  await expect(page.getByTestId("project-thread-list")).toBeVisible();
+  await expect(page.getByText("这个项目还没有会话")).toBeVisible();
 });
 
 test("shows effort and compact context usage without mobile approval controls", async ({
@@ -576,9 +573,18 @@ test("opens sidebar context actions with long press on mobile", async ({
   page,
   remoteWorkspace,
 }) => {
-  const { remote } = remoteWorkspace;
+  // The first real host in a fresh container triggers the offline Codex/Node installation. Keep
+  // this workflow's budget aligned with the remote-host upgrade suite instead of the 4-minute UI
+  // default, while the assertions below remain unchanged.
+  test.setTimeout(10 * 60_000);
   await openApp(page);
-  const { project } = await createConfiguredHostAndProject(page, remote);
+  // Bootstrap waits for every configured host to finish its initial SSH/app-server overview.
+  // Use the fixture helper here so the reload cannot race that connection after the host is
+  // created through the API.
+  const { project } = await remoteWorkspace.provision({
+    hostName: `mobile-longpress-host-${Date.now()}`,
+    projectName: `mobile-longpress-project-${Date.now()}`,
+  });
   await reloadApp(page);
 
   if (
@@ -714,7 +720,11 @@ test("browses the current thread file workspace from a mobile sheet", async ({
   const { remote } = remoteWorkspace;
   await openApp(page);
   const rootPath = `/home/${remote.username}/mobile-file-project-${Date.now()}`;
-  const { host, project } = await createConfiguredHostAndProject(page, remote, rootPath);
+  const { host, project } = await remoteWorkspace.provision({
+    hostName: `mobile-file-host-${Date.now()}`,
+    projectName: `mobile-file-project-${Date.now()}`,
+    remotePath: rootPath,
+  });
   const path = `${rootPath}/mobile-file-preview-${Date.now()}.md`;
   await execRemoteSsh(
     remote,
@@ -822,44 +832,6 @@ async function openIntermediateSteps(page: Page) {
     await toggle.click();
   }
   await expect(toggle).toHaveAttribute("data-state", "open");
-}
-
-async function createConfiguredHostAndProject(
-  page: Page,
-  remote: RemoteCodexEnv,
-  projectPath = remote.projectPath,
-) {
-  const host = await authenticatedFetch(
-    page,
-    {
-      url: "/api/hosts",
-      method: "POST",
-      body: {
-        name: `mobile-longpress-host-${Date.now()}`,
-        sshHost: remote.host,
-        username: remote.username,
-        port: Number(remote.port),
-        authMode: "password",
-        password: remote.password,
-        proxyUrl: remote.proxyUrl ?? null,
-      },
-    },
-    (value) => hostRecordSchema.parse(value),
-  );
-  const project = await authenticatedFetch(
-    page,
-    {
-      url: "/api/projects",
-      method: "POST",
-      body: {
-        hostId: host.id,
-        name: `mobile-longpress-project-${Date.now()}`,
-        remotePath: projectPath,
-      },
-    },
-    (value) => projectRecordSchema.parse(value),
-  );
-  return { host, project };
 }
 
 function shellQuote(value: string) {

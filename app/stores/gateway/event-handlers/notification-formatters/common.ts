@@ -57,12 +57,6 @@ export function verificationSummary(value: unknown) {
     .join(", ");
 }
 
-export function itemSummary(item: unknown) {
-  const record = recordFromUnknown(item);
-  if (record === null) return text(item);
-  return [text(record.type), text(record.id)].filter((value) => value !== "").join(" · ");
-}
-
 export function goalSummary(goal: unknown) {
   const record = recordFromUnknown(goal);
   if (record === null) return text(goal);

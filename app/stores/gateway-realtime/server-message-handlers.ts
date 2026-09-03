@@ -75,6 +75,14 @@ export function createRealtimeServerMessageDispatcher(ctx: RealtimeServerMessage
       .with({ type: "config.pinnedThreads.changed" }, () =>
         gatewayDomainEvents.emit("pinned-threads-invalidated", {}),
       )
+      .with({ type: "thread.catalog.updated" }, (message) =>
+        gatewayDomainEvents.emit("thread-catalog-updated", {
+          hostId: message.hostId,
+          threadId: message.threadId,
+          action: message.action,
+          thread: message.thread,
+        }),
+      )
       .with({ type: "error" }, (error) => handleRealtimeError(ctx, error))
       .with({ type: "pong" }, ({ nonce }) => ctx.acknowledgePong(nonce))
       .with(

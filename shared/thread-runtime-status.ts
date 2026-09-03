@@ -1,4 +1,4 @@
-import type { GatewayEvent, ThreadRuntimeStatus } from "./types";
+import type { GatewayEvent, ThreadRuntimePhase, ThreadRuntimeStatus } from "./types";
 
 type ThreadStatusLike = string | { type?: unknown } | null | undefined;
 
@@ -61,8 +61,51 @@ export function runtimeStatusFromAppThreadStatus(status: unknown): ThreadRuntime
   return "completed";
 }
 
+export function runtimePhaseFromAppThreadStatus(status: unknown): ThreadRuntimePhase {
+  const value = statusValue(status);
+  if (value === "active") {
+    const flags = activeFlags(status);
+    if (flags.includes("waitingOnApproval")) return "waitingForApproval";
+    if (flags.includes("waitingOnUserInput")) return "waitingForInput";
+    return "running";
+  }
+  if (value === "pending" || value === "starting") return "submitting";
+  return runtimePhaseFromStatus(runtimeStatusFromAppThreadStatus(status));
+}
+
+export function runtimePhaseFromStatus(status: ThreadRuntimeStatus): ThreadRuntimePhase {
+  return status;
+}
+
+export function isActiveThreadRuntimePhase(phase: ThreadRuntimePhase) {
+  return (
+    phase === "submitting" ||
+    phase === "running" ||
+    phase === "waitingForApproval" ||
+    phase === "waitingForInput" ||
+    phase === "waitingForClient" ||
+    phase === "retrying"
+  );
+}
+
 export function runtimeStatusFromTopLevelThreadState(thread: unknown): ThreadRuntimeStatus {
   return runtimeStatusFromAppThreadStatus(topLevelThreadStatus(thread) ?? { type: "idle" });
+}
+
+/**
+ * Prefer live app-server `thread.status` over cached history or replayed events.
+ * A stale inProgress turn must not keep the composer running after thread/read
+ * reports idle.
+ */
+export function runtimeStatusFromAuthoritativeThread(
+  thread: unknown,
+  history: unknown = null,
+  events: GatewayEvent[] = [],
+): ThreadRuntimeStatus | null {
+  if (topLevelThreadStatus(thread) !== null) {
+    return runtimeStatusFromTopLevelThreadState(thread);
+  }
+  return runtimeStatusFromThreadState(thread, history, events);
 }
 
 export function runtimeStatusFromSnapshotState(
@@ -199,7 +242,54 @@ export function runtimeStatusFromEvent(
     return null;
   }
   const params = eventParams(event);
-  return RUNTIME_STATUS_EVENT_REDUCERS[event.method]?.(event, params) ?? null;
+  const reduced = RUNTIME_STATUS_EVENT_REDUCERS[event.method]?.(event, params);
+  if (reduced !== undefined && reduced !== null) return reduced;
+  const phase = runtimePhaseFromEvent(event);
+  if (phase === null) return null;
+  if (isActiveThreadRuntimePhase(phase)) return "running";
+  return phase;
+}
+
+export function runtimePhaseFromEvent(event: GatewayEvent | undefined): ThreadRuntimePhase | null {
+  if (!event) return null;
+  const params = eventParams(event);
+  if (event.method === "thread/status/changed") {
+    return runtimePhaseFromAppThreadStatus(recordField(params, "status"));
+  }
+  if (event.method === "turn/started") return "running";
+  if (event.method === "turn/completed") {
+    return runtimePhaseFromStatus(runtimeStatusFromCompletedTurn(recordField(params, "turn")));
+  }
+  if (event.method === "error") return params.willRetry === true ? "retrying" : "failed";
+  if (
+    event.method === "item/commandExecution/requestApproval" ||
+    event.method === "item/fileChange/requestApproval" ||
+    event.method === "item/permissions/requestApproval"
+  ) {
+    return "waitingForApproval";
+  }
+  if (
+    event.method === "item/tool/requestUserInput" ||
+    event.method === "mcpServer/elicitation/request"
+  ) {
+    return "waitingForInput";
+  }
+  if (
+    event.method === "item/tool/call" ||
+    event.method === "account/chatgptAuthTokens/refresh" ||
+    event.method === "attestation/generate"
+  ) {
+    return "waitingForClient";
+  }
+  if (event.method === "serverRequest/resolved") return "running";
+  if (
+    event.method === "item/started" ||
+    event.method.endsWith("/delta") ||
+    event.method.endsWith("/patchUpdated")
+  ) {
+    return "running";
+  }
+  return null;
 }
 
 function runtimeStatusFromTopLevelThreadStatus(status: unknown): ThreadRuntimeStatus | null {
@@ -256,6 +346,11 @@ function statusValue(status: unknown) {
   return null;
 }
 
+function activeFlags(status: unknown) {
+  if (!isRecord(status) || !Array.isArray(status.activeFlags)) return [];
+  return status.activeFlags.filter((value): value is string => typeof value === "string");
+}
+
 function hasActiveItems(turn: TurnLike | undefined) {
   return Boolean(turn?.items?.some((item) => isThreadActiveStatus(item.status)));
 }
@@ -269,7 +364,7 @@ function hasPostTurnActiveItems(turn: TurnLike | undefined) {
   );
 }
 
-function eventParams(event: GatewayEvent) {
+function eventParams(event: GatewayEvent): Record<string, unknown> {
   const payload = isRecord(event.payload) ? event.payload : null;
   return isRecord(payload?.params) ? payload.params : (payload ?? {});
 }

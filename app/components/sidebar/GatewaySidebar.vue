@@ -17,15 +17,17 @@ import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import AddProjectDialog from "./AddProjectDialog.vue";
 import HostTree from "./host-tree/HostTree.vue";
+import NewConversationButton from "./NewConversationButton.vue";
 import PinnedThreadList from "./thread-list/PinnedThreadList.vue";
-import RecentThreadList from "./thread-list/RecentThreadList.vue";
 import ThreadRenameDialog from "./thread-list/ThreadRenameDialog.vue";
+import ThreadDeleteDialog from "./thread-list/ThreadDeleteDialog.vue";
 import SidebarScrollArea from "./SidebarScrollArea.vue";
 import { SidebarFooter } from "@codex-gateway/ui/sidebar";
 import { useSidebarTree } from "./host-tree/useSidebarTree";
 import { useThreadRename } from "./thread-list/useThreadRename";
-import { useRecentThreadActivity } from "./thread-list/useRecentThreadActivity";
+import { useThreadLifecycle } from "./thread-list/useThreadLifecycle";
 import SidebarWorkspaceToolbar from "./SidebarWorkspaceToolbar.vue";
+import RealtimeConnectionIndicator from "./RealtimeConnectionIndicator.vue";
 import { useTmuxMonitorLauncher } from "@/composables/workspace/useTmuxMonitorLauncher";
 import type { HostTreeController } from "./host-tree/controller";
 import type { HostRecord, ProjectRecord } from "./sidebar-types";
@@ -40,11 +42,12 @@ const projectEditor = ref<{ host: HostRecord; project: ProjectRecord | null } | 
 const { longPressTriggered, longPressContextMenuHandlers } = useLongPressContextMenu();
 const sidebarTree = useSidebarTree(longPressTriggered);
 const threadRename = useThreadRename();
-const recentActivity = useRecentThreadActivity();
+const threadLifecycle = useThreadLifecycle();
 const workspaceActions = useWorkspaceLaunchActions();
 const tmuxLauncher = useTmuxMonitorLauncher();
 const {
   hosts,
+  projects,
   pinnedThreads,
   selectedHostId,
   selectedThreadId,
@@ -52,7 +55,6 @@ const {
   pinnedRuntimeStatus,
   pinnedCompletionAttention,
 } = sidebarTree;
-const { recentThreads } = recentActivity;
 const { selectedHostTitle, canLaunch } = workspaceActions;
 const { activeCount: tmuxActiveCount } = tmuxLauncher;
 const hostTreeController = computed<HostTreeController>(() => ({
@@ -60,6 +62,7 @@ const hostTreeController = computed<HostTreeController>(() => ({
   availableProjectsByHost: sidebarTree.availableProjectsByHost.value,
   missingProjectsByHost: sidebarTree.missingProjectsByHost.value,
   projectThreads: sidebarTree.projectThreads.value,
+  threadsForProject: sidebarTree.threadsForProject,
   expandedHostIds: sidebarTree.expandedHostIds.value,
   expandedProjectIds: sidebarTree.expandedProjectIds.value,
   expandedMissingProjectHostIds: sidebarTree.expandedMissingProjectHostIds.value,
@@ -80,6 +83,18 @@ const hostTreeController = computed<HostTreeController>(() => ({
   openThread: sidebarTree.openThread,
   toggleThreadPin: navigation.setThreadPinned,
   rename: threadRename.startRename,
+  archive: threadLifecycle.archive,
+  archivedFilterActive: navigation.archivedFilterActive,
+  archivedThreads: navigation.archivedThreads,
+  archivedLoading: navigation.archivedLoading,
+  setArchivedFilter: (active) => {
+    void navigation.setArchivedFilter(active);
+    if (active) sidebarTree.expandAllTree();
+  },
+  openArchivedThread: (thread) =>
+    void threadLifecycle.unarchiveAndOpen(thread, thread.projectId ?? null),
+  unarchive: threadLifecycle.unarchive,
+  deleteThread: threadLifecycle.startDelete,
   threadRuntimeStatus: sidebarTree.threadRuntimeStatus,
   threadCompletionAttention: sidebarTree.threadCompletionAttention,
 }));
@@ -110,7 +125,7 @@ async function openHostMonitor(hostId: number) {
 <template>
   <aside
     v-bind="$attrs"
-    class="relative flex h-full min-h-0 flex-col border-r border-hairline bg-canvas-soft"
+    class="relative flex h-full min-h-0 flex-col border-r border-hairline bg-canvas"
   >
     <SidebarWorkspaceToolbar
       v-if="workspaceToolbar"
@@ -122,9 +137,14 @@ async function openHostMonitor(hostId: number) {
       @open-browser="showBrowserDialog = true"
       @open-host-monitor="workspaceActions.openHostMonitor"
     />
-    <div class="flex min-h-0 flex-1 overflow-hidden px-3 py-3">
+    <div class="flex min-h-0 flex-1 overflow-hidden px-3 py-1.5">
       <SidebarScrollArea>
-        <div class="min-w-0 max-w-full space-y-4 overflow-hidden pr-1">
+        <div class="min-w-0 max-w-full space-y-3 overflow-hidden pr-1">
+          <NewConversationButton
+            :disabled="!projects.length"
+            @click="sidebarTree.startNewConversation"
+          />
+
           <PinnedThreadList
             :threads="pinnedThreads"
             :hosts="hosts"
@@ -136,16 +156,7 @@ async function openHostMonitor(hostId: number) {
             @open="openPinnedThread"
             @unpin="navigation.setPinnedThread($event, false)"
             @rename="threadRename.startRename"
-          />
-
-          <RecentThreadList
-            :threads="recentThreads"
-            :selected-host-id="selectedHostId"
-            :selected-thread-id="selectedThreadId"
-            :long-press-handlers="longPressContextMenuHandlers"
-            @open="recentActivity.openRecentThread"
-            @pin="recentActivity.pinRecentThread"
-            @rename="threadRename.startRename"
+            @archive="threadLifecycle.archive"
           />
 
           <HostTree :controller="hostTreeController" />
@@ -154,15 +165,18 @@ async function openHostMonitor(hostId: number) {
     </div>
 
     <SidebarFooter class="shrink-0 border-t border-hairline p-3">
-      <Button
-        data-testid="settings-toggle"
-        variant="ghost"
-        class="h-10 w-full justify-start gap-3 rounded-lg px-3 text-[0.9375rem] font-normal hover:bg-surface"
-        @click="showSettings = !showSettings"
-      >
-        <SettingsIcon class="size-4" />
-        {{ t("app.settings") }}
-      </Button>
+      <div class="flex min-w-0 items-center gap-1.5">
+        <Button
+          data-testid="settings-toggle"
+          variant="ghost"
+          class="h-8 min-w-0 flex-1 justify-start gap-2 rounded-lg px-2 text-sm font-normal hover:bg-muted"
+          @click="showSettings = !showSettings"
+        >
+          <SettingsIcon class="size-4" />
+          {{ t("app.settings") }}
+        </Button>
+        <RealtimeConnectionIndicator />
+      </div>
     </SidebarFooter>
 
     <BrowserOpenDialog
@@ -173,13 +187,13 @@ async function openHostMonitor(hostId: number) {
 
     <Dialog v-model:open="showSettings">
       <DialogContent
-        class="flex h-[min(54rem,calc(100vh-3rem))] w-[min(70rem,calc(100vw-3rem))] !max-w-[min(70rem,calc(100vw-3rem))] flex-col overflow-hidden p-0"
+        class="flex h-[min(50rem,calc(100dvh-2rem))] w-[min(50rem,calc(100vw-2rem))] !max-w-[min(50rem,calc(100vw-2rem))] flex-col overflow-hidden p-0"
         data-testid="settings-dialog"
         close-button-test-id="settings-close-button"
       >
-        <DialogHeader class="border-b border-hairline px-6 py-5">
-          <DialogTitle class="text-lg">{{ t("app.settings") }}</DialogTitle>
-          <DialogDescription>{{ t("app.settingsDescription") }}</DialogDescription>
+        <DialogHeader class="border-b border-hairline px-5 py-4">
+          <DialogTitle class="text-base">{{ t("app.settings") }}</DialogTitle>
+          <DialogDescription class="sr-only">{{ t("app.settingsDescription") }}</DialogDescription>
         </DialogHeader>
         <div class="flex min-h-0 flex-1 overflow-hidden">
           <SettingsPanel @close="showSettings = false" />
@@ -202,6 +216,12 @@ async function openHostMonitor(hostId: number) {
       v-model="threadRename.renameValue.value"
       :submitting="threadRename.submitting.value"
       @submit="threadRename.submitRename"
+    />
+    <ThreadDeleteDialog
+      :open="threadLifecycle.deleteOpen.value"
+      :deleting="threadLifecycle.deleting.value"
+      @cancel="threadLifecycle.cancelDelete"
+      @confirm="threadLifecycle.confirmDelete"
     />
   </aside>
 </template>

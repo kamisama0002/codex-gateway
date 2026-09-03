@@ -9,16 +9,22 @@ import type {
 } from "./ssh-types";
 import { createProxySocket, expandHome, resolveSshConfig, sshConnectionKey } from "./ssh-config";
 import { SSH_CONNECTION_CLOSED_BEFORE_READY, withSshConnectRetries } from "./ssh-connect-retry";
-import { isConnectionLevelSshError } from "./ssh-errors";
+import { isConnectionLevelSshError, isRetryableSshChannelOpenError } from "./ssh-errors";
 import { SftpChannelPool } from "./ssh-sftp";
 import { uploadFile, uploadFileResumable } from "./ssh-transfer";
 import { currentGatewayUserId } from "../../state/memory";
 import { EventEmitter } from "@posva/event-emitter";
 import { SshBackgroundTaskScheduler } from "./ssh-background-tasks";
+import { KeyedLeaseLimiter } from "../concurrency/keyed-lease-limiter";
 
 const SSH_READY_TIMEOUT_MS = 30_000;
 const SSH_KEEPALIVE_INTERVAL_MS = 30_000;
 const SSH_KEEPALIVE_COUNT_MAX = 10;
+const SSH_EXEC_CHANNEL_OPEN_ATTEMPTS = 3;
+const SSH_EXEC_CHANNEL_RETRY_BASE_DELAY_MS = 150;
+// OpenSSH defaults MaxSessions to 10. SFTP uses one uncounted pooled subsystem channel, and the
+// remaining spare slot lets a just-closed server session drain before Gateway admits more work.
+const SSH_SESSION_CHANNEL_LIMIT = 8;
 
 interface ExecOptions {
   timeoutMs?: number;
@@ -50,6 +56,7 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
   private sftpChannels = new SftpChannelPool();
   private hostKeysByUser = new Map<string, Map<number, string>>();
   private backgroundTasks = new SshBackgroundTaskScheduler();
+  private sessionChannels = new KeyedLeaseLimiter(SSH_SESSION_CHANNEL_LIMIT);
 
   constructor() {
     super();
@@ -81,9 +88,7 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
     const connection = this.clients.get(key);
     if (connection === undefined) return null;
     const client = await connection;
-    return await new Promise<ClientChannel>((resolve, reject) => {
-      client.exec(command, (error, channel) => (error ? reject(error) : resolve(channel)));
-    });
+    return await this.openExecChannelWithRetries(host, key, client, command);
   }
 
   runBackground<Result>(host: HostWithSecret, task: () => Promise<Result>) {
@@ -183,7 +188,7 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
     signal: AbortSignal | undefined,
   ) {
     if (timeoutMs === undefined && signal === undefined)
-      return await this.execChannel(host, command);
+      return await this.execChannel(host, command, false, signal);
     return await new Promise<ClientChannel>((resolve, reject) => {
       let settled = false;
       const cleanup = () => {
@@ -208,7 +213,7 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
         abort();
         return;
       }
-      void this.execChannel(host, command).then(
+      void this.execChannel(host, command, false, signal).then(
         (channel) => {
           if (settled) {
             // A timed-out channel request can still be admitted later by ssh2. Close that late
@@ -238,25 +243,59 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
     host: HostWithSecret,
     command: string,
     retried = false,
+    signal?: AbortSignal,
   ): Promise<ClientChannel> {
     const client = await this.connect(host);
+    const key = this.connectionKeyFor(host);
 
-    return new Promise((resolve, reject) => {
-      client.exec(command, (error, channel) => {
-        if (error) {
-          // Channel admission failures such as MaxSessions do not mean the shared transport died.
-          // Disconnecting here would also tear down App Server, terminals, and file operations.
-          if (!retried && isConnectionLevelSshError(error)) {
-            this.disconnectHost(host);
-            void this.execChannel(host, command, true).then(resolve, reject);
-            return;
-          }
-          reject(error);
-          return;
+    try {
+      return await this.openExecChannelWithRetries(host, key, client, command, signal);
+    } catch (error) {
+      if (!retried && isConnectionLevelSshError(error)) {
+        this.disconnectHost(host);
+        return await this.execChannel(host, command, true, signal);
+      }
+      throw error;
+    }
+  }
+
+  private async openExecChannelWithRetries(
+    host: HostWithSecret,
+    key: string,
+    client: Client,
+    command: string,
+    signal?: AbortSignal,
+  ) {
+    for (let attempt = 1; attempt <= SSH_EXEC_CHANNEL_OPEN_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.openSessionChannel(
+          key,
+          () =>
+            new Promise<ClientChannel>((resolve, reject) => {
+              client.exec(command, (error, channel) => (error ? reject(error) : resolve(channel)));
+            }),
+          signal,
+        );
+      } catch (error) {
+        // MaxSessions rejects only this logical channel. Give closing channels time to release
+        // their slots without replacing the shared transport used by App Server and SFTP.
+        if (attempt >= SSH_EXEC_CHANNEL_OPEN_ATTEMPTS || !isRetryableSshChannelOpenError(error)) {
+          throw error;
         }
-        resolve(channel);
-      });
-    });
+        console.info("[gateway-ssh] retrying transient exec channel open", {
+          hostId: host.id,
+          hostName: host.name,
+          attempt,
+          nextAttempt: attempt + 1,
+          maxAttempts: SSH_EXEC_CHANNEL_OPEN_ATTEMPTS,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        await new Promise((resolve) =>
+          setTimeout(resolve, SSH_EXEC_CHANNEL_RETRY_BASE_DELAY_MS * attempt),
+        );
+      }
+    }
+    throw new Error("Failed to open remote command channel");
   }
 
   async openShell(
@@ -265,30 +304,32 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
     retried = false,
   ): Promise<ClientChannel> {
     const client = await this.connect(host);
+    const key = this.connectionKeyFor(host);
 
-    return new Promise((resolve, reject) => {
-      client.shell(
-        {
-          term: options.term,
-          cols: options.cols,
-          rows: options.rows,
-        },
-        (error, channel) => {
-          if (error) {
-            // Keep the shared connection for channel-local failures; only transport errors justify
-            // reconnecting every service that shares this Client.
-            if (!retried && isConnectionLevelSshError(error)) {
-              this.disconnectHost(host);
-              void this.openShell(host, options, true).then(resolve, reject);
-              return;
-            }
-            reject(error);
-            return;
-          }
-          resolve(channel);
-        },
+    try {
+      return await this.openSessionChannel(
+        key,
+        () =>
+          new Promise<ClientChannel>((resolve, reject) => {
+            client.shell(
+              {
+                term: options.term,
+                cols: options.cols,
+                rows: options.rows,
+              },
+              (error, channel) => (error ? reject(error) : resolve(channel)),
+            );
+          }),
       );
-    });
+    } catch (error) {
+      // Keep the shared connection for channel-local failures; only transport errors justify
+      // reconnecting every service that shares this Client.
+      if (!retried && isConnectionLevelSshError(error)) {
+        this.disconnectHost(host);
+        return await this.openShell(host, options, true);
+      }
+      throw error;
+    }
   }
 
   async openTcpChannel(
@@ -365,6 +406,7 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
 
   private disconnectKey(key: string) {
     this.sftpChannels.close(key);
+    this.sessionChannels.reset(key, new Error("SSH connection was closed"));
     const client = this.clients.get(key);
     this.clients.delete(key);
     this.clientTokens.delete(key);
@@ -471,5 +513,23 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
     this.clientTokens.delete(key);
     this.clients.delete(key);
     this.sftpChannels.close(key);
+    this.sessionChannels.reset(key, new Error("SSH connection was closed"));
+  }
+
+  private async openSessionChannel(
+    key: string,
+    open: () => Promise<ClientChannel>,
+    signal?: AbortSignal,
+  ) {
+    const release = await this.sessionChannels.acquire(key, { signal });
+    try {
+      signal?.throwIfAborted();
+      const channel = await open();
+      channel.once("close", release);
+      return channel;
+    } catch (error) {
+      release();
+      throw error;
+    }
   }
 }

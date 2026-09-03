@@ -58,10 +58,10 @@ function imageSource(image: { type: string; url: string; path: string }) {
     <MessageContent
       :data-testid="variant === 'steer' ? 'steered-conversation-item' : undefined"
       :class="[
-        'thread-user-message min-w-0 max-w-full space-y-3 px-4 py-4 text-[0.9375rem] leading-7 text-ink group-[.is-user]:py-4 group-[.is-user]:text-ink md:max-w-3xl md:px-5 md:group-[.is-user]:px-5',
+        'thread-user-message min-w-0 max-w-full space-y-2 px-3 py-2 text-sm leading-6 text-ink group-[.is-user]:py-2 group-[.is-user]:text-ink md:max-w-2xl md:px-3.5 md:group-[.is-user]:px-3.5',
         variant === 'steer'
-          ? 'rounded-xl border border-primary/20 bg-primary/5 group-[.is-user]:rounded-xl group-[.is-user]:border group-[.is-user]:border-primary/20 group-[.is-user]:bg-primary/5'
-          : 'rounded-2xl bg-canvas-soft group-[.is-user]:rounded-2xl group-[.is-user]:bg-canvas-soft',
+          ? 'rounded-lg border border-primary/20 bg-primary/5 group-[.is-user]:rounded-lg group-[.is-user]:border group-[.is-user]:border-primary/20 group-[.is-user]:bg-primary/5'
+          : 'rounded-lg bg-muted group-[.is-user]:rounded-lg group-[.is-user]:bg-muted',
       ]"
     >
       <div

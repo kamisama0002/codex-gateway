@@ -9,7 +9,7 @@ export interface AdaptivePollScheduleOptions {
  * Backoff strategy for self-clocked background work.
  *
  * The caller starts its next timer only after the current operation settles. This class deliberately
- * does not own that timer or the operation: metrics keeps control of its SSH channel, while tmux
+ * does not own that timer or the operation: metrics keeps control of its sample loop, while tmux
  * keeps control of subscriptions and snapshot fanout. Sharing only the cadence policy prevents the
  * two features from growing subtly different retry loops without creating a generic task framework.
  */

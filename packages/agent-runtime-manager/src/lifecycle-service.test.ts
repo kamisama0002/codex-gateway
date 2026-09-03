@@ -1,0 +1,846 @@
+import { createServer, type Server } from "node:http";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  createRequestSignature,
+  createSignedHeaders,
+  HmacRequestAuthenticator,
+  type NonceStore,
+  RuntimeAuthenticationError,
+} from "./auth.js";
+import type {
+  DockerContainerCreateSpec,
+  DockerEngine,
+  EngineContainerState,
+} from "./docker-engine.js";
+import { createRuntimeManagerRequestHandler, loadRuntimeManagerPolicy } from "./http-server.js";
+import {
+  RuntimeLifecycleError,
+  RuntimeLifecycleService,
+  type RuntimeManagerPolicy,
+} from "./lifecycle-service.js";
+
+const userHash = "ab".repeat(32);
+const now = 1_788_115_200_000;
+const testPolicy: RuntimeManagerPolicy = {
+  images: {
+    stable: {
+      image: "registry.internal/codex-agent@sha256:stable",
+      imageVersion: "1.2.3",
+    },
+    next: {
+      image: "registry.internal/codex-agent@sha256:next",
+      imageVersion: "1.3.0",
+    },
+  },
+  internalPort: 4_555,
+  networkName: "agent-runtime",
+};
+
+function requestFor(runtimeId: string) {
+  return {
+    imageAlias: "stable",
+    runtimeId,
+    runtimeType: "codex-app-server" as const,
+    userHash,
+  };
+}
+
+class MemoryNonceStore implements NonceStore {
+  private readonly nonces = new Map<string, number>();
+
+  claim(nonce: string, expiresAt: number, currentTime: number): boolean {
+    for (const [storedNonce, storedExpiry] of this.nonces) {
+      if (storedExpiry < currentTime) this.nonces.delete(storedNonce);
+    }
+    if (this.nonces.has(nonce)) return false;
+    this.nonces.set(nonce, expiresAt);
+    return true;
+  }
+}
+
+class RecordingDockerEngine implements DockerEngine {
+  readonly createCalls: DockerContainerCreateSpec[] = [];
+  readonly removeCalls: string[] = [];
+  readonly restartCalls: string[] = [];
+  readonly startCalls: string[] = [];
+  readonly stopCalls: string[] = [];
+  readonly updateCalls: Array<{
+    containerId: string;
+    Memory: number;
+    NanoCpus: number;
+    PidsLimit: number;
+  }> = [];
+  private readonly containers = new Map<string, EngineContainerState>();
+  statsPayload: unknown = null;
+  execResult: { code: number | null; stdout: string; stderr: string } = {
+    code: 0,
+    stdout: "",
+    stderr: "",
+  };
+  readonly execCalls: Array<{
+    containerId: string;
+    command: string;
+    timeoutMs: number;
+    maxOutputBytes: number;
+  }> = [];
+
+  constructor(options: { existingContainerId?: string } = {}) {
+    if (options.existingContainerId !== undefined) {
+      this.containers.set("runtime-a", {
+        containerId: options.existingContainerId,
+        containerName: "codex-runtime-existing",
+        imageAlias: "stable",
+        imageVersion: "1.2.3",
+        internalPort: testPolicy.internalPort,
+        running: false,
+        runtimeId: "runtime-a",
+        runtimeType: "codex-app-server",
+        serviceToken: "existing-service-token",
+        userHash,
+        nanoCpus: 0,
+      });
+    }
+  }
+
+  async createManagedContainer(spec: DockerContainerCreateSpec): Promise<EngineContainerState> {
+    this.createCalls.push(spec);
+    const state: EngineContainerState = {
+      containerId: `container-${this.createCalls.length}`,
+      containerName: spec.containerName,
+      imageAlias: spec.imageAlias,
+      imageVersion: spec.imageVersion,
+      internalPort: spec.internalPort,
+      running: false,
+      runtimeId: spec.runtimeId,
+      runtimeType: spec.runtimeType,
+      serviceToken: spec.serviceToken,
+      userHash: spec.userHash,
+      nanoCpus: spec.security.NanoCpus,
+    };
+    this.containers.set(spec.runtimeId, state);
+    return state;
+  }
+
+  async findManagedContainer(runtimeId: string): Promise<EngineContainerState | null> {
+    return this.containers.get(runtimeId) ?? null;
+  }
+
+  async removeContainer(containerId: string): Promise<void> {
+    this.removeCalls.push(containerId);
+    for (const [runtimeId, container] of this.containers) {
+      if (container.containerId === containerId) this.containers.delete(runtimeId);
+    }
+  }
+
+  async restartContainer(containerId: string): Promise<void> {
+    this.restartCalls.push(containerId);
+    this.setRunning(containerId, true);
+  }
+
+  async startContainer(containerId: string): Promise<void> {
+    this.startCalls.push(containerId);
+    this.setRunning(containerId, true);
+  }
+
+  async stopContainer(containerId: string): Promise<void> {
+    this.stopCalls.push(containerId);
+    this.setRunning(containerId, false);
+  }
+
+  async sampleContainerStats(containerId: string): Promise<unknown> {
+    for (const container of this.containers.values()) {
+      if (container.containerId === containerId) {
+        if (!container.running) throw new Error("container is not running");
+        return this.statsPayload;
+      }
+    }
+    throw new Error("container not found");
+  }
+
+  async execInContainer(
+    containerId: string,
+    command: string,
+    options: { timeoutMs: number; maxOutputBytes: number },
+  ): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    this.execCalls.push({ containerId, command, ...options });
+    for (const container of this.containers.values()) {
+      if (container.containerId === containerId) {
+        if (!container.running) throw new Error("container is not running");
+        return this.execResult;
+      }
+    }
+    throw new Error("container not found");
+  }
+
+  async updateContainerResources(
+    containerId: string,
+    resources: { Memory: number; NanoCpus: number; PidsLimit: number },
+  ): Promise<void> {
+    this.updateCalls.push({ containerId, ...resources });
+  }
+
+  private setRunning(containerId: string, running: boolean): void {
+    for (const [runtimeId, container] of this.containers) {
+      if (container.containerId === containerId) {
+        this.containers.set(runtimeId, { ...container, running });
+      }
+    }
+  }
+}
+
+describe("RuntimeLifecycleService", () => {
+  it("executes a command in a running managed container", async () => {
+    const engine = new RecordingDockerEngine();
+    engine.execResult = { code: 0, stdout: "git version 2.45.0\n", stderr: "" };
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+    await service.provision(requestFor("runtime-git"));
+    await service.start({ runtimeId: "runtime-git" });
+
+    await expect(
+      service.exec({
+        runtimeId: "runtime-git",
+        command: "git --version",
+        timeoutMs: 1_000,
+        maxOutputBytes: 1_024,
+      }),
+    ).resolves.toEqual({ code: 0, stdout: "git version 2.45.0\n", stderr: "" });
+    expect(engine.execCalls).toEqual([
+      {
+        containerId: "container-1",
+        command: "git --version",
+        timeoutMs: 1_000,
+        maxOutputBytes: 1_024,
+      },
+    ]);
+  });
+
+  it("does not exec into a stopped managed container", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+    await service.provision(requestFor("runtime-git"));
+
+    await expect(
+      service.exec({
+        runtimeId: "runtime-git",
+        command: "git --version",
+        timeoutMs: 1_000,
+        maxOutputBytes: 1_024,
+      }),
+    ).rejects.toThrow("Agent runtime is not running");
+  });
+
+  it("uses the fixed 4500 endpoint when production environment attempts to override it", async () => {
+    const policy = loadRuntimeManagerPolicy({
+      RUNTIME_MANAGER_AGENT_NETWORK: "agent-runtime",
+      RUNTIME_MANAGER_AGENT_PORT: "1234",
+      RUNTIME_MANAGER_IMAGE_ALIASES: JSON.stringify(testPolicy.images),
+      RUNTIME_MANAGER_RESOURCE_LABELS: JSON.stringify({
+        "com.codex-gateway.e2e-managed": "isolated-test-run",
+      }),
+    });
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, policy, {
+      randomToken: () => "generated-service-token",
+    });
+
+    const result = await service.provision(requestFor("runtime-fixed-port"));
+
+    expect(policy.internalPort).toBe(4500);
+    expect(policy.agentMemoryBytes).toBe(2_147_483_648);
+    expect(policy.agentNanoCpus).toBe(2_000_000_000);
+    expect(policy.agentPidsLimit).toBe(256);
+    expect(policy.resourceLabels).toEqual({
+      "com.codex-gateway.e2e-managed": "isolated-test-run",
+    });
+    expect(engine.createCalls[0]?.internalPort).toBe(4500);
+    expect(result.endpoint?.websocketUrl).toMatch(/^ws:\/\/codex-runtime-[a-f0-9-]+:4500$/);
+  });
+
+  it("reuses the existing labeled container for the same runtime id", async () => {
+    const engine = new RecordingDockerEngine({ existingContainerId: "container-a" });
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+
+    const first = await service.provision(requestFor("runtime-a"));
+    const second = await service.provision(requestFor("runtime-a"));
+
+    expect(first.containerId).toBe("container-a");
+    expect(second.containerId).toBe("container-a");
+    expect(engine.createCalls).toHaveLength(0);
+  });
+
+  it("returns container stats without leaking the container id", async () => {
+    const engine = new RecordingDockerEngine({ existingContainerId: "secret-container" });
+    engine.statsPayload = {
+      read: "2026-09-02T07:00:00.000Z",
+      cpu_stats: {
+        cpu_usage: { total_usage: 20 },
+        system_cpu_usage: 100,
+        online_cpus: 2,
+      },
+      precpu_stats: {
+        cpu_usage: { total_usage: 10 },
+        system_cpu_usage: 80,
+      },
+      memory_stats: { usage: 128, limit: 256, stats: {} },
+      networks: { eth0: { rx_bytes: 8, tx_bytes: 4 } },
+    };
+    await engine.startContainer("secret-container");
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+
+    const running = await service.stats({ runtimeId: "runtime-a" });
+    const stopped = await service.stop({ runtimeId: "runtime-a" }).then(() =>
+      service.stats({ runtimeId: "runtime-a" }),
+    );
+    const absent = await service.stats({ runtimeId: "missing" });
+
+    expect(running).toEqual({
+      runtimeId: "runtime-a",
+      status: "running",
+      stats: {
+        sampledAtMs: Date.parse("2026-09-02T07:00:00.000Z"),
+        cpuUsage: 20,
+        systemCpuUsage: 100,
+        preCpuUsage: 10,
+        preSystemCpuUsage: 80,
+        onlineCpus: 2,
+        memoryUsageBytes: 128,
+        memoryLimitBytes: 256,
+        rxBytes: 8,
+        txBytes: 4,
+        diskReadBytes: 0,
+        diskWriteBytes: 0,
+        interfaces: ["eth0"],
+        cpuQuotaCpus: 2,
+      },
+    });
+    expect(JSON.stringify(running)).not.toContain("secret-container");
+    expect(stopped).toEqual({ runtimeId: "runtime-a", status: "stopped", stats: null });
+    expect(absent).toEqual({ runtimeId: "missing", status: "absent", stats: null });
+  });
+
+  it("builds the fixed security, network, volume, and label policy internally", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy, {
+      randomToken: () => "generated-service-token",
+    });
+
+    const result = await service.provision(requestFor("runtime-new"));
+
+    expect(result.status).toBe("stopped");
+    expect(result.endpoint?.websocketUrl).toMatch(/^ws:\/\/codex-runtime-[a-f0-9-]+:4555$/);
+    expect(engine.createCalls).toHaveLength(1);
+    expect(engine.createCalls[0]).toMatchObject({
+      image: "registry.internal/codex-agent@sha256:stable",
+      imageAlias: "stable",
+      imageVersion: "1.2.3",
+      internalPort: 4_555,
+      labels: {
+        "com.codex-gateway.image-version": "1.2.3",
+        "com.codex-gateway.managed": "true",
+        "com.codex-gateway.runtime-id": "runtime-new",
+        "com.codex-gateway.user-hash": userHash,
+      },
+      mounts: [
+        expect.objectContaining({ containerPath: "/codex-home", kind: "codex-home" }),
+        expect.objectContaining({ containerPath: "/workspace", kind: "workspace" }),
+      ],
+      networkName: "agent-runtime",
+      runtimeId: "runtime-new",
+      security: {
+        CapDrop: ["ALL"],
+        Memory: 2_147_483_648,
+        NanoCpus: 2_000_000_000,
+        PidsLimit: 256,
+        Privileged: false,
+        ReadonlyRootfs: true,
+        SecurityOpt: ["no-new-privileges:true"],
+        Tmpfs: { "/tmp": "rw,nosuid,nodev,noexec,size=64m" },
+        User: "10001:10001",
+      },
+      serviceToken: "generated-service-token",
+      userHash,
+    });
+  });
+
+  it("uses operator-configured agent CPU, memory, and PID limits", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(
+      engine,
+      {
+        ...testPolicy,
+        agentMemoryBytes: 4 * 1024 * 1024 * 1024,
+        agentNanoCpus: 4_000_000_000,
+        agentPidsLimit: 512,
+      },
+      { randomToken: () => "generated-service-token" },
+    );
+
+    await service.provision(requestFor("runtime-limits"));
+
+    expect(engine.createCalls[0]?.security).toMatchObject({
+      Memory: 4_294_967_296,
+      NanoCpus: 4_000_000_000,
+      PidsLimit: 512,
+    });
+  });
+
+  it("loads agent resource limits from runtime-manager environment", () => {
+    const policy = loadRuntimeManagerPolicy({
+      RUNTIME_MANAGER_AGENT_NETWORK: "agent-runtime",
+      RUNTIME_MANAGER_IMAGE_ALIASES: JSON.stringify(testPolicy.images),
+      RUNTIME_AGENT_MEMORY: "4g",
+      RUNTIME_AGENT_CPUS: "1",
+      RUNTIME_AGENT_PIDS: "128",
+    });
+    expect(policy.agentMemoryBytes).toBe(4_294_967_296);
+    expect(policy.agentNanoCpus).toBe(1_000_000_000);
+    expect(policy.agentPidsLimit).toBe(128);
+  });
+
+  it("adds configured deployment labels to each managed container and volume", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(
+      engine,
+      {
+        ...testPolicy,
+        resourceLabels: {
+          "com.codex-gateway.e2e-managed": "isolated-test-run",
+        },
+      },
+      { randomToken: () => "generated-service-token" },
+    );
+
+    await service.provision(requestFor("runtime-e2e-label"));
+
+    expect(engine.createCalls[0]?.labels).toMatchObject({
+      "com.codex-gateway.e2e-managed": "isolated-test-run",
+      "com.codex-gateway.managed": "true",
+    });
+    expect(engine.createCalls[0]?.mounts).toHaveLength(2);
+    for (const mount of engine.createCalls[0]?.mounts ?? []) {
+      expect(mount.labels).toMatchObject({
+        "com.codex-gateway.e2e-managed": "isolated-test-run",
+        "com.codex-gateway.managed": "true",
+      });
+    }
+  });
+
+  it("rejects an unknown image alias before calling the engine", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+
+    await expect(
+      service.provision({ ...requestFor("runtime-a"), imageAlias: "raw-registry-image" }),
+    ).rejects.toMatchObject({ code: "unknown_image_alias" });
+    expect(engine.createCalls).toHaveLength(0);
+  });
+
+  it("runs fixed start, stop, restart, and remove operations idempotently", async () => {
+    const engine = new RecordingDockerEngine({ existingContainerId: "container-a" });
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+
+    await service.start({ runtimeId: "runtime-a" });
+    await service.start({ runtimeId: "runtime-a" });
+    await service.restart({ runtimeId: "runtime-a" });
+    await service.stop({ runtimeId: "runtime-a" });
+    await service.stop({ runtimeId: "runtime-a" });
+    const removed = await service.remove({ runtimeId: "runtime-a" });
+    const removedAgain = await service.remove({ runtimeId: "runtime-a" });
+
+    expect(engine.startCalls).toEqual(["container-a"]);
+    expect(engine.restartCalls).toEqual(["container-a"]);
+    expect(engine.stopCalls).toEqual(["container-a"]);
+    expect(engine.removeCalls).toEqual(["container-a"]);
+    expect(engine.updateCalls).toEqual([
+      {
+        containerId: "container-a",
+        Memory: 2_147_483_648,
+        NanoCpus: 2_000_000_000,
+        PidsLimit: 256,
+      },
+      {
+        containerId: "container-a",
+        Memory: 2_147_483_648,
+        NanoCpus: 2_000_000_000,
+        PidsLimit: 256,
+      },
+      {
+        containerId: "container-a",
+        Memory: 2_147_483_648,
+        NanoCpus: 2_000_000_000,
+        PidsLimit: 256,
+      },
+    ]);
+    expect(removed.status).toBe("absent");
+    expect(removedAgain.status).toBe("absent");
+  });
+
+  it("upgrades by replacing only the managed container and preserving fixed volume names", async () => {
+    const engine = new RecordingDockerEngine({ existingContainerId: "container-a" });
+    const service = new RuntimeLifecycleService(engine, testPolicy, {
+      randomToken: () => "replacement-token",
+    });
+
+    const upgraded = await service.upgrade({ imageAlias: "next", runtimeId: "runtime-a" });
+
+    expect(engine.stopCalls).toEqual([]);
+    expect(engine.removeCalls).toEqual(["container-a"]);
+    expect(engine.createCalls[0]?.mounts.map((mount) => mount.volumeName)).toEqual([
+      "codex-home-abababababababab-c23240e6876e",
+      "workspace-abababababababab-c23240e6876e",
+    ]);
+    expect(upgraded.imageVersion).toBe("1.3.0");
+  });
+
+  it("rejects a runtime id collision with a different user hash", async () => {
+    const engine = new RecordingDockerEngine({ existingContainerId: "container-a" });
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+
+    await expect(
+      service.provision({ ...requestFor("runtime-a"), userHash: "cd".repeat(32) }),
+    ).rejects.toBeInstanceOf(RuntimeLifecycleError);
+    expect(engine.createCalls).toHaveLength(0);
+  });
+});
+
+describe("HmacRequestAuthenticator", () => {
+  it("accepts a matching timestamp, nonce, body digest, and signature", () => {
+    const body = Buffer.from('{"runtimeId":"runtime-a"}');
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
+    const headers = createSignedHeaders({
+      body,
+      method: "POST",
+      path: "/v1/runtimes/start",
+      nonce: "nonce-1",
+      secret: "shared-secret",
+      timestamp: now,
+    });
+
+    expect(authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start")).toEqual({
+      nonce: "nonce-1",
+      timestamp: now,
+    });
+  });
+
+  it("rejects timestamps outside the five-minute window with a fixed error", () => {
+    const body = Buffer.alloc(0);
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
+    const headers = createSignedHeaders({
+      body,
+      method: "POST",
+      path: "/v1/runtimes/start",
+      nonce: "nonce-old",
+      secret: "shared-secret",
+      timestamp: now - 300_001,
+    });
+
+    expect(() => authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start")).toThrow(
+      new RuntimeAuthenticationError(),
+    );
+  });
+
+  it("rejects a replayed nonce", () => {
+    const body = Buffer.alloc(0);
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
+    const headers = createSignedHeaders({
+      body,
+      method: "POST",
+      path: "/v1/runtimes/start",
+      nonce: "nonce-replayed",
+      secret: "shared-secret",
+      timestamp: now,
+    });
+
+    authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start");
+    expect(() => authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start")).toThrow(
+      new RuntimeAuthenticationError(),
+    );
+  });
+
+  it("blocks a future-dated nonce through the signed timestamp validity window", () => {
+    const body = Buffer.alloc(0);
+    let currentTime = now;
+    const signedTimestamp = now + 300_000;
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => currentTime,
+      secret: "shared-secret",
+    });
+    const headers = createSignedHeaders({
+      body,
+      method: "POST",
+      path: "/v1/runtimes/start",
+      nonce: "nonce-future",
+      secret: "shared-secret",
+      timestamp: signedTimestamp,
+    });
+
+    authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start");
+    currentTime = now + 300_001;
+
+    expect(() => authenticator.authenticate(headers, body, "POST", "/v1/runtimes/start")).toThrow(
+      new RuntimeAuthenticationError(),
+    );
+  });
+
+  it("rejects body tampering and malformed signatures without revealing the reason", () => {
+    const body = Buffer.from("original");
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
+    const headers = createSignedHeaders({
+      body,
+      method: "POST",
+      path: "/v1/runtimes/start",
+      nonce: "nonce-tampered",
+      secret: "shared-secret",
+      timestamp: now,
+    });
+
+    for (const candidate of [
+      () =>
+        authenticator.authenticate(headers, Buffer.from("changed"), "POST", "/v1/runtimes/start"),
+      () =>
+        authenticator.authenticate(
+          { ...headers, "x-runtime-signature": "not-hex" },
+          body,
+          "POST",
+          "/v1/runtimes/start",
+        ),
+    ]) {
+      expect(candidate).toThrow(new RuntimeAuthenticationError());
+    }
+    expect(
+      createRequestSignature(
+        "shared-secret",
+        "POST",
+        "/v1/runtimes/start",
+        now,
+        "nonce-tampered",
+        headers["x-runtime-body-sha256"],
+      ),
+    ).toBe(headers["x-runtime-signature"]);
+  });
+});
+
+describe("Runtime Manager HTTP API", () => {
+  const servers: Server[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      servers
+        .splice(0)
+        .map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+    );
+  });
+
+  async function startTestServer() {
+    const service = new RuntimeLifecycleService(new RecordingDockerEngine(), testPolicy, {
+      randomToken: () => "http-service-token",
+    });
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
+    const server = createServer(createRuntimeManagerRequestHandler({ authenticator, service }));
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("missing test server address");
+    }
+    return `http://127.0.0.1:${address.port}`;
+  }
+
+  it("authenticates and serves the fixed provision and inspect routes", async () => {
+    const baseUrl = await startTestServer();
+    const body = Buffer.from(JSON.stringify(requestFor("runtime-http")));
+    const provisionResponse = await fetch(`${baseUrl}/v1/runtimes/provision`, {
+      body,
+      headers: {
+        "content-type": "application/json",
+        ...createSignedHeaders({
+          body,
+          method: "POST",
+          path: "/v1/runtimes/provision",
+          nonce: "http-1",
+          secret: "shared-secret",
+          timestamp: now,
+        }),
+      },
+      method: "POST",
+    });
+    const inspectBody = Buffer.alloc(0);
+    const inspectResponse = await fetch(`${baseUrl}/v1/runtimes/runtime-http`, {
+      headers: createSignedHeaders({
+        body: inspectBody,
+        method: "GET",
+        path: "/v1/runtimes/runtime-http",
+        nonce: "http-2",
+        secret: "shared-secret",
+        timestamp: now,
+      }),
+    });
+
+    expect(provisionResponse.status).toBe(200);
+    expect(await provisionResponse.json()).toMatchObject({
+      runtimeId: "runtime-http",
+      status: "stopped",
+    });
+    expect(inspectResponse.status).toBe(200);
+    expect(await inspectResponse.json()).toMatchObject({
+      runtimeId: "runtime-http",
+      status: "stopped",
+    });
+  });
+
+  it("serves signed container stats without a container id", async () => {
+    const engine = new RecordingDockerEngine();
+    engine.statsPayload = {
+      read: "2026-09-02T07:00:00.000Z",
+      cpu_stats: {
+        cpu_usage: { total_usage: 20 },
+        system_cpu_usage: 100,
+        online_cpus: 1,
+      },
+      precpu_stats: {
+        cpu_usage: { total_usage: 10 },
+        system_cpu_usage: 80,
+      },
+      memory_stats: { usage: 64, limit: 128, stats: {} },
+      networks: { eth0: { rx_bytes: 1, tx_bytes: 2 } },
+    };
+    const service = new RuntimeLifecycleService(engine, testPolicy, {
+      randomToken: () => "http-service-token",
+    });
+    await service.provision(requestFor("runtime-stats"));
+    await service.start({ runtimeId: "runtime-stats" });
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
+    const server = createServer(createRuntimeManagerRequestHandler({ authenticator, service }));
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("missing test server address");
+    }
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const body = Buffer.alloc(0);
+    const response = await fetch(`${baseUrl}/v1/runtimes/runtime-stats/stats`, {
+      headers: createSignedHeaders({
+        body,
+        method: "GET",
+        path: "/v1/runtimes/runtime-stats/stats",
+        nonce: "http-stats",
+        secret: "shared-secret",
+        timestamp: now,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      runtimeId: "runtime-stats",
+      status: "running",
+      stats: { memoryUsageBytes: 64, memoryLimitBytes: 128 },
+    });
+    expect(JSON.stringify(payload)).not.toContain("container-");
+  });
+
+  it("rejects unauthenticated requests with a safe fixed response", async () => {
+    const baseUrl = await startTestServer();
+    const response = await fetch(`${baseUrl}/v1/runtimes/runtime-a`);
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("rejects a replay with the same safe fixed response", async () => {
+    const baseUrl = await startTestServer();
+    const body = Buffer.alloc(0);
+    const headers = createSignedHeaders({
+      body,
+      method: "GET",
+      path: "/v1/runtimes/runtime-a",
+      nonce: "http-replay",
+      secret: "shared-secret",
+      timestamp: now,
+    });
+    const firstResponse = await fetch(`${baseUrl}/v1/runtimes/runtime-a`, { headers });
+    const replayResponse = await fetch(`${baseUrl}/v1/runtimes/runtime-a`, { headers });
+
+    expect(firstResponse.status).toBe(200);
+    expect(replayResponse.status).toBe(401);
+    expect(await replayResponse.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("rejects arbitrary Docker options in strict request payloads", async () => {
+    const baseUrl = await startTestServer();
+    const body = Buffer.from(
+      JSON.stringify({
+        ...requestFor("runtime-http"),
+        command: ["sh"],
+        image: "attacker/image:latest",
+        mounts: ["/:/host"],
+        network: "host",
+        ports: [22],
+      }),
+    );
+    const response = await fetch(`${baseUrl}/v1/runtimes/provision`, {
+      body,
+      headers: {
+        "content-type": "application/json",
+        ...createSignedHeaders({
+          body,
+          method: "POST",
+          path: "/v1/runtimes/provision",
+          nonce: "http-strict",
+          secret: "shared-secret",
+          timestamp: now,
+        }),
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_request" });
+  });
+
+  it("returns a fixed client error for malformed runtime path encoding", async () => {
+    const baseUrl = await startTestServer();
+    const body = Buffer.alloc(0);
+    const response = await fetch(`${baseUrl}/v1/runtimes/%`, {
+      headers: createSignedHeaders({
+        body,
+        method: "GET",
+        path: "/v1/runtimes/%",
+        nonce: "http-malformed-path",
+        secret: "shared-secret",
+        timestamp: now,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_request" });
+  });
+});

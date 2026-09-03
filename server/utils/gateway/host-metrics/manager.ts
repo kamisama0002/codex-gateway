@@ -1,32 +1,27 @@
 import type {
   HostMetricsCollectorStatus,
-  HostGpuProcessSnapshot,
   HostMetricsSample,
   HostMetricsSnapshot,
-  HostRecord,
 } from "~~/shared/types";
-import type { SshConnectionPool } from "../infra/ssh/ssh-connection";
-import { HostMetricsCollector } from "./collector";
+import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
+import type { AgentRuntimeStatsResult } from "../runtime-manager/client";
+import { AgentMetricsCollector } from "./agent-collector";
 import { HostMetricsEventBus } from "./events";
 
 const MAX_SAMPLES = 300;
 
 interface HostMetricsRuntime {
-  collector: HostMetricsCollector;
-  host: HostRecord;
+  collector: AgentMetricsCollector;
   status: HostMetricsCollectorStatus;
   message: string | null;
   samples: HostMetricsSample[];
-  gpuProcesses: HostGpuProcessSnapshot | null;
 }
 
 export class HostMetricsManager {
   readonly events = new HostMetricsEventBus();
   private runtimes = new Map<string, HostMetricsRuntime>();
 
-  constructor(private readonly ssh: SshConnectionPool) {
-    ssh.on("ready", ({ userId, host }) => this.ensureCollector(userId, host));
-  }
+  constructor(private readonly sampleAgent: (userId: number) => Promise<AgentRuntimeStatsResult>) {}
 
   snapshot(userId: number, hostId: number): HostMetricsSnapshot {
     const runtime = this.runtimes.get(runtimeKey(userId, hostId));
@@ -35,8 +30,31 @@ export class HostMetricsManager {
       status: runtime?.status ?? "waiting",
       message: runtime?.message ?? null,
       samples: runtime?.samples.slice() ?? [],
-      gpuProcesses: runtime?.gpuProcesses ?? null,
+      gpuProcesses: null,
     };
+  }
+
+  ensureCollector(userId: number) {
+    const hostId = MANAGED_RUNTIME_HOST_ID;
+    const key = runtimeKey(userId, hostId);
+    const existing = this.runtimes.get(key);
+    if (existing !== undefined) {
+      existing.collector.start();
+      return;
+    }
+
+    const collector = new AgentMetricsCollector(() => this.sampleAgent(userId), {
+      sample: (sample) => this.acceptSample(userId, hostId, sample),
+      disconnected: (message) => this.setStatus(userId, hostId, "disconnected", message),
+      error: (message) => this.setStatus(userId, hostId, "error", message),
+    });
+    this.runtimes.set(key, {
+      status: "waiting",
+      message: null,
+      samples: [],
+      collector,
+    });
+    collector.start();
   }
 
   removeHost(userId: number, hostId: number) {
@@ -45,42 +63,7 @@ export class HostMetricsManager {
     this.runtimes.delete(key);
   }
 
-  private ensureCollector(userId: number, host: HostRecord) {
-    const key = runtimeKey(userId, host.id);
-    const existing = this.runtimes.get(key);
-    if (existing !== undefined) {
-      if (sameRemoteIdentity(existing.host, host)) existing.collector.start();
-      else {
-        this.removeHost(userId, host.id);
-        this.ensureCollector(userId, host);
-      }
-      return;
-    }
-
-    const collector = new HostMetricsCollector(this.ssh, host, {
-      sample: (sample, gpuProcesses) => this.acceptSample(userId, host.id, sample, gpuProcesses),
-      disconnected: (message) => this.setStatus(userId, host.id, "disconnected", message),
-      unsupported: (message) => this.setStatus(userId, host.id, "unsupported", message),
-      error: (message) => this.setStatus(userId, host.id, "error", message),
-    });
-    const runtime: HostMetricsRuntime = {
-      host,
-      status: "waiting",
-      message: null,
-      samples: [],
-      gpuProcesses: null,
-      collector,
-    };
-    this.runtimes.set(key, runtime);
-    runtime.collector.start();
-  }
-
-  private acceptSample(
-    userId: number,
-    hostId: number,
-    sample: HostMetricsSample,
-    gpuProcesses: HostGpuProcessSnapshot | null,
-  ) {
+  private acceptSample(userId: number, hostId: number, sample: HostMetricsSample) {
     const runtime = this.runtimes.get(runtimeKey(userId, hostId));
     if (runtime === undefined) return;
     runtime.samples.push(sample);
@@ -88,12 +71,11 @@ export class HostMetricsManager {
       runtime.samples.splice(0, runtime.samples.length - MAX_SAMPLES);
     runtime.status = "collecting";
     runtime.message = null;
-    if (gpuProcesses !== null) runtime.gpuProcesses = gpuProcesses;
-    this.events.publish(userId, runtime.host.id, {
+    this.events.publish(userId, hostId, {
       type: "sample",
-      hostId: runtime.host.id,
+      hostId,
       sample,
-      gpuProcesses,
+      gpuProcesses: null,
     });
   }
 
@@ -107,19 +89,13 @@ export class HostMetricsManager {
     if (runtime === undefined) return;
     runtime.status = status;
     runtime.message = message;
-    this.events.publish(userId, runtime.host.id, {
+    this.events.publish(userId, hostId, {
       type: "status",
-      snapshot: this.snapshot(userId, runtime.host.id),
+      snapshot: this.snapshot(userId, hostId),
     });
   }
 }
 
 function runtimeKey(userId: number, hostId: number) {
   return `${userId}:${hostId}`;
-}
-
-function sameRemoteIdentity(left: HostRecord, right: HostRecord) {
-  return (
-    left.sshHost === right.sshHost && left.username === right.username && left.port === right.port
-  );
 }

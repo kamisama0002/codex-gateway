@@ -6,13 +6,14 @@ import { interruptActiveTurn, interruptThreadTurn } from "./interrupt";
 import { loadOlderTurns } from "./older-turns";
 import { loadTurnItems } from "./turn-items";
 import { maybeQueueServerOverloadedRetry, maybeRetryAfterTurnFailure } from "./retry";
-import { sendTurn } from "./submission";
+import { retryLastTurn, sendTurn } from "./submission";
 import { respondToServerRequest } from "./transport";
 
 export function createGatewayThreadTurnActions() {
   const t = useGatewayTranslator();
   return {
     sendTurn: (text: string, options?: ComposerTurnOptions) => sendTurn(t, text, options),
+    retryLastTurn: () => retryLastTurn(t),
     loadOlderTurns: (options?: { limit?: number }) => loadOlderTurns(t, options),
     loadTurnItems: (turnId: string) => loadTurnItems(t, turnId),
     interruptActiveTurn: () => interruptActiveTurn(t),

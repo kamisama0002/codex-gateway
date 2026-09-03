@@ -53,6 +53,16 @@ test("opening completed history does not show fake thinking", async ({ page }) =
         summary: ["intermediate work"],
       },
       {
+        id: "tool-1",
+        type: "mcpToolCall",
+        status: "completed",
+        success: true,
+        server: "business-data",
+        tool: "query_revenue",
+        arguments: { date: "2026-09-03" },
+        result: { text: '{"total":128640}' },
+      },
+      {
         id: "agent-1",
         type: "agentMessage",
         phase: "final_answer",
@@ -120,8 +130,7 @@ test("opening completed history does not show fake thinking", async ({ page }) =
     "closed",
   );
   const agentActions = page.getByTestId("agent-message-actions");
-  await expect(agentActions).toBeAttached();
-  await page.getByText("done", { exact: true }).hover();
+  await expect(agentActions).toBeVisible();
   await expect
     .poll(() => agentActions.evaluate((element) => getComputedStyle(element).opacity))
     .toBe("1");
@@ -129,6 +138,15 @@ test("opening completed history does not show fake thinking", async ({ page }) =
   await expect(agentActions.getByText("用量 0.0046")).toBeVisible();
   await expect(agentActions.getByRole("button", { name: "复制输出" })).toBeAttached();
   await expect(page.getByText("思考中")).toBeHidden();
+
+  await page.getByRole("button", { name: /中间过程/ }).click();
+  const tool = page.getByTestId("tool-call-toggle");
+  await expect(tool).toBeVisible();
+  await expect(tool.getByText("completed", { exact: true })).toHaveCount(0);
+  await expect(tool.getByLabel("已完成")).toBeVisible();
+  await tool.click();
+  await expect(page.getByText("参数", { exact: true })).toBeVisible();
+  await expect(agentActions).toBeVisible();
 
   await seedGatewayThread(page, {
     threadId: "e2e-stale-running-history-thread",

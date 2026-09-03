@@ -10,7 +10,9 @@ import {
   type StoredHostRecord,
 } from "../state/memory";
 import { runtimeConfigFromMemory } from "../http/errors";
+import { workspaceHostIds } from "../runtime-manager/local-workspace";
 import { pinnedThreadEvents } from "./pinned-thread-events";
+import { runtimeConfigStore } from "../state/runtime-config";
 
 export class UserConfigMutationService {
   commit<T>(userId: number, mutateDraft: () => T): T {
@@ -41,6 +43,23 @@ export class UserConfigMutationService {
       draftState.pinnedThreads,
     );
     return result;
+  }
+
+  unpinThread(userId: number, hostId: number, threadId: string) {
+    const pinned = runtimeConfigStore
+      .export()
+      .pinnedThreads.some((thread) => thread.hostId === hostId && thread.threadId === threadId);
+    if (!pinned) return;
+    this.commit(userId, () => {
+      runtimeConfigStore.replacePinnedThreads(
+        runtimeConfigStore
+          .export()
+          .pinnedThreads.filter(
+            (thread) => thread.hostId !== hostId || thread.threadId !== threadId,
+          ),
+      );
+      return runtimeConfigStore.export();
+    });
   }
 
   private reconcileCommittedConfig(
@@ -100,7 +119,7 @@ function attemptRuntimeReconciliation(userId: number, resource: string, reconcil
 }
 
 function pruneDanglingHostRelations(state: ReturnType<typeof currentGatewayMemoryState>) {
-  const hostIds = new Set(state.hosts.map((host) => host.id));
+  const hostIds = workspaceHostIds(state.hosts.map((host) => host.id));
 
   // Relation cleanup belongs to the draft transaction, before SQLite is written. Resource
   // lifecycle callbacks run after commit and must never mutate durable configuration: doing so

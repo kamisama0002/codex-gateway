@@ -1,7 +1,7 @@
 import type { HostRecord, RealtimeClientMessage } from "~~/shared/types";
 import { threadBroker } from "../../runtime/broker";
 import { requireRecord } from "../../http/validation/common";
-import { hostStore } from "../../state/hosts";
+import { requireWorkspaceHost } from "../../runtime-manager/local-workspace";
 import { projectStore } from "../../state/projects";
 import { sendRealtimePeerMessage, stateFor, type RealtimePeer } from "../peer-state";
 import { removeOwnedSubscription, replaceOwnedSubscription } from "../subscription-map";
@@ -10,7 +10,7 @@ export async function searchProjectFiles(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "file.search" }>,
 ) {
-  const { host, project } = requiredProjectScope(request.hostId, request.projectId);
+  const { host, project } = await requiredProjectScope(request.hostId, request.projectId);
   const result = await threadBroker.searchProjectFiles(
     host,
     project.remotePath,
@@ -30,7 +30,7 @@ export async function subscribeProjectFiles(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "file.watch.subscribe" }>,
 ) {
-  const { host, project } = requiredProjectScope(request.hostId, request.projectId);
+  const { host, project } = await requiredProjectScope(request.hostId, request.projectId);
   const key = fileWatchScopeKey(request.hostId, request.projectId, request.threadId);
   const subscriptions = stateFor(peer).fileWatchUnsubscribers;
   const paths = watchedProjectPaths(project.remotePath, request.paths);
@@ -135,8 +135,8 @@ export function unsubscribeProjectFiles(
   );
 }
 
-function requiredProjectScope(hostId: number, projectId: number) {
-  const host = requireRecord(hostStore.getWithSecret(hostId), "Host not found");
+async function requiredProjectScope(hostId: number, projectId: number) {
+  const host = await requireWorkspaceHost(hostId);
   const project = requireRecord(projectStore.get(projectId), "Project not found");
   if (project.hostId !== host.id) {
     throw new Error(`Project ${project.id} does not belong to host ${host.id}`);

@@ -1,14 +1,20 @@
 import { storeToRefs } from "pinia";
 import { computed } from "vue";
 import type { GatewayThread, ThreadHistoryState } from "~~/shared/types";
+import type { GatewayErrorState } from "@/stores/gateway/types";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
+import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
+import { hostById } from "@/stores/gateway-catalog/selectors";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 
 export function useChatWorkspaceState() {
   const bootstrapRefs = storeToRefs(useGatewayBootstrapStore());
+  const catalog = useGatewayCatalogStore();
   const navigationRefs = storeToRefs(useGatewayNavigationStore());
+  const selectedHost = computed(() => hostById(catalog.hosts, navigationRefs.selectedHostId.value));
   const runtime = useGatewayThreadRuntimeStore();
   const viewRefs = storeToRefs(useGatewayThreadViewStore());
   // The backend projects snapshot history once and realtime reducers update this Pinia array only
@@ -23,7 +29,7 @@ export function useChatWorkspaceState() {
   );
   const visibleError = computed(() =>
     scopedVisibleError({
-      error: bootstrapRefs.error.value,
+      errors: bootstrapRefs.errors.value,
       selectedHostId: navigationRefs.selectedHostId.value,
       selectedProjectId: navigationRefs.selectedProjectId.value,
       selectedThreadId: navigationRefs.selectedThreadId.value,
@@ -46,9 +52,18 @@ export function useChatWorkspaceState() {
       const threadId = navigationRefs.selectedThreadId.value;
       return hostId !== null && threadId !== null ? runtime.statusFor(hostId, threadId) : "idle";
     }),
+    selectedThreadPhase: computed(() => {
+      const hostId = navigationRefs.selectedHostId.value;
+      const threadId = navigationRefs.selectedThreadId.value;
+      return hostId !== null && threadId !== null ? runtime.phaseFor(hostId, threadId) : "idle";
+    }),
     selectedThreadViewReady,
     visibleError,
-    canOpenTerminal: computed(() => navigationRefs.selectedHostId.value !== null),
+    canOpenTerminal: computed(
+      () =>
+        navigationRefs.selectedHostId.value !== null &&
+        (selectedHost.value === null || !isManagedRuntimeHost(selectedHost.value)),
+    ),
   };
 }
 
@@ -65,20 +80,19 @@ function isSelectedThreadViewReady(input: {
 }
 
 function scopedVisibleError(input: {
-  error: {
-    message: string;
-    hostId: number | null;
-    projectId: number | null;
-    threadId: string | null;
-  } | null;
+  errors: GatewayErrorState[];
   selectedHostId: number | null;
   selectedProjectId: number | null;
   selectedThreadId: string | null;
 }) {
-  const current = input.error;
-  if (!current) return null;
-  if (current.hostId !== null && current.hostId !== input.selectedHostId) return null;
-  if (current.projectId !== null && current.projectId !== input.selectedProjectId) return null;
-  if (current.threadId !== null && current.threadId !== input.selectedThreadId) return null;
-  return current.message;
+  return (
+    [...input.errors]
+      .reverse()
+      .find(
+        (current) =>
+          (current.hostId === null || current.hostId === input.selectedHostId) &&
+          (current.projectId === null || current.projectId === input.selectedProjectId) &&
+          (current.threadId === null || current.threadId === input.selectedThreadId),
+      ) ?? null
+  );
 }

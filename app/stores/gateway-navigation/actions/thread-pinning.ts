@@ -21,6 +21,7 @@ export function createThreadPinningActions() {
       );
       const thread = navigation.threads.find((candidate) => String(candidate.id) === threadId);
       const key = pinnedKey(navigation.selectedHostId, threadId);
+      const activity = useGatewayThreadActivityStore().summariesByKey[key];
       const previousPinnedThread = gateway.gatewayConfig.pinnedThreads.find(
         (item) => pinnedKey(item.hostId, item.threadId) === key,
       );
@@ -31,14 +32,21 @@ export function createThreadPinningActions() {
         hostId: navigation.selectedHostId,
         projectId: navigation.selectedProjectId,
         threadId,
-        title: titleForThread(thread),
-        subtitle: project?.remotePath ?? null,
-        projectName: project?.name ?? null,
-        updatedAt: Number(thread?.recencyAt ?? thread?.updatedAt ?? Date.now() / 1000),
+        title: titleForThread(thread ?? activity),
+        subtitle: project?.remotePath ?? activity?.cwd ?? null,
+        projectName: project?.name ?? activity?.projectName ?? null,
+        updatedAt: Number(
+          thread?.recencyAt ?? thread?.updatedAt ?? activity?.updatedAt ?? Date.now() / 1000,
+        ),
       };
       if (pinned) gateway.gatewayConfig.pinnedThreads.unshift(nextPinnedThread);
       navigation.threads = sortThreads(
         navigation.threads.map((item) =>
+          String(item.id) === threadId ? { ...item, pinned } : item,
+        ),
+      );
+      navigation.hostThreads = sortThreads(
+        navigation.hostThreads.map((item) =>
           String(item.id) === threadId ? { ...item, pinned } : item,
         ),
       );
@@ -56,6 +64,11 @@ export function createThreadPinningActions() {
       if (thread.hostId === navigation.selectedHostId) {
         navigation.threads = sortThreads(
           navigation.threads.map((candidate) =>
+            String(candidate.id) === thread.threadId ? { ...candidate, pinned } : candidate,
+          ),
+        );
+        navigation.hostThreads = sortThreads(
+          navigation.hostThreads.map((candidate) =>
             String(candidate.id) === thread.threadId ? { ...candidate, pinned } : candidate,
           ),
         );
@@ -122,6 +135,9 @@ export function createThreadPinningActions() {
       if (!sessionIsCurrent()) return;
       if (hostId === navigation.selectedHostId) {
         navigation.threads = navigation.threads.map((thread) =>
+          String(thread.id) === threadId ? { ...thread, name } : thread,
+        );
+        navigation.hostThreads = navigation.hostThreads.map((thread) =>
           String(thread.id) === threadId ? { ...thread, name } : thread,
         );
       }

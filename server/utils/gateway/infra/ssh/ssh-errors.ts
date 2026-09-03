@@ -7,3 +7,9 @@ export function isConnectionLevelSshError(error: unknown) {
   if (/Channel open failure/i.test(message)) return false;
   return /No response from server|Not connected|Connection lost|ECONNRESET|EPIPE/i.test(message);
 }
+
+/** OpenSSH uses this description when a session channel briefly exceeds MaxSessions. */
+export function isRetryableSshChannelOpenError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Channel open failure:\s*open failed/i.test(message);
+}

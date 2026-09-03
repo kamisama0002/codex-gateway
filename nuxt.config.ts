@@ -27,7 +27,9 @@ export default defineNuxtConfig({
       // preserves that side-effect ordering without forcing all languages into a vendor chunk.
       dedupe: ["prismjs"],
     },
-    plugins: [tailwindcss()],
+    // Tailwind's Vite adapter already returns a flat Plugin[] list; keep it flat for Nuxt's typed
+    // config validation instead of wrapping it in a nested Plugin[][] array.
+    plugins: tailwindcss(),
   },
   nitro: {
     rollupConfig: {

@@ -69,10 +69,10 @@ const viewportVisible = useElementVisibility(viewportElement);
 const documentVisibility = useDocumentVisibility();
 const workspaceLayoutRevision = inject(CHAT_VIEWPORT_LAYOUT_REVISION, null);
 
-// An underfilled first page is both at the start and at the end, so Chat mode correctly remains
-// bottom-following and cannot infer that an upward wheel means "load history" from scrollOffset.
-// Keep this VueUse listener strictly at the pagination boundary: it may request an older page, but
-// must never change followLatest, isScrolling, anchors, or scrollTop.
+// An underfilled first page is both at the start and at the end, so no scroll event can express
+// that the reader moved away from latest. The upward wheel itself is explicit intent: detach before
+// requesting history so concurrent streaming cannot reclaim the bottom while the page prepends.
+// This listener never writes scrollTop; Core still owns keyed anchors and every correction.
 useEventListener(
   viewportElement,
   "wheel",
@@ -80,6 +80,7 @@ useEventListener(
     const viewport = viewportElement.value;
     if (event.deltaY >= 0 || viewport === null || viewport.scrollTop > historyStartThreshold)
       return;
+    chatVirtualizer.detachFromLatest();
     startControlsVisible.value = true;
     emit("reachStart");
   },
@@ -204,7 +205,7 @@ function handleViewportReady() {
       content moves inside an otherwise stable keyed row. Padding around the
       sizer is also invisible to virtual-core and creates a false scroll range.
     -->
-    <div class="mx-auto flex min-h-full w-full max-w-4xl flex-col px-[clamp(0.875rem,4vw,2rem)]">
+    <div class="thread-column flex min-h-full flex-col px-[clamp(0.875rem,4vw,1.5rem)]">
       <div :ref="chatVirtualizer.containerRef" class="relative mt-auto shrink-0">
         <div
           v-for="virtualRow in virtualRows"
@@ -214,7 +215,7 @@ function handleViewportReady() {
           :data-row-key="rows[virtualRow.index]?.key"
           :data-row-type="rows[virtualRow.index]?.type"
           :data-row-section="rows[virtualRow.index]?.section"
-          class="pb-5 md:pb-8"
+          class="pb-3 md:pb-4"
           :style="rowStyle(virtualRow)"
         >
           <slot :row="rows[virtualRow.index]" :index="virtualRow.index" />

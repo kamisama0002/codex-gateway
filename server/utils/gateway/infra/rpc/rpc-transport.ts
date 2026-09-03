@@ -7,6 +7,7 @@ import {
   remoteLoginShellCommand,
 } from "../ssh/remote-command";
 import { createRpcTransportError, type RpcTransportCloseDetail } from "./rpc-errors";
+import { managedRuntimeEndpointForHost, ManagedCodexRpcTransport } from "./managed-rpc-transport";
 
 export interface CodexRpcTransportOptions {
   requireExistingAppServer: boolean;
@@ -19,6 +20,16 @@ export interface RpcTransport {
   connect(): Promise<void>;
   send(message: RpcEnvelope): void;
   close(): void;
+}
+
+export function createCodexRpcTransport(
+  host: HostRecord,
+  options: CodexRpcTransportOptions,
+): RpcTransport {
+  if ((host.connectionKind ?? "ssh") === "managed") {
+    return new ManagedCodexRpcTransport(host, managedRuntimeEndpointForHost(host), options);
+  }
+  return new CodexRpcTransport(host, options);
 }
 
 export class CodexRpcTransport {

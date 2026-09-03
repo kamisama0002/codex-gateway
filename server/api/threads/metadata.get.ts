@@ -4,10 +4,13 @@ import { threadMetadataListSchema } from "../../utils/gateway/http/validation/th
 import { hostStore } from "../../utils/gateway/state/hosts";
 import { threadMetadataStore } from "../../utils/gateway/state/thread-metadata";
 import { requireRecord } from "../../utils/gateway/http/validation/common";
+import { isManagedRuntimeHostId } from "~~/shared/runtime/managed-runtime";
 
 export default defineGatewayEventHandler(async (event) => {
   const query = await getValidatedQuery(event, (value) => threadMetadataListSchema.parse(value));
-  requireRecord(hostStore.get(query.hostId), "Host not found");
+  if (!isManagedRuntimeHostId(query.hostId)) {
+    requireRecord(hostStore.get(query.hostId), "Host not found");
+  }
   const requested = new Set(query.threadIds);
   return {
     data: threadMetadataStore.list(query.hostId).filter((thread) => requested.has(thread.id)),

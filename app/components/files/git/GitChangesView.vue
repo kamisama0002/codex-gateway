@@ -102,16 +102,16 @@ function flattenFiles(nodes: GitChangeTreeNode[]) {
     :class="presentation === 'review' ? 'flex-col md:flex-row' : 'flex-col'"
   >
     <section
-      class="flex min-h-0 flex-col overflow-hidden bg-canvas-soft/45"
+      class="flex min-h-0 flex-col overflow-hidden"
       :class="
         presentation === 'review'
-          ? 'h-48 w-full shrink-0 border-b border-hairline md:h-auto md:w-80 md:border-r md:border-b-0'
+          ? 'h-40 w-full shrink-0 border-b border-hairline md:h-auto md:w-72 md:border-r md:border-b-0'
           : 'flex-1'
       "
     >
-      <div class="flex h-10 shrink-0 items-center gap-2 border-b border-hairline px-3">
-        <GitBranchIcon class="size-4 shrink-0 text-ink-muted" />
-        <span class="min-w-0 flex-1 truncate text-sm font-semibold">
+      <div class="flex h-8 shrink-0 items-center gap-1.5 border-b border-hairline px-2">
+        <GitBranchIcon class="size-3.5 shrink-0 text-ink-muted" />
+        <span class="min-w-0 flex-1 truncate text-xs font-medium">
           {{ availableSnapshot?.branch ?? $t("app.fileGitChanges") }}
         </span>
         <Button
@@ -182,7 +182,7 @@ function flattenFiles(nodes: GitChangeTreeNode[]) {
         :get-children="
           (node: GitChangeTreeNode) => (node.kind === 'directory' ? node.children : undefined)
         "
-        class="min-h-0 flex-1 list-none overflow-auto py-2 outline-none"
+        class="min-h-0 flex-1 list-none overflow-auto py-1 outline-none"
         data-testid="git-changes-tree"
         @update:model-value="selectNode"
       >

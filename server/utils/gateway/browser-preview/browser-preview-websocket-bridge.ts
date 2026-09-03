@@ -18,9 +18,9 @@ interface BrowserPreviewWebSocketBridgeOptions {
 }
 
 /**
- * Bridges the two standard WebSocket implementations without adding another protocol. crossws
- * supplies waitForDrain() for the browser side and ws supplies bufferedAmount for the upstream;
- * the bounded queues only cover the periods where either endpoint cannot currently accept data.
+ * Bridges the two standard WebSocket implementations without adding another protocol. The
+ * upstream `ws` socket and the crossws peer's underlying `websocket` expose buffered byte counts;
+ * the bounded queues cover the periods where either endpoint cannot currently accept data.
  */
 export class BrowserPreviewWebSocketBridge {
   private upstream: WebSocket | undefined;
@@ -118,7 +118,7 @@ export class BrowserPreviewWebSocketBridge {
   private sendToPeer(frame: BrowserPreviewFrame) {
     if (
       this.queuedToPeer.size ||
-      this.options.peer.bufferedAmount > BROWSER_PREVIEW_PEER_DRAIN_THRESHOLD_BYTES
+      peerBufferedAmount(this.options.peer) > BROWSER_PREVIEW_PEER_DRAIN_THRESHOLD_BYTES
     ) {
       if (!this.queuedToPeer.push(frame)) {
         this.fail(1009, "Browser WebSocket buffer limit exceeded");
@@ -139,12 +139,13 @@ export class BrowserPreviewWebSocketBridge {
 
   private async drainPeerQueue() {
     while (!this.closed && this.queuedToPeer.size) {
-      if (this.options.peer.bufferedAmount > BROWSER_PREVIEW_PEER_DRAIN_THRESHOLD_BYTES) {
+      if (peerBufferedAmount(this.options.peer) > BROWSER_PREVIEW_PEER_DRAIN_THRESHOLD_BYTES) {
         try {
-          await this.options.peer.waitForDrain({
-            threshold: BROWSER_PREVIEW_PEER_DRAIN_THRESHOLD_BYTES,
-            signal: this.peerDrainAbort.signal,
-          });
+          await waitForPeerDrain(
+            this.options.peer,
+            BROWSER_PREVIEW_PEER_DRAIN_THRESHOLD_BYTES,
+            this.peerDrainAbort.signal,
+          );
         } catch {
           return;
         }
@@ -156,7 +157,7 @@ export class BrowserPreviewWebSocketBridge {
 
   private safeSendToPeer(frame: BrowserPreviewFrame) {
     if (
-      this.options.peer.bufferedAmount + frameByteLength(frame) >
+      peerBufferedAmount(this.options.peer) + frameByteLength(frame) >
       BROWSER_PREVIEW_MAX_WEBSOCKET_BUFFERED_BYTES
     ) {
       this.fail(1009, "Browser WebSocket buffer limit exceeded");
@@ -191,6 +192,32 @@ export class BrowserPreviewWebSocketBridge {
     if (this.connectTimeout) clearTimeout(this.connectTimeout);
     this.connectTimeout = undefined;
   }
+}
+
+function peerBufferedAmount(peer: Peer) {
+  const bufferedAmount = peer.websocket.bufferedAmount;
+  return typeof bufferedAmount === "number" ? bufferedAmount : 0;
+}
+
+function waitForPeerDrain(peer: Peer, threshold: number, signal: AbortSignal) {
+  if (peerBufferedAmount(peer) <= threshold || signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    const poll = () => {
+      if (signal.aborted || peerBufferedAmount(peer) <= threshold) {
+        finish();
+        return;
+      }
+      timer = setTimeout(poll, 25);
+    };
+    signal.addEventListener("abort", finish, { once: true });
+    poll();
+  });
 }
 
 class BoundedFrameQueue {

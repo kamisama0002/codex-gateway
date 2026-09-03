@@ -3,13 +3,15 @@ import { argon2Sync, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { migrateGatewayDatabase } from "../server/utils/gateway/storage/migrations.ts";
 
-const [, , usernameArg, passwordArg] = process.argv;
-const username = (usernameArg || "").trim().toLowerCase();
-const password = passwordArg || "";
+const [, , usernameArg = "", passwordArg = "", roleFlag, roleArg] = process.argv;
+const username = usernameArg.trim().toLowerCase();
+const password = passwordArg;
+const explicitRole = parseRole(roleFlag, roleArg);
 
 if (!username || !password) {
-  console.error("Usage: node scripts/create-user.mjs <username> <password>");
+  console.error("Usage: node scripts/create-user.mjs <username> <password> [--role admin|user]");
   process.exit(1);
 }
 
@@ -33,31 +35,47 @@ const db = new DatabaseSync(dbPath);
 db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA foreign_keys = ON;
-
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
 `);
+migrateGatewayDatabase(db);
 
 const now = new Date().toISOString();
+const role = explicitRole ?? (userCount(db) === 0 ? "admin" : "user");
 db.prepare(
   `
-    INSERT INTO users (username, password_hash, is_active, created_at, updated_at)
-    VALUES (?, ?, 1, ?, ?)
+    INSERT INTO users (username, password_hash, is_active, role, created_at, updated_at)
+    VALUES (?, ?, 1, ?, ?, ?)
     ON CONFLICT(username) DO UPDATE SET
       password_hash = excluded.password_hash,
       is_active = 1,
+      role = CASE WHEN ? THEN excluded.role ELSE role END,
       updated_at = excluded.updated_at
   `,
-).run(username, hashPassword(password), now, now);
+).run(username, hashPassword(password), role, now, now, explicitRole !== null ? 1 : 0);
 
-console.log(`User ${username} is ready in ${dbPath}`);
+console.log(`User ${username} is ready in ${dbPath} with role ${role}`);
 
+/** @param {string | undefined} flag @param {string | undefined} value @returns {"admin" | "user" | null} */
+function parseRole(flag, value) {
+  if (flag === undefined && value === undefined) return null;
+  if (flag === "--role" && (value === "admin" || value === "user")) return value;
+  console.error("Role must be admin or user");
+  process.exit(1);
+}
+
+/** @param {DatabaseSync} database */
+function userCount(database) {
+  /** @type {unknown} */
+  const row = database.prepare("SELECT COUNT(*) AS count FROM users").get();
+  if (!isCountRow(row)) throw new Error("Could not count database users");
+  return row.count;
+}
+
+/** @param {unknown} value @returns {value is { count: number }} */
+function isCountRow(value) {
+  return typeof value === "object" && value !== null && "count" in value && typeof value.count === "number";
+}
+
+/** @param {string} value */
 function hashPassword(value) {
   const salt = randomBytes(16);
   const hash = argon2Sync("argon2id", {

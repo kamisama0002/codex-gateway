@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { RealtimeClientMessage } from "../../types";
+import { MANAGED_RUNTIME_HOST_ID } from "../managed-runtime";
 import {
   nonEmptyString,
   nonNegativeId,
@@ -44,9 +45,8 @@ const collaborationMode = z
 // Every browser-controlled field is validated at the WebSocket trust boundary. Do not replace
 // this union with a type-only assertion: malformed terminal/browser/attachment fields would then
 // enter handlers as trusted values and fail far from the peer that supplied them.
-export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z.discriminatedUnion(
-  "type",
-  [
+export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z
+  .discriminatedUnion("type", [
     z.object({ type: z.literal("auth.authenticate"), token: nonEmptyString }).strict(),
     z.object({ type: z.literal("host.lifecycle.subscribe") }).strict(),
     z.object({ type: z.literal("host.lifecycle.unsubscribe") }).strict(),
@@ -340,5 +340,14 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z.d
       })
       .strict(),
     z.object({ type: z.literal("ping"), nonce: z.string().optional() }).strict(),
-  ],
-);
+  ])
+  .refine((message) => {
+    if (!("hostId" in message) || message.hostId !== MANAGED_RUNTIME_HOST_ID) return true;
+    return !isSshOnlyManagedHostMessage(message.type);
+  }, "SSH-only workspace actions are not available on the local Agent");
+
+function isSshOnlyManagedHostMessage(type: string) {
+  return (
+    type.startsWith("tmux.") || type.startsWith("terminal.") || type.startsWith("browser.")
+  );
+}

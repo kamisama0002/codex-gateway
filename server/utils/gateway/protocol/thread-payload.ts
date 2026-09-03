@@ -10,6 +10,35 @@ import { normalizeTokenUsage } from "~~/shared/token-usage";
 import { recordFromUnknown } from "~~/shared/utils/records";
 import type { TurnStartInput } from "../runtime/types";
 
+// Codex Desktop Agent / Default: workspace-write plus on-request approvals.
+export const DEFAULT_THREAD_SANDBOX = "workspace-write" as const;
+// Managed Agent containers already isolate with Docker (read-only rootfs, dropped
+// caps, no user namespaces). Inner bubblewrap cannot start there, so skip it.
+export const MANAGED_RUNTIME_THREAD_SANDBOX = "danger-full-access" as const;
+export const MANAGED_RUNTIME_TURN_SANDBOX_POLICY = {
+  type: "externalSandbox",
+  networkAccess: "enabled",
+} as const;
+
+export function buildAppServerThreadStartParams(
+  params: Record<string, unknown>,
+  options: { managedRuntime?: boolean } = {},
+) {
+  const sandbox =
+    typeof params.sandbox === "string" && params.sandbox.trim() !== ""
+      ? params.sandbox
+      : options.managedRuntime === true
+        ? MANAGED_RUNTIME_THREAD_SANDBOX
+        : DEFAULT_THREAD_SANDBOX;
+  return {
+    ...params,
+    sandbox,
+    historyMode: "paginated",
+    // Official opt-in fixed at thread creation; thread/resume cannot enable it later.
+    experimentalRawEvents: true,
+  };
+}
+
 export function buildUserInput(input: { text: string; images?: TurnStartInput["images"] }) {
   const userInput: Array<Record<string, unknown>> = [];
   if (input.text.trim() !== "") {
@@ -37,6 +66,7 @@ export function buildTurnStartParams(
   threadId: string,
   clientUserMessageId: string,
   input: TurnStartInput,
+  options: { managedRuntime?: boolean } = {},
 ) {
   return {
     threadId,
@@ -51,6 +81,9 @@ export function buildTurnStartParams(
         ? buildAppServerCollaborationMode(input.collaborationMode)
         : null,
     additionalContext: input.additionalContext ?? {},
+    ...(options.managedRuntime === true
+      ? { sandboxPolicy: MANAGED_RUNTIME_TURN_SANDBOX_POLICY }
+      : {}),
   };
 }
 
