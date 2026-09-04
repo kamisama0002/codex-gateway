@@ -1,5 +1,6 @@
 import type { ThreadResponseUsage, ThreadTimelineItem, ThreadTimelineTurn } from "~~/shared/types";
 import type { DisplayedTurnTiming } from "@/utils/turn-timing";
+import { threadItemText } from "@/utils/thread-items";
 import { itemKey, userMessageVariant, type ThreadTurnSections } from "./thread-turn-sections";
 
 export type { ThreadTimelineTurn } from "~~/shared/types";
@@ -14,7 +15,14 @@ const estimatedItemHeights: Partial<Record<ThreadTimelineItem["type"], number>> 
   userMessage: 160,
 };
 
-export type ThreadTimelineRow =
+export interface ThreadTurnNavigation {
+  turnId: string;
+  prompt: string;
+  response: string;
+  active: boolean;
+}
+
+export type ThreadTimelineRow = (
   | {
       key: string;
       type: "intermediateHeader";
@@ -48,7 +56,10 @@ export type ThreadTimelineRow =
       durationMs: number | null;
       active: boolean;
       responseUsage: ThreadResponseUsage[] | undefined;
-    };
+    }
+) & {
+  turnNavigation?: ThreadTurnNavigation;
+};
 
 export interface ThreadTimelineTurnState {
   turn: ThreadTimelineTurn;
@@ -123,6 +134,10 @@ export function buildThreadTimelineRows(input: {
         responseUsage: turn.responseUsage,
       });
     }
+    const firstRow = rows[0];
+    if (firstRow !== undefined) {
+      firstRow.turnNavigation = turnNavigation(turn, sections);
+    }
     return rows;
   });
 }
@@ -186,6 +201,19 @@ function hasTimingValue(timing: DisplayedTurnTiming) {
   return timing.startedAt !== null || timing.durationMs !== null;
 }
 
+function turnNavigation(turn: ThreadTimelineTurn, sections: ThreadTurnSections) {
+  const promptItem = sections.userItems.find((item) => item.type === "userMessage");
+  const responseItem =
+    sections.finalItems.findLast((item) => item.type === "agentMessage") ??
+    sections.intermediateItems.findLast((item) => item.type === "agentMessage");
+  return {
+    turnId: turn.id,
+    prompt: promptItem === undefined ? "" : threadItemText(promptItem),
+    response: responseItem === undefined ? "" : threadItemText(responseItem),
+    active: sections.turnIsActive,
+  };
+}
+
 function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
   if (left.type !== right.type) return false;
   if (left.type === "intermediateHeader" && right.type === "intermediateHeader") {
@@ -198,7 +226,8 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
       left.loading === right.loading &&
       left.loaded === right.loaded &&
       left.active === right.active &&
-      left.turnId === right.turnId
+      left.turnId === right.turnId &&
+      sameTurnNavigation(left.turnNavigation, right.turnNavigation)
     );
   }
   if (left.type === "item" && right.type === "item") {
@@ -212,6 +241,7 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
       left.section === right.section &&
       left.userMessageVariant === right.userMessageVariant &&
       left.agentActionsAvailable === right.agentActionsAvailable &&
+      sameTurnNavigation(left.turnNavigation, right.turnNavigation) &&
       sameResponseUsage(left.responseUsage, right.responseUsage) &&
       sameTurnTiming(left.turnTiming, right.turnTiming)
     );
@@ -223,10 +253,24 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
       left.completedAt === right.completedAt &&
       left.durationMs === right.durationMs &&
       left.active === right.active &&
+      sameTurnNavigation(left.turnNavigation, right.turnNavigation) &&
       sameResponseUsage(left.responseUsage, right.responseUsage)
     );
   }
   return false;
+}
+
+function sameTurnNavigation(
+  left: ThreadTurnNavigation | undefined,
+  right: ThreadTurnNavigation | undefined,
+) {
+  if (left === undefined || right === undefined) return left === right;
+  return (
+    left.turnId === right.turnId &&
+    left.prompt === right.prompt &&
+    left.response === right.response &&
+    left.active === right.active
+  );
 }
 
 const intermediateToolItemTypes = new Set<ThreadTimelineItem["type"]>([

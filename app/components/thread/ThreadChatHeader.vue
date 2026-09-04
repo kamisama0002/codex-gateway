@@ -39,7 +39,7 @@ const showPhase = computed(() => phase.value !== "idle" && phase.value !== "comp
     class="flex min-h-8 shrink-0 items-center border-b border-hairline px-3"
   >
     <div class="flex min-w-0 flex-1 items-center gap-2">
-      <p class="truncate text-sm leading-5 text-ink">
+      <p class="truncate text-sm font-medium leading-5 text-ink">
         {{ title }}
         <span v-if="selectedProject?.name" class="text-ink-faint">
           · {{ selectedProject.name }}</span

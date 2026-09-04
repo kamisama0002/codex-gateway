@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { ArchiveIcon, ArchiveRestoreIcon, EllipsisIcon, StarIcon, Trash2Icon } from "@lucide/vue";
+import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
+  EllipsisIcon,
+  PencilIcon,
+  PinIcon,
+  PinOffIcon,
+  StarIcon,
+  Trash2Icon,
+} from "@lucide/vue";
 import { computed, ref } from "vue";
 import { Button } from "@codex-gateway/ui/button";
 import {
@@ -142,13 +151,18 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
                 </template>
                 <template v-else>
                   <DropdownMenuItem @select="onCompactMenuSelect('togglePin')">
+                    <component
+                      :is="showPinnedIcon ? PinOffIcon : PinIcon"
+                      class="mr-2 size-4 text-ink-muted"
+                    />
                     {{ pinLabel }}
                   </DropdownMenuItem>
                   <DropdownMenuItem @select="onCompactMenuSelect('rename')">
+                    <PencilIcon class="mr-2 size-4 text-ink-muted" />
                     {{ $t("app.renameThread") }}
                   </DropdownMenuItem>
                   <DropdownMenuItem @select="onCompactMenuSelect('archive')">
-                    <ArchiveIcon class="mr-2 size-4" />
+                    <ArchiveIcon class="mr-2 size-4 text-ink-muted" />
                     {{ $t("app.archiveThread") }}
                   </DropdownMenuItem>
                 </template>
@@ -183,13 +197,18 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
       </template>
       <template v-else>
         <ContextMenuItem @select="emit('togglePin')">
+          <component
+            :is="showPinnedIcon ? PinOffIcon : PinIcon"
+            class="mr-2 size-4 text-ink-muted"
+          />
           {{ pinLabel }}
         </ContextMenuItem>
         <ContextMenuItem @select="emit('rename')">
+          <PencilIcon class="mr-2 size-4 text-ink-muted" />
           {{ $t("app.renameThread") }}
         </ContextMenuItem>
         <ContextMenuItem @select="emit('archive')">
-          <ArchiveIcon class="mr-2 size-4" />
+          <ArchiveIcon class="mr-2 size-4 text-ink-muted" />
           {{ $t("app.archiveThread") }}
         </ContextMenuItem>
       </template>

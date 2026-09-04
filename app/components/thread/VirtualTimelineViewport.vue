@@ -2,17 +2,21 @@
 import type { VirtualItem } from "@tanstack/virtual-core";
 import { useDocumentVisibility, useElementVisibility, useEventListener } from "@vueuse/core";
 import type { ComponentPublicInstance } from "vue";
-import { computed, inject, ref, watch } from "vue";
+import { computed, inject, nextTick, ref, watch } from "vue";
 import {
   CHAT_VIEWPORT_LAYOUT_REVISION,
   ChatVirtualScrollFrame,
   useChatVirtualizer,
 } from "@/components/common/chat-virtualizer";
+import TurnNavigator, { type TurnNavigatorItem } from "@/components/thread/TurnNavigator.vue";
+import type { ThreadTurnNavigation } from "@/components/thread/timeline-rows";
 
 interface TimelineViewportRow {
   key: string;
   type?: string;
   section?: string;
+  turnId?: string;
+  turnNavigation?: ThreadTurnNavigation;
 }
 
 const props = defineProps<{
@@ -35,6 +39,12 @@ const historyStartThreshold = 80;
 const startControlsVisible = ref(false);
 const viewportReady = ref(false);
 const didInitialScroll = ref(false);
+const activeTurnId = ref<string | null>(null);
+const turnNavigationItems = computed<TurnNavigatorItem[]>(() =>
+  props.rows.flatMap((row, rowIndex) =>
+    row.turnNavigation === undefined ? [] : [{ ...row.turnNavigation, rowIndex }],
+  ),
+);
 
 const chatVirtualizer = useChatVirtualizer({
   count: () => props.rows.length,
@@ -50,6 +60,7 @@ const chatVirtualizer = useChatVirtualizer({
   estimateSize: (index: number) => props.estimateSize(props.rows[index], index),
   overscan: 6,
   onViewportScroll: (viewport) => {
+    syncActiveTurn(viewport);
     // A short chat is simultaneously at the top and bottom. Only interpret
     // top proximity as history intent after explicit upward input detached the
     // outer timeline. Do not infer intent from an underfilled initial page: the
@@ -89,6 +100,40 @@ useEventListener(
 
 function scrollViewport() {
   return scrollFrameRef.value?.getViewport() ?? null;
+}
+
+function syncActiveTurn(viewport = scrollViewport()) {
+  const items = turnNavigationItems.value;
+  if (viewport === null || items.length === 0) {
+    activeTurnId.value = null;
+    return;
+  }
+  if (viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= latestThreshold) {
+    activeTurnId.value = items.at(-1)?.turnId ?? null;
+    return;
+  }
+  const viewportTop = viewport.getBoundingClientRect().top;
+  const readingLine = viewportTop + Math.min(96, viewport.clientHeight * 0.2);
+  let nextTurnId = items[0]?.turnId ?? null;
+  for (const element of viewport.querySelectorAll<HTMLElement>("[data-turn-id]")) {
+    if (element.getBoundingClientRect().top > readingLine) break;
+    nextTurnId = element.dataset.turnId ?? nextTurnId;
+  }
+  activeTurnId.value = nextTurnId;
+}
+
+async function navigateToTurn(item: TurnNavigatorItem) {
+  activeTurnId.value = item.turnId;
+  if (item.turnId === turnNavigationItems.value.at(-1)?.turnId) {
+    await chatVirtualizer.scrollToLatest();
+    return;
+  }
+  chatVirtualizer.detachFromLatest();
+  await nextTick();
+  chatVirtualizer.virtualizer.value.scrollToIndex(item.rowIndex, {
+    align: "start",
+    behavior: "auto",
+  });
 }
 
 function setRowRef(refValue: Element | ComponentPublicInstance | null) {
@@ -184,43 +229,62 @@ function handleViewportReady() {
   // Do not mark an empty viewport as initially aligned. History commonly arrives after this
   // component mounts; the watcher above is the single equivalent of React's initial layout effect.
   viewportReady.value = true;
+  syncActiveTurn();
 }
+
+watch(
+  [viewportReady, () => props.rows.length],
+  async ([ready]) => {
+    if (!ready) return;
+    await nextTick();
+    syncActiveTurn();
+  },
+  { flush: "post" },
+);
 </script>
 
 <template>
-  <ChatVirtualScrollFrame
-    ref="scrollFrameRef"
-    data-testid="chat-scroll-area"
-    :data-follow-latest="chatVirtualizer.followLatest.value ? 'true' : 'false'"
-    :data-is-scrolling="chatVirtualizer.isScrolling.value ? 'true' : 'false'"
-    class="h-full min-h-0 flex-1 overflow-hidden"
-    @viewport-ready="handleViewportReady"
-  >
-    <div class="pointer-events-none sticky top-0 z-10 h-0">
-      <slot name="overlay" :visible="startControlsVisible" />
-    </div>
-    <!--
+  <div class="relative h-full min-h-0 flex-1 overflow-hidden">
+    <ChatVirtualScrollFrame
+      ref="scrollFrameRef"
+      data-testid="chat-scroll-area"
+      :data-follow-latest="chatVirtualizer.followLatest.value ? 'true' : 'false'"
+      :data-is-scrolling="chatVirtualizer.isScrolling.value ? 'true' : 'false'"
+      class="h-full min-h-0 overflow-hidden"
+      @viewport-ready="handleViewportReady"
+    >
+      <div class="pointer-events-none sticky top-0 z-10 h-0">
+        <slot name="overlay" :visible="startControlsVisible" />
+      </div>
+      <!--
       Keep trailing spacing inside every measured row. Do not put top spacing
       on `first:*`: after a prepend the old anchor row stops being first, so its
       content moves inside an otherwise stable keyed row. Padding around the
       sizer is also invisible to virtual-core and creates a false scroll range.
     -->
-    <div class="thread-column flex min-h-full flex-col px-[clamp(0.875rem,4vw,1.5rem)]">
-      <div :ref="chatVirtualizer.containerRef" class="relative mt-auto shrink-0">
-        <div
-          v-for="virtualRow in virtualRows"
-          :key="String(virtualRow.key)"
-          :ref="setRowRef"
-          :data-index="virtualRow.index"
-          :data-row-key="rows[virtualRow.index]?.key"
-          :data-row-type="rows[virtualRow.index]?.type"
-          :data-row-section="rows[virtualRow.index]?.section"
-          class="pb-3 md:pb-4"
-          :style="rowStyle(virtualRow)"
-        >
-          <slot :row="rows[virtualRow.index]" :index="virtualRow.index" />
+      <div class="thread-column flex min-h-full flex-col px-[clamp(0.875rem,4vw,1.5rem)]">
+        <div :ref="chatVirtualizer.containerRef" class="relative mt-auto shrink-0">
+          <div
+            v-for="virtualRow in virtualRows"
+            :key="String(virtualRow.key)"
+            :ref="setRowRef"
+            :data-index="virtualRow.index"
+            :data-row-key="rows[virtualRow.index]?.key"
+            :data-row-type="rows[virtualRow.index]?.type"
+            :data-row-section="rows[virtualRow.index]?.section"
+            :data-turn-id="rows[virtualRow.index]?.turnId"
+            class="pb-3 md:pb-4"
+            :style="rowStyle(virtualRow)"
+          >
+            <slot :row="rows[virtualRow.index]" :index="virtualRow.index" />
+          </div>
         </div>
       </div>
-    </div>
-  </ChatVirtualScrollFrame>
+    </ChatVirtualScrollFrame>
+    <TurnNavigator
+      :items="turnNavigationItems"
+      :active-turn-id="activeTurnId"
+      @navigate="navigateToTurn"
+    />
+  </div>
 </template>

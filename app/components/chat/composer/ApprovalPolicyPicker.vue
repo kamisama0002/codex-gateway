@@ -83,15 +83,6 @@ const activeApprovalOption = computed(
       align="start"
       class="w-[min(92vw,theme(maxWidth.xl))] gap-1 rounded-xl border-hairline p-1.5 shadow-sm"
     >
-      <div class="flex items-center gap-3 px-2.5 py-1.5 text-xs text-ink-muted">
-        <span>{{ t("app.approvalQuestion") }}</span>
-        <button
-          type="button"
-          class="text-primary underline underline-offset-4 hover:text-primary-active"
-        >
-          {{ t("app.learnMore") }}
-        </button>
-      </div>
       <button
         v-for="option in approvalOptions"
         :key="option.value"
