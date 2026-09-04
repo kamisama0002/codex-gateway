@@ -61,3 +61,43 @@ The focused container E2E command above remains unexecuted because the required 
 
 - The real focused E2E scenarios require a supported POSIX/Docker host to execute. They are type-checked but not browser-executed on this Windows shell.
 - The exact RED run was blocked at the same POSIX entrypoint before the assertions could execute; this is an environment limitation rather than a behavioral test result.
+
+## Fix Round 1
+
+### Review Finding Addressed
+
+The initial browser E2E only proved that a running notice rendered from zero to one second. It could not prove timer reset after a thread or phase transition, or cleanup after component disposal. The timer lifecycle now resides in the small `useThreadRuntimeElapsed` composable, which `ThreadRuntimeNotice` consumes without changing stores or realtime behavior.
+
+### RED
+
+Before adding the composable, added `app/components/thread/useThreadRuntimeElapsed.test.ts` with real Vue refs, `watch`, and `effectScope`, using fake timers only to control elapsed time. The focused command failed as expected because the new production module did not yet exist:
+
+```text
+pnpm test:unit -- app/components/thread/useThreadRuntimeElapsed.test.ts
+Error: Cannot find module './useThreadRuntimeElapsed'
+Test Files  1 failed | 60 passed (61)
+```
+
+### GREEN And Verification
+
+`useThreadRuntimeElapsed` starts one one-second interval only for an active phase, clears the previous interval and resets the counter whenever `threadId` or `phase` changes, and registers `onScopeDispose` cleanup. The unit test exercises four observable outcomes:
+
+- active running phase increments from zero to one after a second;
+- changing phase resets elapsed time to zero;
+- changing thread ID resets elapsed time to zero;
+- stopping the owning Vue scope prevents further increments.
+
+Passing checks:
+
+```text
+pnpm test:unit -- app/components/thread/useThreadRuntimeElapsed.test.ts: 61 test files passed, 254 tests passed
+pnpm lint: exit 0
+git diff --check: exit 0
+```
+
+### Fix Round 1 Self-Review
+
+- `ThreadRuntimeNotice` no longer owns a second timer lifecycle; it consumes the composable return ref.
+- The composable uses the shared `isActiveThreadRuntimePhase` predicate, keeping its active-phase definition aligned with gateway runtime projection.
+- Tests use actual Vue watcher and scope disposal behavior rather than mocked watcher calls or implementation-only timer assertions.
+- Existing E2E assertions remain unchanged for the real main-pane reconnect and running-notice surfaces. The pending CentOS E2E execution remains owned by the parent task.

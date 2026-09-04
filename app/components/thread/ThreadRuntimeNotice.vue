@@ -10,13 +10,14 @@ import {
   SquareIcon,
   XIcon,
 } from "@lucide/vue";
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, toRef, watch } from "vue";
 import { Button } from "@codex-gateway/ui/button";
 import type { ThreadRuntimePhase } from "~~/shared/types";
 import type { GatewayErrorState } from "@/stores/gateway/types";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { MAX_SERVER_OVERLOADED_RETRIES } from "@/stores/gateway-thread-turns/types";
+import { useThreadRuntimeElapsed } from "./useThreadRuntimeElapsed";
 
 const props = defineProps<{
   hostId: number | null;
@@ -29,10 +30,9 @@ const props = defineProps<{
 const { t } = useI18n();
 const bootstrap = useGatewayBootstrapStore();
 const turns = useGatewayThreadTurnsStore();
+const elapsedSeconds = useThreadRuntimeElapsed(toRef(props, "threadId"), toRef(props, "phase"));
 const now = ref(Date.now());
 let countdownTimer: number | null = null;
-const elapsedSeconds = ref(0);
-let elapsedTimer: number | null = null;
 
 const request = computed(() => {
   if (props.hostId === null || props.threadId === null) return undefined;
@@ -183,23 +183,8 @@ watch(
   { immediate: true },
 );
 
-watch(
-  [() => props.threadId, () => props.phase],
-  () => {
-    if (elapsedTimer !== null) window.clearInterval(elapsedTimer);
-    elapsedTimer = null;
-    elapsedSeconds.value = 0;
-    if (!active.value || props.threadId === null) return;
-    elapsedTimer = window.setInterval(() => {
-      elapsedSeconds.value += 1;
-    }, 1_000);
-  },
-  { immediate: true },
-);
-
 onBeforeUnmount(() => {
   if (countdownTimer !== null) window.clearInterval(countdownTimer);
-  if (elapsedTimer !== null) window.clearInterval(elapsedTimer);
 });
 
 function dismiss() {
