@@ -10,6 +10,7 @@ import { runtimeStore } from "../runtime-manager/runtime-store";
 import { classifyUpstreamProviderFailure, providerErrorMessage } from "~~/shared/provider-failure";
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
+const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 120_000;
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "keep-alive",
@@ -26,6 +27,7 @@ export interface ProviderProxyOptions {
   fetch?: typeof globalThis.fetch;
   verifyToken?: (token: string, scope: { providerId: string }) => RuntimeModelTokenClaims;
   runtimeStore?: { getByUserId(userId: number): { status: string } | null };
+  streamIdleTimeoutMs?: number;
 }
 
 export async function handleProviderResponses(
@@ -75,8 +77,15 @@ export async function handleProviderResponses(
       signal: controller.signal,
     });
     if (!upstream.ok) return await providerFailureResponse(upstream);
-    if (provider.wireApi === "responses") return passthrough(upstream);
-    if (payload.stream === true) return translateChatStream(upstream);
+    if (provider.wireApi === "responses")
+      return payload.stream === true
+        ? passthrough(upstream, options.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS)
+        : passthrough(upstream);
+    if (payload.stream === true)
+      return translateChatStream(
+        upstream,
+        options.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+      );
     const value: unknown = await upstream.json();
     if (!isChatCompletionResponse(value)) return jsonError(502, "provider_invalid_response");
     return Response.json(toResponsesResult(value, modelId));
@@ -127,17 +136,21 @@ function parsePayload(body: Uint8Array): Record<string, unknown> {
   }
 }
 
-function passthrough(upstream: Response): Response {
+function passthrough(upstream: Response, streamIdleTimeoutMs?: number): Response {
   const headers = new Headers();
   upstream.headers.forEach((value, key) => {
     if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) headers.set(key, value);
   });
-  return new Response(upstream.body, { status: upstream.status, headers });
+  const body =
+    streamIdleTimeoutMs === undefined || upstream.body === null
+      ? upstream.body
+      : withStreamIdleTimeout(upstream.body, streamIdleTimeoutMs);
+  return new Response(body, { status: upstream.status, headers });
 }
 
-function translateChatStream(upstream: Response): Response {
+function translateChatStream(upstream: Response, streamIdleTimeoutMs: number): Response {
   if (upstream.body === null) return jsonError(502, "provider_invalid_stream");
-  const reader = upstream.body.getReader();
+  const reader = withStreamIdleTimeout(upstream.body, streamIdleTimeoutMs).getReader();
   const decoder = new TextDecoder();
   const assembler = new ChatStreamAssembler();
   let pending = "";
@@ -192,6 +205,35 @@ function translateChatStream(upstream: Response): Response {
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
       connection: "keep-alive",
+    },
+  });
+}
+
+function withStreamIdleTimeout(body: ReadableStream<Uint8Array>, timeoutMs: number) {
+  const reader = body.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let timeoutError: Error | undefined;
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          timeoutError = new Error("provider_stream_timeout");
+          reject(timeoutError);
+        }, timeoutMs);
+      });
+      try {
+        const result = await Promise.race([reader.read(), timeout]);
+        if (result.done) controller.close();
+        else controller.enqueue(result.value);
+      } catch (error) {
+        if (error === timeoutError) void reader.cancel(error);
+        controller.error(error);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
     },
   });
 }

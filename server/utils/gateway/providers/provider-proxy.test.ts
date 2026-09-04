@@ -343,6 +343,48 @@ describe("provider proxy", () => {
     expect(text).toContain('"delta":"OK"');
     expect(text).toContain("response.completed");
   });
+
+  it("rejects the next stream read when a provider stays idle after a chunk", async () => {
+    const { store, token } = providerFixture("responses");
+    const encoder = new TextEncoder();
+    let cancelled = false;
+    const upstreamBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("data: chunk\n\n"));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const response = await handleProviderResponses(
+      new Request("http://gateway", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: "m1", stream: true }),
+      }),
+      "p1",
+      {
+        store,
+        streamIdleTimeoutMs: 20,
+        fetch: async () => new Response(upstreamBody, { status: 200 }),
+        verifyToken: () => ({
+          userId: 1,
+          runtimeId: "r1",
+          providerId: "p1",
+          modelId: "m1",
+          jti: "j",
+          exp: Date.now() + 10_000,
+        }),
+        runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+      },
+    );
+
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    expect(await reader?.read()).toMatchObject({ done: false });
+    await expect(reader?.read()).rejects.toThrow("provider_stream_timeout");
+    expect(cancelled).toBe(true);
+  }, 250);
 });
 
 function providerFixture(wireApi: "responses" | "chat_completions") {
