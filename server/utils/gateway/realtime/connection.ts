@@ -75,6 +75,10 @@ export function cleanupRealtimePeer(peer: RealtimePeer) {
   if (state.browserOwnerId !== undefined) browserPreviewManager.closeOwner(state.browserOwnerId);
   state.sessionRevocationUnsubscribe?.();
   state.sessionRevocationUnsubscribe = undefined;
+  for (const controller of state.requestAbortControllers.values()) {
+    controller.abort(new Error("Realtime peer disconnected"));
+  }
+  state.requestAbortControllers.clear();
   clearSubscriptions(state.threadUnsubscribers);
   clearSubscriptions(state.hostMetricsUnsubscribers);
   clearSubscriptions(state.tmuxSessionUnsubscribers);

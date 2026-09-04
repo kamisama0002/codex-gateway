@@ -11,9 +11,12 @@ const harness = vi.hoisted(() => ({
   } | null,
   composer: null as {
     composerDraftsByKey: Record<string, ComposerDraft>;
+    failedComposerDraftsByKey: Record<string, ComposerDraft[]>;
     resetState(): void;
     saveComposerDraft(hostId: number, threadId: string, draft: ComposerDraft): void;
     clearComposerDraft(hostId: number, threadId: string): void;
+    queueFailedComposerDraft(hostId: number, threadId: string, draft: ComposerDraft): void;
+    takeFailedComposerDrafts(hostId: number, threadId: string): ComposerDraft[];
   } | null,
 }));
 
@@ -27,11 +30,16 @@ vi.mock("@/stores/gateway-navigation", async () => {
   };
   return { useGatewayNavigationStore: () => harness.navigation };
 });
-vi.mock("@/stores/gateway-composer", () => {
-  const composer = {
-    composerDraftsByKey: {} as Record<string, ComposerDraft>,
+vi.mock("@/stores/gateway-composer", async () => {
+  const { reactive } = await import("vue");
+  const composerDraftsByKey: Record<string, ComposerDraft> = {};
+  const failedComposerDraftsByKey: Record<string, ComposerDraft[]> = {};
+  const composer = reactive({
+    composerDraftsByKey,
+    failedComposerDraftsByKey,
     resetState() {
       this.composerDraftsByKey = {};
+      this.failedComposerDraftsByKey = {};
     },
     saveComposerDraft(hostId: number, threadId: string, draft: ComposerDraft) {
       this.composerDraftsByKey[`${hostId}:${threadId}`] = draft;
@@ -39,7 +47,17 @@ vi.mock("@/stores/gateway-composer", () => {
     clearComposerDraft(hostId: number, threadId: string) {
       delete this.composerDraftsByKey[`${hostId}:${threadId}`];
     },
-  };
+    queueFailedComposerDraft(hostId: number, threadId: string, draft: ComposerDraft) {
+      const key = `${hostId}:${threadId}`;
+      this.failedComposerDraftsByKey[key] = [...(this.failedComposerDraftsByKey[key] ?? []), draft];
+    },
+    takeFailedComposerDrafts(hostId: number, threadId: string) {
+      const key = `${hostId}:${threadId}`;
+      const drafts = this.failedComposerDraftsByKey[key] ?? [];
+      delete this.failedComposerDraftsByKey[key];
+      return drafts;
+    },
+  });
   harness.composer = composer;
   return { useGatewayComposerStore: () => composer };
 });
@@ -83,6 +101,30 @@ describe("composer text draft recovery", () => {
     expect(second.attachedFiles.value).toEqual([]);
     expect(second.fileReferences.value).toEqual([]);
     secondScope.stop();
+  });
+
+  it("restores a queued failed draft only after newer input becomes empty", () => {
+    const navigation = harness.navigation;
+    const composer = harness.composer;
+    if (!navigation || !composer) throw new Error("Composer fixture did not initialize");
+    navigation.selectedHostId.value = 7;
+    navigation.selectedProjectId.value = 11;
+    navigation.selectedThreadId.value = "thread-1";
+    const scope = effectScope();
+    const draft = scope.run(() => useComposerDraft());
+    if (!draft) throw new Error("Composer draft did not mount");
+    draft.turnText.value = "用户新输入";
+
+    composer.queueFailedComposerDraft(7, "thread-1", {
+      text: "失败的旧请求",
+      attachedFiles: [],
+      fileReferences: [],
+    });
+    expect(draft.turnText.value).toBe("用户新输入");
+
+    draft.turnText.value = "";
+    expect(draft.turnText.value).toBe("失败的旧请求");
+    scope.stop();
   });
 });
 

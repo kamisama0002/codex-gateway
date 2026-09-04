@@ -15,8 +15,9 @@ export async function runTurnRequestWithAutoRetry<T>(
   t: Translate,
   request: SubmittedTurnRequestInput,
   execute: () => Promise<T>,
+  controller?: AbortController,
 ) {
-  return runTurnRequestWithAutoRetryInternal(t, request, execute);
+  return runTurnRequestWithAutoRetryInternal(t, request, execute, controller);
 }
 
 export function maybeQueueServerOverloadedRetry(

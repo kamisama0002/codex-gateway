@@ -294,6 +294,7 @@
     "emptyThreadTitle": "Start a new task",
     "emptyThreadWorkspace": "Current workspace · {workspace}",
     "send": "Send",
+    "cancelSend": "Cancel send",
     "interruptTurn": "Stop generation",
     "newThread": "New",
     "refresh": "Refresh",

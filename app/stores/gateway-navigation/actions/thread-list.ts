@@ -63,7 +63,7 @@ export function createThreadListActions() {
       config.setCatalog(catalog.hosts, catalog.projects);
     },
     refreshHostProjects: loadHostOverview,
-    async listThreads(searchTerm = "") {
+    async listThreads(searchTerm = "", options: { silent?: boolean } = {}) {
       const catalog = useGatewayCatalogStore();
       const config = useGatewayConfigStore();
       const bootstrap = useGatewayBootstrapStore();
@@ -78,8 +78,10 @@ export function createThreadListActions() {
         navigation.archivedLoadedKey = null;
       }
       const sessionIsCurrent = captureSessionEpoch();
-      views.loading = true;
-      bootstrap.clearError();
+      if (options.silent !== true) {
+        views.loading = true;
+        bootstrap.clearError();
+      }
       try {
         const query: Record<string, unknown> = { hostId, limit: 50 };
         if (projectId !== null) query.projectId = projectId;
@@ -116,6 +118,7 @@ export function createThreadListActions() {
         if (!sessionIsCurrent()) return;
         if (navigation.selectedHostId !== hostId || navigation.selectedProjectId !== projectId)
           return;
+        if (options.silent === true) return;
         const message = messageFromError(
           error,
           bootstrap.t("app.listThreadsFailed"),
@@ -125,6 +128,7 @@ export function createThreadListActions() {
         bootstrap.setError(message, { hostId, projectId, threadId: navigation.selectedThreadId });
       } finally {
         if (
+          options.silent !== true &&
           sessionIsCurrent() &&
           navigation.selectedHostId === hostId &&
           navigation.selectedProjectId === projectId

@@ -9,6 +9,7 @@ export type RealtimeClientMessageMap = {
 export type RealtimeMessageHandler<K extends keyof RealtimeClientMessageMap> = (
   peer: RealtimePeer,
   request: RealtimeClientMessageMap[K],
+  signal: AbortSignal,
 ) => void | Promise<void>;
 
 export type RealtimeMessageAuth = "public" | "authenticated";
@@ -89,6 +90,7 @@ export class RealtimeMessageDispatcher {
         this.dispatchEntry(peer, value, this.handlers[value.type]),
       )
       .with({ type: "ping" }, (value) => this.dispatchEntry(peer, value, this.handlers[value.type]))
+      .with({ type: "request.cancel" }, (value) => this.cancelRequest(peer, value.targetRequestId))
       .with({ type: "mcp.status.list" }, (value) =>
         this.dispatchEntry(peer, value, this.handlers[value.type]),
       )
@@ -170,10 +172,42 @@ export class RealtimeMessageDispatcher {
     if (normalized.auth === "authenticated" && !stateFor(peer).authenticated) {
       throw new RealtimeAuthenticationRequiredError();
     }
-    const task = stateFor(peer).authenticated
-      ? runPeerScoped(peer, () => normalized.handler(peer, request))
-      : normalized.handler(peer, request);
-    return Promise.resolve(task);
+    const state = stateFor(peer);
+    const controller = new AbortController();
+    const execute = () =>
+      state.authenticated
+        ? runPeerScoped(peer, () => normalized.handler(peer, request, controller.signal))
+        : normalized.handler(peer, request, controller.signal);
+    if (!("requestId" in request)) return Promise.resolve(execute());
+
+    state.requestAbortControllers
+      .get(request.requestId)
+      ?.abort(new Error("Realtime request superseded"));
+    state.requestAbortControllers.set(request.requestId, controller);
+    let task: void | Promise<void>;
+    try {
+      task = execute();
+    } catch (error) {
+      state.requestAbortControllers.delete(request.requestId);
+      throw error;
+    }
+    return Promise.resolve(task)
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) throw error;
+      })
+      .finally(() => {
+        if (state.requestAbortControllers.get(request.requestId) === controller) {
+          state.requestAbortControllers.delete(request.requestId);
+        }
+      });
+  }
+
+  private cancelRequest(peer: RealtimePeer, targetRequestId: string) {
+    const state = stateFor(peer);
+    if (!state.authenticated) throw new RealtimeAuthenticationRequiredError();
+    state.requestAbortControllers
+      .get(targetRequestId)
+      ?.abort(new Error("Realtime request cancelled"));
   }
 }
 

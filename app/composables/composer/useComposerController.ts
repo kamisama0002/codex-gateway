@@ -11,6 +11,7 @@ import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
+import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { latestThreadPlanItem, planItemSummary } from "@/utils/thread-plan";
 import { isThreadGoalOngoing } from "@/utils/thread-goal-display";
@@ -22,6 +23,7 @@ export function useComposerController() {
   const composer = useGatewayComposerStore();
   const navigation = useGatewayNavigationStore();
   const runtime = useGatewayThreadRuntimeStore();
+  const threadTurns = useGatewayThreadTurnsStore();
   const threadView = useGatewayThreadViewStore();
   const { t } = useI18n();
   const { models, loadingModels } = storeToRefs(gateway);
@@ -58,6 +60,13 @@ export function useComposerController() {
       : null,
   );
   const isThreadRunning = computed(() => selectedRuntime.value?.canInterrupt === true);
+  const submissionPending = computed(() => {
+    if (submit.submissionPending.value) return true;
+    if (selectedHostId.value === null || selectedThreadId.value === null) return false;
+    return (
+      threadTurns.requestForThread(selectedHostId.value, selectedThreadId.value)?.admitted === false
+    );
+  });
   const composerInputEnabled = computed(
     () => selectedThreadId.value !== null || selectedProjectId.value !== null,
   );
@@ -93,7 +102,7 @@ export function useComposerController() {
     () =>
       (selectedThreadId.value !== null || selectedProjectId.value !== null) &&
       submit.hasComposerInput.value &&
-      !submit.submittingNewThread.value &&
+      !submissionPending.value &&
       !attachmentUpload.uploadingAttachments.value,
   );
   const canInterruptTurn = computed(
@@ -102,10 +111,12 @@ export function useComposerController() {
   );
   const canUsePrimaryAction = computed(() =>
     Boolean(
-      (canSendTurn.value || canInterruptTurn.value) && !attachmentUpload.uploadingAttachments.value,
+      (submissionPending.value || canSendTurn.value || canInterruptTurn.value) &&
+      !attachmentUpload.uploadingAttachments.value,
     ),
   );
   const sendButtonLabel = computed(() => {
+    if (submissionPending.value) return t("app.cancelSend");
     if (submit.hasComposerInput.value) return t("app.send");
     if (isThreadRunning.value) return t("app.interruptTurn");
     if (selectedThreadStatus.value === "completed") return t("app.completed");
@@ -155,6 +166,11 @@ export function useComposerController() {
   }
 
   function handlePrimaryAction() {
+    if (submissionPending.value) {
+      if (submit.submissionPending.value) submit.cancelSubmission();
+      else void threadTurns.interruptActiveTurn();
+      return;
+    }
     if (canInterruptTurn.value) {
       void submit.interruptTurn();
       return;
@@ -193,7 +209,7 @@ export function useComposerController() {
     deactivatePlanMode: submit.deactivatePlanMode,
     hasComposerInput: submit.hasComposerInput,
     interruptingTurn: submit.interruptingTurn,
-    submittingNewThread: submit.submittingNewThread,
+    submissionPending,
     composerInputEnabled,
     selectedHostId,
     selectedThreadId,

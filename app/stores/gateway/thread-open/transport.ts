@@ -46,12 +46,14 @@ export function requestActivateThreadSnapshot(input: {
 export function requestStartThread(
   options: ComposerTurnOptions,
   context?: { projectId?: number | null },
+  signal?: AbortSignal,
 ) {
   const gateway = useGatewayCatalogStore();
   const navigation = useGatewayNavigationStore();
   const hostId = navigation.selectedHostId;
   if (hostId === null) throw new Error("Host is required to start a thread");
-  const projectId = context && "projectId" in context ? context.projectId : navigation.selectedProjectId;
+  const projectId =
+    context && "projectId" in context ? context.projectId : navigation.selectedProjectId;
   const cwd = projectById(gateway.projects, projectId ?? null)?.remotePath;
   if (projectId !== null && projectId !== undefined && (cwd === undefined || cwd === "")) {
     throw new Error("Project workspace path is required to start a thread");
@@ -68,6 +70,7 @@ export function requestStartThread(
       approvalPolicy: options.approvalPolicy ?? undefined,
     }),
     expectThreadStarted,
+    { signal },
     // A new SSH host can still be running the real remote Codex/Node upgrade when the user
     // creates the first thread. Use the realtime broker's long operation deadline instead of
     // abandoning the request after 30 seconds, before the backend can return the App Server id.

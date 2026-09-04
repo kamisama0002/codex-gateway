@@ -51,7 +51,7 @@ const {
   selectedThreadStatus,
   selectedThreadTokenUsage,
   sendButtonLabel,
-  submittingNewThread,
+  submissionPending,
   saveSelectedThreadGoal,
   stopSelectedThreadGoal,
   resumeSelectedThreadGoal,
@@ -102,7 +102,7 @@ const {
     :interrupting-turn="interruptingTurn"
     :selected-thread-status="selectedThreadStatus"
     :send-button-label="sendButtonLabel"
-    :submitting-new-thread="submittingNewThread"
+    :submission-pending="submissionPending"
     :placement="placement"
     @deactivate-plan="deactivatePlanMode"
     @save-goal="saveSelectedThreadGoal"

@@ -33,6 +33,10 @@ export type RealtimeClientMessage =
       token: string;
     }
   | {
+      type: "request.cancel";
+      targetRequestId: string;
+    }
+  | {
       type: "host.lifecycle.subscribe";
     }
   | {
