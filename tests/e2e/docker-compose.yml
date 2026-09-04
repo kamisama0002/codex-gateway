@@ -80,6 +80,26 @@ services:
       timeout: 3s
       retries: 30
 
+  dataops-target:
+    image: node:22-bookworm
+    command: ["node", "/app/dataops-target-server.mjs"]
+    environment:
+      DATAOPS_TARGET_PORT: "8080"
+      DATAOPS_TARGET_SHARED_SECRET: dataops-e2e-shared-secret
+    volumes:
+      - ./dataops-target-server.mjs:/app/dataops-target-server.mjs:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/healthz').then((r)=>process.exit(r.status===204?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
   ssh-target:
     build:
       context: ./docker
@@ -136,6 +156,8 @@ services:
         condition: service_started
       model-target:
         condition: service_healthy
+      dataops-target:
+        condition: service_healthy
       ssh-target:
         condition: service_started
       ssh-target-legacy-node:
@@ -147,6 +169,9 @@ services:
       PORT: "3100"
       CODEX_GATEWAY_CONFIG_SECRET: e2e-config-secret
       CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
+      DATAOPS_BASE_URL: http://dataops-target:8080
+      DATAOPS_SSO_SHARED_SECRET: dataops-e2e-shared-secret
+      DATAOPS_ALLOWED_ORIGINS: http://dataops.127.0.0.1.nip.io:3100
       NUXT_IGNORE_LOCK: "1"
       RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
       RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS: stable
