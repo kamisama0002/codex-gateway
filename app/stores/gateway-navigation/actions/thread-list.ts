@@ -11,7 +11,10 @@ import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import type { ThreadListResponse } from "@/stores/gateway/types";
 import { messageFromError, sortThreads } from "@/stores/gateway/thread-utils/identity";
 import { runtimeStatusFromAppThreadStatus } from "@/stores/gateway/thread-utils/status";
-import { runtimePhaseFromAppThreadStatus } from "~~/shared/thread-runtime-status";
+import {
+  isActiveThreadRuntimePhase,
+  runtimePhaseFromAppThreadStatus,
+} from "~~/shared/thread-runtime-status";
 import { isAppServerSubAgentThread } from "~~/shared/runtime/app-server";
 import { captureSessionEpoch } from "@/utils/session-epoch";
 import { listArchivedThreads } from "./thread-lifecycle";
@@ -63,7 +66,7 @@ export function createThreadListActions() {
       config.setCatalog(catalog.hosts, catalog.projects);
     },
     refreshHostProjects: loadHostOverview,
-    async listThreads(searchTerm = "") {
+    async listThreads(searchTerm = "", options: { mode?: "foreground" | "passive" } = {}) {
       const catalog = useGatewayCatalogStore();
       const config = useGatewayConfigStore();
       const bootstrap = useGatewayBootstrapStore();
@@ -72,14 +75,17 @@ export function createThreadListActions() {
       const hostId = navigation.selectedHostId;
       const projectId = navigation.selectedProjectId;
       const projectCwd = projectById(catalog.projects, projectId)?.remotePath;
+      const passive = options.mode === "passive";
       if (hostId === null) return;
       if (navigation.archivedLoadedKey !== String(hostId)) {
         navigation.archivedThreads = [];
         navigation.archivedLoadedKey = null;
       }
       const sessionIsCurrent = captureSessionEpoch();
-      views.loading = true;
-      bootstrap.clearError();
+      if (!passive) {
+        views.loading = true;
+        bootstrap.clearError();
+      }
       try {
         const query: Record<string, unknown> = { hostId, limit: 50 };
         if (projectId !== null) query.projectId = projectId;
@@ -93,7 +99,9 @@ export function createThreadListActions() {
         applyProjectDirectoryAvailability(response);
         useGatewayThreadActivityStore().ingestGatewayThreads(response.data ?? [], catalog.projects);
         catalog.setHostConnectionStatus(hostId, "connected");
-        syncThreadStatusesFromList(hostId, response.data ?? []);
+        syncThreadStatusesFromList(hostId, response.data ?? [], {
+          preserveActiveFromInactive: passive,
+        });
         // Sub-agent threads remain addressable by their explicit panel links, but they are not
         // top-level navigation entries. Filter once at the catalog boundary so every sidebar
         // projection cannot accidentally reintroduce them with a slightly different predicate.
@@ -111,11 +119,12 @@ export function createThreadListActions() {
           projectId,
         );
         config.setCatalog(catalog.hosts, catalog.projects);
-        if (navigation.archivedFilterActive) await listArchivedThreads();
+        if (!passive && navigation.archivedFilterActive) await listArchivedThreads();
       } catch (error: unknown) {
         if (!sessionIsCurrent()) return;
         if (navigation.selectedHostId !== hostId || navigation.selectedProjectId !== projectId)
           return;
+        if (passive) return;
         const message = messageFromError(
           error,
           bootstrap.t("app.listThreadsFailed"),
@@ -125,6 +134,7 @@ export function createThreadListActions() {
         bootstrap.setError(message, { hostId, projectId, threadId: navigation.selectedThreadId });
       } finally {
         if (
+          !passive &&
           sessionIsCurrent() &&
           navigation.selectedHostId === hostId &&
           navigation.selectedProjectId === projectId
@@ -157,11 +167,23 @@ function applyProjectDirectoryAvailability(response: ThreadListResponse) {
   };
 }
 
-function syncThreadStatusesFromList(hostId: number, threads: GatewayThread[]) {
+function syncThreadStatusesFromList(
+  hostId: number,
+  threads: GatewayThread[],
+  options: { preserveActiveFromInactive?: boolean } = {},
+) {
   const runtime = useGatewayThreadRuntimeStore();
   for (const thread of threads) {
+    const phase = runtimePhaseFromAppThreadStatus(thread.status);
+    if (
+      options.preserveActiveFromInactive === true &&
+      isActiveThreadRuntimePhase(runtime.phaseFor(hostId, thread.id)) &&
+      !isActiveThreadRuntimePhase(phase)
+    ) {
+      continue;
+    }
     runtime.setThreadStatus(hostId, thread.id, runtimeStatusFromAppThreadStatus(thread.status), {
-      phase: runtimePhaseFromAppThreadStatus(thread.status),
+      phase,
     });
   }
 }

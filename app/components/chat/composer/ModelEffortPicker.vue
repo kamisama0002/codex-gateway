@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CheckIcon, ChevronDownIcon } from "@lucide/vue";
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import type { ModelRecord, ReasoningEffort } from "~~/shared/types";
 import {
   ModelSelector,
@@ -15,7 +15,7 @@ import {
 } from "@codex-gateway/ai-elements/model-selector";
 import { Button } from "@codex-gateway/ui/button";
 
-defineProps<{
+const props = defineProps<{
   models: ModelRecord[];
   loadingModels: boolean;
   activeModel: string;
@@ -25,6 +25,7 @@ defineProps<{
   effortOptions: Array<{ value: ReasoningEffort; label?: string }>;
   labelEffortOption: (option: { value: ReasoningEffort; label?: string }) => string;
   modelOptionValue: (modelOption: { model?: string; id: string }) => string;
+  disabled: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -36,10 +37,12 @@ const { t } = useI18n();
 const selectorOpen = ref(false);
 
 function selectModel(model: string) {
+  if (props.disabled) return;
   emit("selectModel", model);
 }
 
 function selectEffort(effort: ReasoningEffort) {
+  if (props.disabled) return;
   emit("selectEffort", effort);
 }
 
@@ -48,6 +51,13 @@ function preventInitialFocus(event: Event) {
   // autofocus. Preventing both paths keeps mobile keyboards closed until the user taps search.
   event.preventDefault();
 }
+
+watch(
+  () => props.disabled,
+  (disabled) => {
+    if (disabled) selectorOpen.value = false;
+  },
+);
 </script>
 
 <template>
@@ -59,7 +69,7 @@ function preventInitialFocus(event: Event) {
         size="sm"
         class="min-w-0 max-w-full gap-1 px-2 text-sm font-medium text-ink-secondary hover:bg-muted sm:px-2"
         data-testid="model-select"
-        :disabled="loadingModels || !models.length"
+        :disabled="disabled || loadingModels || !models.length"
       >
         <span class="flex min-w-0 items-center gap-1.5 sm:hidden">
           <span class="truncate text-ink">{{
@@ -85,7 +95,11 @@ function preventInitialFocus(event: Event) {
       data-testid="model-selector-dialog"
       @open-auto-focus="preventInitialFocus"
     >
-      <ModelSelectorInput :auto-focus="false" :placeholder="t('app.searchModels')" />
+      <ModelSelectorInput
+        :auto-focus="false"
+        :disabled="disabled"
+        :placeholder="t('app.searchModels')"
+      />
       <ModelSelectorList class="max-h-[min(60dvh,28rem)] p-1">
         <ModelSelectorEmpty>{{ t("app.noMatchingModels") }}</ModelSelectorEmpty>
         <ModelSelectorGroup :heading="t('app.reasoningEffort')">
@@ -93,6 +107,7 @@ function preventInitialFocus(event: Event) {
             v-for="option in effortOptions"
             :key="option.value"
             :value="`effort:${option.value}`"
+            :disabled="disabled"
             class="min-h-8 rounded-md px-2.5 text-sm text-ink"
             @select="selectEffort(option.value)"
           >
@@ -110,6 +125,7 @@ function preventInitialFocus(event: Event) {
             :key="modelOption.id"
             :value="`model:${modelOptionValue(modelOption)}`"
             :data-testid="`model-option-${modelOptionValue(modelOption)}`"
+            :disabled="disabled"
             class="min-h-8 rounded-md px-2.5 text-sm text-ink"
             @select="selectModel(modelOptionValue(modelOption))"
           >

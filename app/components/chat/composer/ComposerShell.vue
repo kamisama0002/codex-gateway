@@ -140,9 +140,14 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           class="hidden"
           type="file"
           multiple
+          :disabled="creatingFirstThread"
           @change="emit('attachmentChange', $event)"
         />
-        <AttachmentChips :files="attachedFiles" @remove="emit('removeAttachment', $event)" />
+        <AttachmentChips
+          :files="attachedFiles"
+          :disabled="creatingFirstThread"
+          @remove="emit('removeAttachment', $event)"
+        />
         <ComposerEditor
           :key="composerScopeKey()"
           :model-value="modelValue"

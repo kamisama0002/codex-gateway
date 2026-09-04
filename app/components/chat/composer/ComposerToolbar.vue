@@ -63,6 +63,7 @@ const emit = defineEmits<{
       <div class="hidden sm:block">
         <ApprovalPolicyPicker
           :model-value="selectedApprovalMode"
+          :disabled="creatingFirstThread"
           @update:model-value="emit('updateSelectedApprovalMode', $event)"
         />
       </div>
@@ -80,6 +81,7 @@ const emit = defineEmits<{
           :effort-options="effortOptions"
           :label-effort-option="labelEffortOption"
           :model-option-value="modelOptionValue"
+          :disabled="creatingFirstThread"
           @select-model="emit('selectModel', $event)"
           @select-effort="emit('selectEffort', $event)"
         />

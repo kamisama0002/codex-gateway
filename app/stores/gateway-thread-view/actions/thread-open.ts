@@ -323,7 +323,7 @@ export function createThreadOpenActions() {
         // Creating the thread is the authoritative state transition. Commit its selection and URL
         // before refreshing the sidebar catalog: that secondary RPC may be slow while a host has
         // just upgraded/restarted, but it must not leave a successfully created thread unreachable.
-        void navigation.listThreads();
+        void navigation.listThreads("", { mode: "passive" });
         return threadId;
       } catch (error: unknown) {
         if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;

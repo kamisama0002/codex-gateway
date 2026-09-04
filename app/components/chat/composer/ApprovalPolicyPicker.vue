@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@codex-gateway/ui/popov
 
 const props = defineProps<{
   modelValue: ApprovalPolicy | "custom";
+  disabled: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -71,6 +72,7 @@ const activeApprovalOption = computed(
         variant="ghost"
         size="sm"
         class="h-7 shrink-0 gap-1 px-2 text-sm font-medium text-ink-muted hover:bg-muted hover:text-ink-secondary"
+        :disabled="disabled"
       >
         <SettingsIcon class="size-3.5" />
         <span class="max-w-20 truncate sm:max-w-none">{{
@@ -89,7 +91,8 @@ const activeApprovalOption = computed(
         type="button"
         class="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-canvas-soft"
         :class="option.value === modelValue ? 'bg-canvas-soft' : ''"
-        @click="emit('update:modelValue', option.value)"
+        :disabled="disabled"
+        @click="!disabled && emit('update:modelValue', option.value)"
       >
         <component :is="option.icon" class="size-4 text-ink-muted" />
         <span class="min-w-0">

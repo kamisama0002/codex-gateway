@@ -40,6 +40,10 @@ test("creates a thread and sends the first message from the centered composer", 
   });
 
   const threadId = await waitForSelectedThreadId(page);
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+  await expect(page.locator('input[type="file"]')).toBeEnabled();
+  await expect(page.getByRole("button", { name: "附加文件" })).toBeEnabled();
+  await expect(page.getByTestId("model-select")).toBeEnabled();
   const turnStart = z
     .object({
       type: z.literal("turn.start"),
@@ -90,6 +94,25 @@ test("cancels pending first-thread creation without clearing the draft or starti
     const marker = `取消首次会话创建 ${Date.now()}`;
     const composer = page.getByTestId("composer-input");
     const sendButton = page.getByTestId("send-turn-button");
+    const uploadInput = page.locator('input[type="file"]');
+    const attachButton = page.getByRole("button", { name: "附加文件" });
+    const modelSelect = page.getByTestId("model-select");
+    const approvalSelect = page.getByRole("button", {
+      name: /^(请求审批|帮我审批|完全访问|自定义)$/,
+    });
+    await uploadInput.setInputFiles({
+      name: "frozen-preview.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+    const attachment = page.getByAltText("frozen-preview.png");
+    const removeAttachment = page.getByRole("button", { name: "移除附件" });
+    await expect(attachment).toBeVisible();
+    const approvalChoice = await approvalSelect.innerText();
+    const modelChoice = await modelSelect.innerText();
     await composer.fill(marker);
     const messageOffset = await realtimeClientMessageCount(page);
     await sendButton.click();
@@ -127,9 +150,31 @@ test("cancels pending first-thread creation without clearing the draft or starti
 
     await expect(sendButton).toBeEnabled();
     await expect(sendButton).toHaveAttribute("aria-label", "取消创建会话");
-    await expect(page.getByRole("button", { name: "附加文件" })).toBeDisabled();
+    await expect(composer).toHaveAttribute("contenteditable", "false");
+    await expect(uploadInput).toBeDisabled();
+    await expect(attachButton).toBeDisabled();
+    await expect(removeAttachment).toBeDisabled();
+    await expect(approvalSelect).toBeDisabled();
+    await expect(modelSelect).toBeDisabled();
+    await composer.evaluate((element) => {
+      const clipboard = new DataTransfer();
+      clipboard.items.add(new File(["late"], "late-paste.png", { type: "image/png" }));
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: clipboard }),
+      );
+    });
+    await expect(page.getByRole("button", { name: "移除附件" })).toHaveCount(1);
     await sendButton.click();
     await expect(composer).toHaveAttribute("data-value", marker);
+    await expect(composer).toHaveAttribute("contenteditable", "true");
+    await expect(uploadInput).toBeEnabled();
+    await expect(attachButton).toBeEnabled();
+    await expect(removeAttachment).toBeEnabled();
+    await expect(approvalSelect).toBeEnabled();
+    await expect.poll(() => approvalSelect.innerText()).toBe(approvalChoice);
+    await expect(modelSelect).toBeEnabled();
+    await expect.poll(() => modelSelect.innerText()).toBe(modelChoice);
+    await expect(attachment).toBeVisible();
 
     await execRemoteSsh(remoteWorkspace.remote, `kill -CONT ${pausedPids.join(" ")}`);
     resumed = true;

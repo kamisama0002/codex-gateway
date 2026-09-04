@@ -196,7 +196,7 @@ function translateChatStream(upstream: Response, streamIdleTimeoutMs: number): R
       }
     },
     cancel() {
-      void reader.cancel();
+      void reader.cancel().catch(() => undefined);
     },
   });
   return new Response(stream, {
@@ -226,7 +226,7 @@ function withStreamIdleTimeout(body: ReadableStream<Uint8Array>, timeoutMs: numb
         if (result.done) controller.close();
         else controller.enqueue(result.value);
       } catch (error) {
-        if (error === timeoutError) void reader.cancel(error);
+        if (error === timeoutError) void reader.cancel(error).catch(() => undefined);
         controller.error(error);
       } finally {
         if (timer !== undefined) clearTimeout(timer);

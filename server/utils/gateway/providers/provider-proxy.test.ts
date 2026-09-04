@@ -385,7 +385,100 @@ describe("provider proxy", () => {
     await expect(reader?.read()).rejects.toThrow("provider_stream_timeout");
     expect(cancelled).toBe(true);
   }, 250);
+
+  it("preserves the idle-timeout error when upstream cancellation rejects", async () => {
+    const { store, token } = providerFixture("responses");
+    const cancelFailure = new Error("upstream cancel failed");
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    const upstreamBody = new ReadableStream<Uint8Array>({
+      cancel() {
+        return Promise.reject(cancelFailure);
+      },
+    });
+
+    try {
+      const response = await handleProviderResponses(
+        new Request("http://gateway", {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+          body: JSON.stringify({ model: "m1", stream: true }),
+        }),
+        "p1",
+        {
+          store,
+          streamIdleTimeoutMs: 20,
+          fetch: async () => new Response(upstreamBody, { status: 200 }),
+          verifyToken: () => ({
+            userId: 1,
+            runtimeId: "r1",
+            providerId: "p1",
+            modelId: "m1",
+            jti: "j",
+            exp: Date.now() + 10_000,
+          }),
+          runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+        },
+      );
+
+      const reader = response.body?.getReader();
+      await expect(reader?.read()).rejects.toThrow("provider_stream_timeout");
+      await nextTask();
+      expect(unhandled).not.toContain(cancelFailure);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  }, 250);
+
+  it("absorbs an upstream cancellation rejection when a translated stream is cancelled", async () => {
+    const { store, token } = providerFixture("chat_completions");
+    const cancelFailure = new Error("translated upstream cancel failed");
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    const upstreamBody = new ReadableStream<Uint8Array>({
+      cancel() {
+        return Promise.reject(cancelFailure);
+      },
+    });
+
+    try {
+      const response = await handleProviderResponses(
+        new Request("http://gateway", {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+          body: JSON.stringify({ model: "m1", stream: true }),
+        }),
+        "p1",
+        {
+          store,
+          streamIdleTimeoutMs: 20,
+          fetch: async () => new Response(upstreamBody, { status: 200 }),
+          verifyToken: () => ({
+            userId: 1,
+            runtimeId: "r1",
+            providerId: "p1",
+            modelId: "m1",
+            jti: "j",
+            exp: Date.now() + 10_000,
+          }),
+          runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+        },
+      );
+
+      await response.body?.getReader().cancel("consumer cancelled");
+      await nextTask();
+      expect(unhandled).not.toContain(cancelFailure);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 });
+
+function nextTask() {
+  return new Promise<void>((resolve) => setImmediate(resolve));
+}
 
 function providerFixture(wireApi: "responses" | "chat_completions") {
   const db = new DatabaseSync(":memory:");
