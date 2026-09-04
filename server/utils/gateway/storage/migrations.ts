@@ -198,6 +198,37 @@ const migrations: DatabaseMigration[] = [
       db.exec("CREATE INDEX idx_model_providers_enabled ON model_providers(enabled, name)");
     },
   },
+  {
+    version: 8,
+    up(db) {
+      db.exec(`
+        CREATE TABLE external_identities (
+          provider TEXT NOT NULL,
+          external_subject TEXT NOT NULL,
+          user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+          display_name TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (provider, external_subject)
+        ) STRICT;
+
+        CREATE TABLE external_session_contexts (
+          token_hash TEXT PRIMARY KEY REFERENCES sessions(token_hash) ON DELETE CASCADE,
+          provider TEXT NOT NULL,
+          external_subject TEXT NOT NULL,
+          tenant_id INTEGER NOT NULL,
+          external_user_id INTEGER NOT NULL,
+          project_id INTEGER NOT NULL,
+          authz_version INTEGER NOT NULL,
+          created_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE INDEX idx_external_identities_user ON external_identities(user_id);
+        CREATE INDEX idx_external_session_contexts_project
+          ON external_session_contexts(tenant_id, project_id, external_user_id);
+      `);
+    },
+  },
 ];
 
 export function migrateGatewayDatabase(db: DatabaseSync): void {

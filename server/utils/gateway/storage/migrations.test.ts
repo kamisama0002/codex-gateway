@@ -46,8 +46,18 @@ describe("migrateGatewayDatabase", () => {
       host_id: MANAGED_RUNTIME_HOST_ID,
     });
     expect(db.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toMatchObject({
-      count: 7,
+      count: 8,
     });
+    expect(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('external_identities', 'external_session_contexts') ORDER BY name",
+        )
+        .all(),
+    ).toEqual([
+      { name: "external_identities" },
+      { name: "external_session_contexts" },
+    ]);
     expect(MANAGED_RUNTIME_HOST_ID).toBe(2_000_000_000);
   });
 
