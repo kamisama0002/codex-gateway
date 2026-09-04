@@ -24,7 +24,8 @@ test("keeps a DataOps session in one embedded tab without showing password login
   expect(frame).toBeDefined();
   await expect(frame!.getByTestId("login-form")).toHaveCount(0);
   await expect(frame!.getByTestId("desktop-layout")).toBeVisible();
-  await expect(frame!.locator('[data-slot="sidebar"][data-state="collapsed"]')).toBeAttached();
+  await expect(frame!.locator('[data-slot="sidebar"][data-state="expanded"]')).toBeAttached();
+  await expect(frame!.getByRole("button", { name: "新会话" })).toBeVisible();
   const token = await frame!.evaluate(() => sessionStorage.getItem("codex-gateway-auth-token"));
   expect(token).toBeTruthy();
   expect(await frame!.evaluate(() => localStorage.getItem("codex-gateway-auth-token"))).toBeNull();
