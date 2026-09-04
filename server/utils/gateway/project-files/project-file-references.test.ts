@@ -46,7 +46,7 @@ describe("project file references", () => {
 
   it("rejects when SFTP stat never returns", async () => {
     vi.spyOn(sshConnections, "sftp").mockResolvedValue({
-      realpath(path, callback) {
+      realpath(path: string, callback: (error: Error | undefined, resolved: string) => void) {
         callback(undefined, path);
       },
       stat() {},
