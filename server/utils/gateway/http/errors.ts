@@ -1,6 +1,6 @@
 import { defineEventHandler, getRequestURL, setResponseStatus, type H3Event } from "h3";
 import type { GatewayConfig, HostRecord } from "~~/shared/types";
-import { normalizeNotificationSettings } from "~~/shared/config";
+import { normalizeNotificationSettings, normalizePetSettings } from "~~/shared/config";
 import {
   isStaleThreadCursorErrorLike,
   STALE_THREAD_CURSOR_ERROR_CODE,
@@ -108,6 +108,7 @@ export function runtimeConfigFromMemory(): GatewayConfig {
     projects: projectStore.listConfigured(),
     pinnedThreads: state.pinnedThreads,
     notifications: normalizeNotificationSettings(state.notifications),
+    pet: normalizePetSettings(state.pet),
   };
 }
 

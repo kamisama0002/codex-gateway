@@ -1,4 +1,5 @@
 import type { HostRecord, ProjectRecord } from "./records";
+import type { GatewayPetSettings } from "./pet";
 
 export interface PinnedThreadRecord {
   hostId: number;
@@ -27,4 +28,5 @@ export interface GatewayConfig {
   projects: ProjectRecord[];
   pinnedThreads: PinnedThreadRecord[];
   notifications: GatewayNotificationSettings;
+  pet: GatewayPetSettings;
 }

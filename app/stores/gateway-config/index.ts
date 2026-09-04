@@ -10,7 +10,11 @@ import type {
 } from "~~/shared/types";
 import { useAuthStore } from "@/stores/auth";
 import { gatewayApi } from "@/utils/gateway-api";
-import { defaultGatewayConfig, normalizeNotificationSettings } from "@/stores/gateway/config";
+import {
+  defaultGatewayConfig,
+  normalizeNotificationSettings,
+  normalizePetSettings,
+} from "@/stores/gateway/config";
 import { gatewayDomainEvents } from "@/stores/gateway/domain-events";
 import { createPinnedThreadSync } from "./pinned-thread-sync";
 import { recordFromUnknown } from "~~/shared/utils/records";
@@ -33,6 +37,7 @@ export const useGatewayConfigStore = defineStore("gateway-config", () => {
       projects: [...projects],
       pinnedThreads: gatewayConfig.value.pinnedThreads,
       notifications: normalizeNotificationSettings(gatewayConfig.value.notifications),
+      pet: normalizePetSettings(gatewayConfig.value.pet),
     };
   }
 
@@ -79,6 +84,19 @@ export const useGatewayConfigStore = defineStore("gateway-config", () => {
     return true;
   }
 
+  async function savePetSettings(pet: GatewayConfig["pet"]) {
+    const sessionIsCurrent = captureSessionEpoch();
+    const normalized = normalizePetSettings(pet);
+    const result = await gatewayApi<GatewayConfig>("/api/config/pet", {
+      method: "POST",
+      body: { pet: normalized },
+    });
+    if (!sessionIsCurrent()) return false;
+    applyConfig(result);
+    if (import.meta.client) toast.success(t("app.petSettingsSaved"));
+    return true;
+  }
+
   async function setPinnedThread(thread: PinnedThreadRecord, pinned: boolean) {
     const sessionIsCurrent = captureSessionEpoch();
     const result = await gatewayApi<GatewayConfig>("/api/config/pinned-threads", {
@@ -105,6 +123,7 @@ export const useGatewayConfigStore = defineStore("gateway-config", () => {
     exportConfigText,
     importConfigText,
     saveNotificationSettings,
+    savePetSettings,
     setPinnedThread,
     refreshPinnedThreads: pinnedThreadSync.refresh,
     resetState,

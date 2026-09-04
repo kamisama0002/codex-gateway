@@ -1,15 +1,25 @@
 <script setup lang="ts">
-import { BellIcon, BotIcon, BracesIcon, ContainerIcon, PaletteIcon, ServerIcon } from "@lucide/vue";
+import {
+  BellIcon,
+  BotIcon,
+  BracesIcon,
+  ContainerIcon,
+  PaletteIcon,
+  ServerIcon,
+  SparklesIcon,
+} from "@lucide/vue";
 import { computed, ref } from "vue";
 import AppearanceSettingsTab from "./AppearanceSettingsTab.vue";
 import ConfigSettingsTab from "./ConfigSettingsTab.vue";
 import HostSettingsTab from "./HostSettingsTab.vue";
 import NotificationSettingsTab from "./NotificationSettingsTab.vue";
+import PetSettingsTab from "./PetSettingsTab.vue";
 import ProviderSettingsTab from "./ProviderSettingsTab.vue";
 import RuntimeSettingsTab from "./RuntimeSettingsTab.vue";
 
 type SettingsPanelKind =
   | "appearance"
+  | "pet"
   | "providers"
   | "runtime"
   | "hosts"
@@ -20,6 +30,7 @@ const emit = defineEmits<{ close: [] }>();
 const active = ref<SettingsPanelKind>("appearance");
 const panels = [
   { id: "appearance", labelKey: "app.appearanceSettings", icon: PaletteIcon },
+  { id: "pet", labelKey: "app.petSettings", icon: SparklesIcon },
   { id: "providers", labelKey: "app.modelProviders", icon: BotIcon },
   { id: "runtime", labelKey: "app.runtimeSettings", icon: ContainerIcon },
   { id: "hosts", labelKey: "app.hosts", icon: ServerIcon },
@@ -33,6 +44,7 @@ const panels = [
 const activeComponent = computed(() => {
   const components = {
     appearance: AppearanceSettingsTab,
+    pet: PetSettingsTab,
     providers: ProviderSettingsTab,
     runtime: RuntimeSettingsTab,
     hosts: HostSettingsTab,

@@ -45,6 +45,8 @@ export type {
   McpServerEvent,
 } from "./types/mcp";
 export type { ModelListResult, ModelRecord } from "./types/models";
+export { GATEWAY_PET_IDS, isGatewayPetId } from "./types/pet";
+export type { GatewayPetId, GatewayPetSettings, GatewayPetStatus } from "./types/pet";
 export type {
   ModelCapabilities,
   ModelProviderDefinition,

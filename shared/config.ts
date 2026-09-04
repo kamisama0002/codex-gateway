@@ -1,4 +1,5 @@
-import type { GatewayConfig, GatewayNotificationSettings } from "./types";
+import type { GatewayConfig, GatewayNotificationSettings, GatewayPetSettings } from "./types";
+import { isGatewayPetId, type GatewayPetId } from "./types/pet";
 
 // Keep first paint bounded for item-heavy Codex 0.147 histories. Older turns are fetched only by
 // explicit history navigation; do not silently prepend a background page after the Agent viewport
@@ -10,6 +11,7 @@ export const SERVER_THREAD_CACHE_LIMIT = 100;
 export const CLIENT_THREAD_CACHE_LIMIT = 24;
 export const DEFAULT_BARK_SERVER_URL = "https://api.day.app";
 export const DEFAULT_BARK_GROUP = "Codex Gateway";
+export const DEFAULT_PET_ID: GatewayPetId = "codex";
 
 export function defaultNotificationSettings(): GatewayNotificationSettings {
   return {
@@ -41,6 +43,22 @@ export function normalizeNotificationSettings(
   };
 }
 
+export function defaultPetSettings(): GatewayPetSettings {
+  return { enabled: true, petId: DEFAULT_PET_ID, animations: true };
+}
+
+export function normalizePetSettings(
+  settings?: Partial<GatewayPetSettings> | null,
+): GatewayPetSettings {
+  const defaults = defaultPetSettings();
+  const petId = typeof settings?.petId === "string" ? settings.petId.trim() : "";
+  return {
+    enabled: settings?.enabled ?? defaults.enabled,
+    petId: isGatewayPetId(petId) ? petId : defaults.petId,
+    animations: settings?.animations ?? defaults.animations,
+  };
+}
+
 export function defaultGatewayConfig(): GatewayConfig {
   return {
     version: 1,
@@ -48,5 +66,6 @@ export function defaultGatewayConfig(): GatewayConfig {
     projects: [],
     pinnedThreads: [],
     notifications: defaultNotificationSettings(),
+    pet: defaultPetSettings(),
   };
 }

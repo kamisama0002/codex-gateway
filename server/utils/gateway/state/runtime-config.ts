@@ -1,5 +1,5 @@
 import type { GatewayConfig } from "~~/shared/types";
-import { normalizeNotificationSettings } from "~~/shared/config";
+import { normalizeNotificationSettings, normalizePetSettings } from "~~/shared/config";
 import { gatewayEventStore } from "./gateway-events";
 import { gatewayMemoryState } from "./memory";
 import { normalizePinnedThreads } from "./memory";
@@ -28,6 +28,7 @@ export const runtimeConfigStore = {
       (thread) => hostIds.has(thread.hostId),
     );
     gatewayMemoryState.notifications = normalizeNotificationSettings(config.notifications);
+    gatewayMemoryState.pet = normalizePetSettings(config.pet);
   },
 
   replacePinnedThreads(pinnedThreads: GatewayConfig["pinnedThreads"]) {
@@ -39,6 +40,10 @@ export const runtimeConfigStore = {
 
   replaceNotifications(notifications: GatewayConfig["notifications"]) {
     gatewayMemoryState.notifications = normalizeNotificationSettings(notifications);
+  },
+
+  replacePet(pet: GatewayConfig["pet"]) {
+    gatewayMemoryState.pet = normalizePetSettings(pet);
   },
 
   export(): GatewayConfig {
@@ -53,6 +58,7 @@ export const runtimeConfigStore = {
       projects: overlayPublicProjects(projectStore.listConfigured()),
       pinnedThreads: gatewayMemoryState.pinnedThreads,
       notifications: normalizeNotificationSettings(gatewayMemoryState.notifications),
+      pet: normalizePetSettings(gatewayMemoryState.pet),
     };
   },
 

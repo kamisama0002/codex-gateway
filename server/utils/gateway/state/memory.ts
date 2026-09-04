@@ -6,7 +6,7 @@ import type {
   PinnedThreadRecord,
   ProjectRecord,
 } from "~~/shared/types";
-import { normalizeNotificationSettings } from "~~/shared/config";
+import { normalizeNotificationSettings, normalizePetSettings } from "~~/shared/config";
 import { trimmedOrNull } from "~~/shared/utils/strings";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { ThreadOpenSnapshot } from "../runtime/types";
@@ -55,6 +55,7 @@ export interface GatewayMemoryState {
   configuredProjectIds: Set<number>;
   pinnedThreads: PinnedThreadRecord[];
   notifications: GatewayConfig["notifications"];
+  pet: GatewayConfig["pet"];
   threadMetadata: ThreadMetadataRecord[];
   threadSnapshots: ThreadSnapshotRecord[];
   subAgentThreads: SubAgentThreadRecord[];
@@ -75,6 +76,7 @@ function createGatewayMemoryState(): GatewayMemoryState {
     configuredProjectIds: new Set(),
     pinnedThreads: [],
     notifications: normalizeNotificationSettings(),
+    pet: { enabled: true, petId: "codex", animations: true },
     threadMetadata: [],
     threadSnapshots: [],
     subAgentThreads: [],
@@ -126,6 +128,12 @@ export const gatewayMemoryState: GatewayMemoryState = {
   },
   set notifications(value) {
     currentGatewayMemoryState().notifications = value;
+  },
+  get pet() {
+    return currentGatewayMemoryState().pet;
+  },
+  set pet(value) {
+    currentGatewayMemoryState().pet = value;
   },
   get threadMetadata() {
     return currentGatewayMemoryState().threadMetadata;
@@ -251,6 +259,7 @@ export function buildGatewayMemoryState(config: GatewayConfig): GatewayMemorySta
     configuredProjectIds: new Set((config.projects ?? []).map((project) => project.id)),
     pinnedThreads: normalizePinnedThreads(config.pinnedThreads ?? []),
     notifications: normalizeNotificationSettings(config.notifications),
+    pet: normalizePetSettings(config.pet),
   };
 }
 
@@ -260,6 +269,7 @@ export const initialGatewayMemoryState: GatewayMemoryState = {
   configuredProjectIds: new Set(),
   pinnedThreads: [],
   notifications: normalizeNotificationSettings(),
+  pet: { enabled: true, petId: "codex", animations: true },
   threadMetadata: [],
   threadSnapshots: [],
   subAgentThreads: [],

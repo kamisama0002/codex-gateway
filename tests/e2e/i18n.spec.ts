@@ -32,6 +32,35 @@ test("defaults to Chinese and can switch to English", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Appearance" })).toBeVisible();
 });
 
+test("opens pet settings from the main settings panel", async ({ page }) => {
+  await openApp(page);
+  await page.getByTestId("settings-toggle").click();
+  const settingsPanel = page.getByTestId("settings-panel");
+  const petTab = settingsPanel.getByRole("tab", { name: "桌宠" });
+
+  await expect(petTab).toBeVisible();
+  await petTab.click();
+  await expect(settingsPanel.getByTestId("pet-enabled")).toBeChecked();
+  await settingsPanel.getByTestId("pet-option-fireball").click();
+  await settingsPanel.getByTestId("pet-animations").click();
+  await settingsPanel.getByTestId("save-pet-settings").click();
+  await expect(page.getByText("桌宠设置已保存")).toBeVisible();
+
+  const config = await authenticatedFetch(page, { url: "/api/config/export" }, (value) =>
+    z
+      .object({
+        pet: z.object({
+          enabled: z.boolean(),
+          petId: z.string(),
+          animations: z.boolean(),
+        }),
+      })
+      .loose()
+      .parse(value),
+  );
+  expect(config.pet).toEqual({ enabled: true, petId: "fireball", animations: false });
+});
+
 test("can revoke the current session from appearance settings", async ({ page }) => {
   await openApp(page);
   const token = await page.evaluate(() => localStorage.getItem("codex-gateway-auth-token"));
@@ -70,7 +99,7 @@ test("config JSON editor shows current config by default and scrolls", async ({ 
   await openApp(page);
   await page.getByTestId("settings-toggle").click();
   const settingsPanel = page.getByTestId("settings-panel");
-  await expect(settingsPanel.getByRole("tab")).toHaveCount(6);
+  await expect(settingsPanel.getByRole("tab")).toHaveCount(7);
   await settingsPanel.getByRole("tab", { name: "配置 JSON" }).click();
   const editor = page.getByTestId("config-json-editor");
   await expect(editor).toContainText('"version"');

@@ -7,6 +7,7 @@ import ThreadChatHeader from "@/components/thread/ThreadChatHeader.vue";
 import ThreadVirtualTimeline from "@/components/thread/ThreadVirtualTimeline.vue";
 import ActiveSubAgentsBar from "@/components/thread/subagent/ActiveSubAgentsBar.vue";
 import MisalignmentRecoveryCard from "@/components/thread/MisalignmentRecoveryCard.vue";
+import GatewayPet from "@/components/pet/GatewayPet.vue";
 import McpRuntimeStatusBar from "@/components/thread/McpRuntimeStatusBar.vue";
 import ThreadRuntimeNotice from "@/components/thread/ThreadRuntimeNotice.vue";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
@@ -118,5 +119,6 @@ const showThreadLoading = computed(
       />
       <ChatComposer v-if="selectedThreadId && historyTurns.length > 0" placement="docked" />
     </div>
+    <GatewayPet />
   </div>
 </template>

@@ -6,6 +6,28 @@ import {
 import { parseGatewayConfig } from "./config";
 
 describe("parseGatewayConfig", () => {
+  it("defaults and normalizes pet settings for stored legacy configs", () => {
+    const config = parseGatewayConfig({ version: 1 });
+    expect(config.pet).toEqual({ enabled: true, petId: "codex", animations: true });
+  });
+
+  it("keeps explicit pet settings", () => {
+    const config = parseGatewayConfig({
+      version: 1,
+      pet: { enabled: false, petId: "  dewey  ", animations: false },
+    });
+    expect(config.pet).toEqual({ enabled: false, petId: "dewey", animations: false });
+  });
+
+  it("rejects unknown pet ids", () => {
+    expect(() =>
+      parseGatewayConfig({
+        version: 1,
+        pet: { enabled: true, petId: "unknown-pet", animations: true },
+      }),
+    ).toThrow(/Invalid option/);
+  });
+
   it("strips the reserved local Agent host instead of storing it as SSH config", () => {
     const config = parseGatewayConfig({
       version: 1,
