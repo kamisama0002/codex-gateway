@@ -48,11 +48,24 @@ test("fans out a real remote app-server thread to multiple browser clients acros
         "PY",
       ].join("\n"),
     );
-  await page.getByTestId("send-turn-button").click();
+  const sendButton = page.getByTestId("send-turn-button");
+  await expect
+    .poll(() =>
+      sendButton.evaluate((button) => {
+        const bounds = button.getBoundingClientRect();
+        const target = document.elementFromPoint(
+          bounds.left + bounds.width / 2,
+          bounds.top + bounds.height / 2,
+        );
+        return target === button || button.contains(target);
+      }),
+    )
+    .toBe(true);
+  await sendButton.click();
   await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "停止生成");
   await expect(page.getByTestId(`thread-button-${threadId}`).getByLabel("运行中")).toBeVisible();
   await expect(
-    page.getByTestId(`thread-button-${threadId}`).locator(".animate-spin"),
+    page.getByTestId(`thread-button-${threadId}`).locator('[data-state="ongoing"]'),
   ).toBeVisible();
   await expect.poll(async () => activeRemoteTurnId(page), { timeout: 30_000 }).not.toBe("");
   const steerMarker = `E2E steer ${Date.now()}`;

@@ -17,7 +17,7 @@ test("shows reconnecting state in the main conversation pane", async ({ page }) 
 
   await expect(
     page.getByTestId("chat-main-pane").getByTestId("realtime-connection-indicator"),
-  ).toHaveText(/正在重新连接/);
+  ).toHaveText(/^正在重连 \d+$/);
 });
 
 test("closes the protocol stream instead of ignoring a malformed server frame", async ({

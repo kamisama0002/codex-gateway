@@ -31,7 +31,7 @@ async function dismiss() {
     class="pointer-events-none absolute inset-0 z-30 overflow-hidden"
   >
     <div
-      class="group pointer-events-auto absolute right-5 bottom-28 hidden flex-col items-end sm:flex"
+      class="group pointer-events-none absolute right-5 bottom-28 hidden flex-col items-end sm:flex"
       data-testid="gateway-pet"
       :data-pet-status="pet.status.value"
     >
@@ -39,7 +39,7 @@ async function dismiss() {
         type="button"
         variant="ghost"
         size="icon-sm"
-        class="mb-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        class="pointer-events-auto mb-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
         :disabled="dismissing"
         :aria-label="t('app.hidePet')"
         :title="t('app.hidePet')"
@@ -48,6 +48,7 @@ async function dismiss() {
         <XIcon class="size-3.5" />
       </Button>
       <PetSprite
+        class="pointer-events-auto"
         :pet-id="pet.settings.value.petId"
         :status="pet.status.value"
         :animated="pet.settings.value.animations"
