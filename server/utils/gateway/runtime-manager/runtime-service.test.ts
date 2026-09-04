@@ -6,6 +6,7 @@ import type {
 } from "@codex-gateway/agent-runtime-contracts";
 import type { AuditEventInput } from "~~/shared/types/audit";
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
+import type { ProvisionRuntimeRequest } from "./client";
 import { ManagedRuntimeService, ManagedRuntimeServiceError } from "./runtime-service";
 
 describe("ManagedRuntimeService", () => {
@@ -142,6 +143,29 @@ describe("ManagedRuntimeService", () => {
       ["runtime.remove", 1],
     ]);
     expect(fixture.store.getByUserId(7)).toBeNull();
+  });
+
+  it("reprovisions a managed container on restart so current runtime configuration is applied", async () => {
+    const fixture = runtimeFixture();
+    await fixture.service.start(7);
+    fixture.manager.remove.mockClear();
+    fixture.manager.provision.mockClear();
+    fixture.manager.start.mockClear();
+    fixture.manager.restart.mockClear();
+
+    await expect(fixture.service.restart(7, 1)).resolves.toMatchObject({ status: "ready" });
+
+    expect(fixture.manager.remove).toHaveBeenCalledOnce();
+    expect(fixture.manager.remove.mock.calls[0]?.[0]).toMatch(/^codex_[a-f0-9]{32}$/);
+    expect(fixture.manager.provision).toHaveBeenCalledOnce();
+    const provisionRequest = fixture.manager.provision.mock.calls[0]?.[0];
+    expect(provisionRequest).toMatchObject({
+      imageAlias: "stable",
+      runtimeType: "codex-app-server",
+    });
+    expect(provisionRequest?.userHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(fixture.manager.start).toHaveBeenCalledOnce();
+    expect(fixture.manager.restart).not.toHaveBeenCalled();
   });
 
   it("records a safe provision failure without persisting an exception message", async () => {
@@ -343,7 +367,7 @@ function runtimeFixture(
     deleteForUser: (userId: number) => records.delete(userId),
   };
   const manager = {
-    provision: vi.fn(async (request: { runtimeId: string }) => ({
+    provision: vi.fn(async (request: ProvisionRuntimeRequest) => ({
       runtimeId: request.runtimeId,
       containerId: "container-01",
       imageAlias: "stable",

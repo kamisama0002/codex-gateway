@@ -202,7 +202,14 @@ export class ManagedRuntimeService {
       let restarted: RuntimeLifecycleResult;
       try {
         this.options.closeConnections?.(targetUserId);
-        restarted = await this.options.manager.restart(identity.runtimeId);
+        const removed = await this.options.manager.remove(identity.runtimeId);
+        this.assertRuntimeResult(identity.runtimeId, removed, "absent");
+        const provisioned = await this.options.manager.provision(
+          this.provisionRequest(targetUserId, identity),
+        );
+        this.assertRuntimeResult(identity.runtimeId, provisioned);
+        requiredImageVersion(provisioned);
+        restarted = await this.options.manager.start(identity.runtimeId);
         endpoint = this.runningEndpoint(identity.runtimeId, restarted);
         requiredImageVersion(restarted);
       } catch (error) {
@@ -317,15 +324,7 @@ export class ManagedRuntimeService {
 
     let provisioned: RuntimeLifecycleResult;
     try {
-      const provisionRequest: ProvisionRuntimeRequest = {
-        runtimeId: identity.runtimeId,
-        userHash: identity.userHash,
-        runtimeType: "codex-app-server",
-        imageAlias: this.options.imageAlias,
-      };
-      const providerConfig = providerConfigForUser(userId, identity.runtimeId);
-      if (providerConfig !== null) provisionRequest.providerConfig = providerConfig;
-      provisioned = await this.options.manager.provision(provisionRequest);
+      provisioned = await this.options.manager.provision(this.provisionRequest(userId, identity));
       this.assertRuntimeResult(identity.runtimeId, provisioned);
       runtime = this.persist(runtime, "provisioning", {
         containerId: provisioned.containerId,
@@ -473,6 +472,21 @@ export class ManagedRuntimeService {
       .update(`codex-runtime-user:${userId}`)
       .digest("hex");
     return { userHash, runtimeId: `codex_${userHash.slice(0, 32)}` };
+  }
+
+  private provisionRequest(
+    userId: number,
+    identity: { userHash: string; runtimeId: string },
+  ): ProvisionRuntimeRequest {
+    const request: ProvisionRuntimeRequest = {
+      runtimeId: identity.runtimeId,
+      userHash: identity.userHash,
+      runtimeType: "codex-app-server",
+      imageAlias: this.options.imageAlias,
+    };
+    const providerConfig = providerConfigForUser(userId, identity.runtimeId);
+    if (providerConfig !== null) request.providerConfig = providerConfig;
+    return request;
   }
 
   private runningEndpoint(runtimeId: string, result: RuntimeLifecycleResult) {
