@@ -8,7 +8,10 @@ import {
   ServerIcon,
   SparklesIcon,
 } from "@lucide/vue";
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
+import type { AuthenticatedUser } from "~~/server/utils/gateway/auth/users";
+import { gatewayApi } from "@/utils/gateway-api";
+import { settingsPanelsForUser, type SettingsPanelKind } from "@/utils/settings-access";
 import AppearanceSettingsTab from "./AppearanceSettingsTab.vue";
 import ConfigSettingsTab from "./ConfigSettingsTab.vue";
 import HostSettingsTab from "./HostSettingsTab.vue";
@@ -17,18 +20,10 @@ import PetSettingsTab from "./PetSettingsTab.vue";
 import ProviderSettingsTab from "./ProviderSettingsTab.vue";
 import RuntimeSettingsTab from "./RuntimeSettingsTab.vue";
 
-type SettingsPanelKind =
-  | "appearance"
-  | "pet"
-  | "providers"
-  | "runtime"
-  | "hosts"
-  | "notifications"
-  | "config";
-
 const emit = defineEmits<{ close: [] }>();
 const active = ref<SettingsPanelKind>("appearance");
-const panels = [
+const user = ref<AuthenticatedUser | null>(null);
+const panelDefinitions = [
   { id: "appearance", labelKey: "app.appearanceSettings", icon: PaletteIcon },
   { id: "pet", labelKey: "app.petSettings", icon: SparklesIcon },
   { id: "providers", labelKey: "app.modelProviders", icon: BotIcon },
@@ -41,6 +36,10 @@ const panels = [
   labelKey: string;
   icon: typeof PaletteIcon;
 }>;
+const panels = computed(() => {
+  const allowed = new Set(settingsPanelsForUser(user.value));
+  return panelDefinitions.filter((panel) => allowed.has(panel.id));
+});
 const activeComponent = computed(() => {
   const components = {
     appearance: AppearanceSettingsTab,
@@ -52,6 +51,15 @@ const activeComponent = computed(() => {
     config: ConfigSettingsTab,
   } satisfies Record<SettingsPanelKind, object>;
   return components[active.value];
+});
+
+onMounted(async () => {
+  try {
+    const response = await gatewayApi<{ user: AuthenticatedUser }>("/api/auth/me");
+    user.value = response.user;
+  } catch {
+    user.value = null;
+  }
 });
 </script>
 

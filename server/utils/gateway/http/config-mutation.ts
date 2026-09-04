@@ -1,5 +1,6 @@
 import { Mutex } from "async-mutex";
 import type { H3Event } from "h3";
+import { requireDataOpsAdvancedSettingsAccess } from "../auth/context";
 import { defineGatewayEventHandler } from "./errors";
 
 const userConfigLocks = new Map<number, Mutex>();
@@ -9,6 +10,15 @@ export function defineGatewayConfigMutationHandler<T>(handler: (event: H3Event) 
   return defineGatewayEventHandler((event) => {
     const userId = event.context.auth!.user.id;
     return userConfigLock(userId).runExclusive(() => handler(event));
+  });
+}
+
+export function defineGatewayAdvancedConfigMutationHandler<T>(
+  handler: (event: H3Event) => Promise<T> | T,
+) {
+  return defineGatewayConfigMutationHandler((event) => {
+    requireDataOpsAdvancedSettingsAccess(event);
+    return handler(event);
   });
 }
 

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AuthenticatedUser } from "../auth/users";
 import { runtimeStatusForEvent } from "../../../api/runtime/me.get";
 import { startRuntimeForEvent } from "../../../api/runtime/start.post";
+import { restartOwnRuntimeForEvent } from "../../../api/runtime/restart.post";
 import { listRuntimesForEvent } from "../../../api/admin/runtimes/index.get";
 import { restartRuntimeForEvent } from "../../../api/admin/runtimes/[userId]/restart.post";
 
@@ -13,6 +14,7 @@ describe("runtime routes", () => {
     const service = {
       getStatus: vi.fn(() => ({ userId: 7, status: "ready" })),
       start: vi.fn(async () => ({ userId: 7, status: "ready" })),
+      restart: vi.fn(async () => ({ userId: 7, status: "ready" })),
     };
     const event = eventFor({ id: 7, username: "user", role: "user" });
     event.context.body = { userId: 99, containerId: "caller-container", endpoint: "ws://caller" };
@@ -22,8 +24,13 @@ describe("runtime routes", () => {
       userId: 7,
       status: "ready",
     });
+    await expect(restartOwnRuntimeForEvent(event, service)).resolves.toEqual({
+      userId: 7,
+      status: "ready",
+    });
     expect(service.getStatus).toHaveBeenCalledWith(7);
     expect(service.start).toHaveBeenCalledWith(7, 7);
+    expect(service.restart).toHaveBeenCalledWith(7, 7);
   });
 
   it("requires an administrator and accepts only the target user ID for restart", async () => {
