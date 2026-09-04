@@ -29,6 +29,22 @@ export const threadMetadataStore = {
     );
   },
 
+  updateTitle(hostId: number, threadId: string, title: string) {
+    const index = gatewayMemoryState.threadMetadata.findIndex(
+      (thread) => thread.hostId === hostId && thread.threadId === threadId,
+    );
+    const current = gatewayMemoryState.threadMetadata[index];
+    if (current === undefined) return null;
+    const updated = {
+      ...current,
+      title,
+      name: title,
+      updatedAt: Math.floor(Date.now() / 1000),
+    };
+    gatewayMemoryState.threadMetadata[index] = updated;
+    return updated;
+  },
+
   record(hostId: number, projectId: number | null, thread: AppServerThread) {
     const threadId = thread.id;
     subAgentThreadStore.recordThreadMetadata(hostId, thread);

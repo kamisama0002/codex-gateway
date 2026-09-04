@@ -62,6 +62,20 @@ export class UserConfigMutationService {
     });
   }
 
+  updatePinnedThreadTitle(userId: number, hostId: number, threadId: string, title: string) {
+    const state = currentGatewayMemoryState();
+    const existing = state.pinnedThreads.find(
+      (thread) => thread.hostId === hostId && thread.threadId === threadId,
+    );
+    if (existing === undefined || existing.title === title) return;
+    this.commit(userId, () => {
+      currentGatewayMemoryState().pinnedThreads = currentGatewayMemoryState().pinnedThreads.map(
+        (thread) =>
+          thread.hostId === hostId && thread.threadId === threadId ? { ...thread, title } : thread,
+      );
+    });
+  }
+
   private reconcileCommittedConfig(
     userId: number,
     previousHosts: StoredHostRecord[],

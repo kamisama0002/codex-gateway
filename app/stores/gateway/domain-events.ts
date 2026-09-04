@@ -90,6 +90,11 @@ export type GatewayDomainEventMap = {
     hostId: number;
     thread: AppServerThread;
   };
+  "thread-title-detected": {
+    hostId: number;
+    threadId: string;
+    title: string;
+  };
   "thread-status-detected": {
     hostId: number;
     threadId: string;

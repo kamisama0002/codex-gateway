@@ -39,7 +39,7 @@ describe("thread display identity", () => {
     ).toBe("未命名会话");
   });
 
-  it("derives a temporary title from the first user message", () => {
+  it("derives the DSH fallback title from the first user message", () => {
     const thread = {
       id: "thread-with-message",
       title: null,
@@ -55,14 +55,33 @@ describe("thread display identity", () => {
               items: [
                 {
                   type: "userMessage",
-                  content: [{ type: "text", text: "  分析本月\n营业额变化  " }],
+                  content: [
+                    {
+                      type: "text",
+                      text: "  analyze this month's revenue trend and explain anomalies  ",
+                    },
+                  ],
                 },
               ],
             },
           ],
         },
       }),
-    ).toBe("分析本月 营业额变化");
+    ).toBe("analyze this month's revenue trend");
+  });
+
+  it("applies the same DSH fallback to an app-server preview", () => {
+    expect(
+      titleForThread(
+        {
+          id: "preview-thread",
+          title: null,
+          name: null,
+          preview: "analyze this month's revenue trend and explain anomalies",
+        },
+        localizedFallbacks,
+      ),
+    ).toBe("analyze this month's revenue trend");
   });
 
   it("keeps explicit names ahead of a derived user-message title", () => {
@@ -84,7 +103,7 @@ describe("thread display identity", () => {
     ).toBe("月度经营分析");
   });
 
-  it("limits long derived titles", () => {
+  it("limits long derived titles by UTF-8 bytes without adding decoration", () => {
     const longMessage = "长".repeat(50);
 
     expect(
@@ -106,7 +125,7 @@ describe("thread display identity", () => {
           },
         },
       ),
-    ).toBe(`${"长".repeat(36)}...`);
+    ).toBe("长".repeat(13));
   });
 
   it("does not treat metadata-only list turns as proof that a thread is empty", () => {

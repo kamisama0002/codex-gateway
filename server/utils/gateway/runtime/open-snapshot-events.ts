@@ -7,7 +7,7 @@ import {
   appServerThreadStatusFromUnknown,
   threadSettingsFromAppServer,
 } from "~~/shared/runtime/app-server";
-import { idFromUnknown, recordFromUnknown } from "~~/shared/utils/records";
+import { idFromUnknown, recordFromUnknown, stringFromUnknown } from "~~/shared/utils/records";
 import type { ThreadOpenSnapshot } from "./types";
 
 type SnapshotEventReducer = (
@@ -19,6 +19,12 @@ const snapshotEventReducers: Record<string, SnapshotEventReducer> = {
   "thread/status/changed": (snapshot, params) =>
     updateSnapshotThreadStatus(snapshot, params.status),
   "thread/settings/updated": updateSnapshotThreadSettings,
+  "thread/name/updated": (snapshot, params) => {
+    const name = stringFromUnknown(params.threadName)?.trim();
+    return name === undefined || name === ""
+      ? snapshot
+      : { ...snapshot, thread: { ...snapshot.thread, name } };
+  },
   "thread/tokenUsage/updated": (snapshot, params) => ({
     ...snapshot,
     tokenUsage: normalizeTokenUsage(params.tokenUsage) ?? snapshot.tokenUsage,

@@ -9,6 +9,7 @@ import type {
 import { pinnedKey } from "../gateway/thread-utils/identity";
 import { firstNonEmptyString, trimmedOrNull } from "~~/shared/utils/strings";
 import { isAppServerSubAgentThread } from "~~/shared/runtime/app-server";
+import { fallbackThreadTitle } from "~~/shared/thread-title";
 
 export interface ThreadActivitySummary {
   hostId: number;
@@ -76,7 +77,9 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
         hostId,
         projectId: record.projectId ?? project?.id ?? null,
         threadId: record.id,
-        title: firstNonEmptyString([record.title, record.name, record.preview]) ?? record.id,
+        title:
+          firstNonEmptyString([record.title, record.name]) ??
+          (fallbackThreadTitle(record.preview ?? "") || record.id),
         cwd: stringOrNull(record.cwd),
         projectName: project?.name ?? null,
         parentThreadId: stringOrNull(record.parentThreadId),
@@ -213,7 +216,9 @@ function summaryFromThread(
     hostId,
     projectId,
     threadId: thread.id,
-    title: firstNonEmptyString([gatewayTitle, thread.name, thread.preview]) ?? thread.id,
+    title:
+      firstNonEmptyString([gatewayTitle, thread.name]) ??
+      (fallbackThreadTitle(thread.preview) || thread.id),
     cwd: stringOrNull(thread.cwd),
     projectName: project?.name ?? null,
     parentThreadId,

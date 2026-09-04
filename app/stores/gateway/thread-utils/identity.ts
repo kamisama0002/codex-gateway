@@ -1,10 +1,7 @@
 import type { GatewayThread } from "~~/shared/types";
+import { fallbackThreadTitle, titleFromThreadHistory } from "~~/shared/thread-title";
 import { firstNonEmptyString } from "~~/shared/utils/strings";
-import { recordFromUnknown } from "~~/shared/utils/records";
-import { threadItemText } from "@/utils/thread-items";
 import { unknownGatewayErrorFromError } from "../errors";
-
-const DERIVED_THREAD_TITLE_MAX_LENGTH = 36;
 
 export interface ErrorMessageLabels {
   scope: string;
@@ -124,23 +121,7 @@ export function explicitTitleForThread(thread: ThreadTitleSource | null | undefi
   ) {
     return storedTitle;
   }
-  return firstNonEmptyString([thread.name, thread.preview]);
-}
-
-export function titleFromThreadHistory(history: ThreadHistorySource | null | undefined) {
-  for (const turn of history?.thread?.turns ?? []) {
-    for (const item of turn.items ?? []) {
-      const record = recordFromUnknown(item);
-      if (record?.type !== "userMessage") continue;
-      const text = threadItemText(record).replaceAll(/\s+/g, " ").trim();
-      if (text === "") continue;
-      const characters = Array.from(text);
-      return characters.length > DERIVED_THREAD_TITLE_MAX_LENGTH
-        ? `${characters.slice(0, DERIVED_THREAD_TITLE_MAX_LENGTH).join("")}...`
-        : text;
-    }
-  }
-  return null;
+  return firstNonEmptyString([thread.name]);
 }
 
 type ReusableEmptyThread = Pick<
@@ -182,8 +163,11 @@ export function titleForThread(
   if (thread === null || thread === undefined) return fallbacks.untitled;
   const label = explicitTitleForThread(thread);
   if (label !== null) return label;
-  if (isEmptyThreadHistory(history)) return fallbacks.empty;
-  return titleFromThreadHistory(history) ?? fallbacks.untitled;
+  const derived = titleFromThreadHistory(history);
+  if (derived !== null) return derived;
+  const preview = fallbackThreadTitle(thread.preview ?? "");
+  if (preview !== "") return preview;
+  return isEmptyThreadHistory(history) ? fallbacks.empty : fallbacks.untitled;
 }
 
 export function sortThreads(threads: GatewayThread[]) {
