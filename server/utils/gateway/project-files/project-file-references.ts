@@ -11,6 +11,8 @@ interface ValidateProjectFileReferencesOptions {
   timeoutMs?: number;
 }
 
+type FileReferenceSftp = Pick<SFTPWrapper, "realpath" | "stat">;
+
 export async function validateProjectFileReferences(
   host: HostRecord,
   project: ProjectRecord,
@@ -92,7 +94,7 @@ function isWithinRoot(root: string, candidate: string) {
   );
 }
 
-function realpath(sftp: SFTPWrapper, path: string, timeoutMs: number) {
+function realpath(sftp: FileReferenceSftp, path: string, timeoutMs: number) {
   return withFileReferenceTimeout(
     () =>
       new Promise<string>((resolve, reject) => {
@@ -102,7 +104,7 @@ function realpath(sftp: SFTPWrapper, path: string, timeoutMs: number) {
   );
 }
 
-function stat(sftp: SFTPWrapper, path: string, timeoutMs: number) {
+function stat(sftp: FileReferenceSftp, path: string, timeoutMs: number) {
   return withFileReferenceTimeout(
     () =>
       new Promise<Stats>((resolve, reject) => {

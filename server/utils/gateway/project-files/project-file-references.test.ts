@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SFTPWrapper } from "ssh2";
 import type { HostRecord, ProjectRecord } from "~~/shared/types";
@@ -29,7 +28,10 @@ const project: ProjectRecord = {
 };
 
 describe("project file references", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(sshConnections, "sftp");
+  });
 
   it("rejects when opening SFTP never returns", async () => {
     vi.spyOn(sshConnections, "sftp").mockImplementation(() => new Promise<SFTPWrapper>(() => {}));
@@ -38,24 +40,23 @@ describe("project file references", () => {
   }, 250);
 
   it("rejects when SFTP realpath never returns", async () => {
-    vi.spyOn(sshConnections, "sftp").mockResolvedValue(
-      testSftp({
-        realpath() {},
-      }),
-    );
+    useSftp({
+      realpath() {},
+      stat() {
+        throw new Error("stat must not be called");
+      },
+    } satisfies FileReferenceSftp);
 
     await expect(validate()).rejects.toThrow("file_reference_timeout");
   }, 250);
 
   it("rejects when SFTP stat never returns", async () => {
-    vi.spyOn(sshConnections, "sftp").mockResolvedValue(
-      testSftp({
-        realpath(path: string, callback: (error: Error | undefined, resolved: string) => void) {
-          callback(undefined, path);
-        },
-        stat() {},
-      }),
-    );
+    useSftp({
+      realpath(path: string, callback: (error: Error | undefined, resolved: string) => void) {
+        callback(undefined, path);
+      },
+      stat() {},
+    } satisfies FileReferenceSftp);
 
     await expect(validate()).rejects.toThrow("file_reference_timeout");
   }, 250);
@@ -70,37 +71,10 @@ function validate() {
   );
 }
 
-interface SftpConstructor {
-  new (
-    client: { _protocol: { _remoteIdentRaw: string } },
-    channel: { type: string; incoming: unknown; outgoing: { state: string; id: number } },
-    options: object,
-  ): SFTPWrapper;
-}
+type FileReferenceSftp = Pick<SFTPWrapper, "realpath" | "stat">;
 
-function testSftp(overrides: Partial<Pick<SFTPWrapper, "realpath" | "stat">>) {
-  const sftp = new (sftpConstructor())(
-    { _protocol: { _remoteIdentRaw: "" } },
-    { type: "session", incoming: {}, outgoing: { state: "open", id: 1 } },
-    {},
-  );
-  sftp.realpath = overrides.realpath ?? (() => {});
-  sftp.stat = overrides.stat ?? (() => {});
-  return sftp;
-}
-
-function sftpConstructor(): SftpConstructor {
-  const module: unknown = createRequire(import.meta.url)("ssh2/lib/protocol/SFTP");
-  if (!isRecord(module) || !isSftpConstructor(module.SFTP)) {
-    throw new Error("ssh2 SFTP constructor is unavailable");
+function useSftp(sftp: FileReferenceSftp) {
+  if (!Reflect.set(sshConnections, "sftp", () => Promise.resolve(sftp))) {
+    throw new Error("Unable to replace SFTP client for test");
   }
-  return module.SFTP;
-}
-
-function isSftpConstructor(value: unknown): value is SftpConstructor {
-  return typeof value === "function";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
