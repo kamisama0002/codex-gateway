@@ -3,13 +3,16 @@ import type { RealtimeClientMessage, RealtimeServerMessage } from "~~/shared/typ
 import { useAuthStore } from "@/stores/auth";
 import { createUuid } from "@/lib/uuid";
 import { parseRealtimeServerMessage } from "~~/shared/runtime/realtime";
+import { REALTIME_AUTHENTICATION_CLOSE_CODE } from "~~/shared/runtime/realtime/close-codes";
 
 const RESUME_PING_TIMEOUT_MS = 4_000;
+const RECONNECT_DELAY_CAPS_MS = [500, 1_000, 2_000, 4_000, 8_000, 10_000] as const;
 
 interface RealtimeConnectionOptions {
   disconnectedMessage: () => string;
   onMessage: (message: RealtimeServerMessage) => void;
   onDisconnected: (error: Error) => void;
+  onAuthenticationExpired: () => void;
 }
 
 interface ReadyWaiter {
@@ -23,6 +26,7 @@ export interface RealtimeConnectionState {
   connected: boolean;
   reconnectTimer: number | null;
   reconnectAttempt: number;
+  reconnectExhausted: boolean;
   generation: number;
   readyCount: number;
   healthTimer: number | null;
@@ -37,6 +41,7 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
     connected: false,
     reconnectTimer: null as number | null,
     reconnectAttempt: 0,
+    reconnectExhausted: false,
     generation: 0,
     readyCount: 0,
     healthTimer: null as number | null,
@@ -45,7 +50,7 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
   });
 
   function connect() {
-    if (!import.meta.client) return;
+    if (!browserRuntimeAvailable()) return;
 
     const auth = useAuthStore();
     auth.hydrate();
@@ -86,12 +91,20 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
       }
     });
 
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       if (state.generation !== generation) return;
       clearHealthTimer();
       state.connected = false;
       state.socket = null;
-      options.onDisconnected(new Error(options.disconnectedMessage()));
+      const error = new Error(options.disconnectedMessage());
+      rejectReadyWaiters(error);
+      options.onDisconnected(error);
+      if (event.code === REALTIME_AUTHENTICATION_CLOSE_CODE) {
+        state.reconnectAttempt = 0;
+        state.reconnectExhausted = false;
+        options.onAuthenticationExpired();
+        return;
+      }
       scheduleReconnect();
     });
 
@@ -99,22 +112,25 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
   }
 
   function reconnectNow() {
-    if (!import.meta.client) return;
-
-    clearReconnectTimer();
-    clearHealthTimer();
-    closeCurrentSocket();
-    options.onDisconnected(new Error(options.disconnectedMessage()));
-    connect();
-  }
-
-  function reset() {
-    if (!import.meta.client) return;
+    if (!browserRuntimeAvailable()) return;
 
     clearReconnectTimer();
     clearHealthTimer();
     closeCurrentSocket();
     state.reconnectAttempt = 0;
+    state.reconnectExhausted = false;
+    options.onDisconnected(new Error(options.disconnectedMessage()));
+    connect();
+  }
+
+  function reset() {
+    if (!browserRuntimeAvailable()) return;
+
+    clearReconnectTimer();
+    clearHealthTimer();
+    closeCurrentSocket();
+    state.reconnectAttempt = 0;
+    state.reconnectExhausted = false;
     state.readyCount = 0;
     rejectReadyWaiters(new Error(options.disconnectedMessage()));
     options.onDisconnected(new Error(options.disconnectedMessage()));
@@ -135,12 +151,22 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
   }
 
   function scheduleReconnect() {
-    if (!import.meta.client || state.reconnectTimer !== null || !useAuthStore().isAuthenticated)
+    if (
+      !browserRuntimeAvailable() ||
+      state.reconnectTimer !== null ||
+      !useAuthStore().isAuthenticated
+    )
       return;
 
     const attempt = state.reconnectAttempt + 1;
+    const delayCap = RECONNECT_DELAY_CAPS_MS[attempt - 1];
+    if (delayCap === undefined) {
+      state.reconnectExhausted = true;
+      return;
+    }
     state.reconnectAttempt = attempt;
-    const delay = Math.min(10_000, 500 * 2 ** Math.min(attempt - 1, 5));
+    state.reconnectExhausted = false;
+    const delay = Math.floor(delayCap * (0.5 + Math.random() * 0.5));
     state.reconnectTimer = window.setTimeout(() => {
       state.reconnectTimer = null;
       connect();
@@ -156,7 +182,7 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
   }
 
   function installHealthCheck() {
-    if (!import.meta.client || state.healthListenersInstalled) return;
+    if (!browserRuntimeAvailable() || state.healthListenersInstalled) return;
 
     state.healthListenersInstalled = true;
     useEventListener(window, "focus", checkConnection);
@@ -166,7 +192,8 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
   }
 
   function checkConnection() {
-    if (!import.meta.client || !useAuthStore().isAuthenticated) return;
+    if (!browserRuntimeAvailable() || !useAuthStore().isAuthenticated) return;
+    if (state.reconnectExhausted) return;
 
     const socket = state.socket;
     if (socket === null || socket.readyState !== WebSocket.OPEN || !state.connected) {
@@ -191,6 +218,7 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
   function markReady() {
     state.connected = true;
     state.reconnectAttempt = 0;
+    state.reconnectExhausted = false;
     state.readyCount += 1;
     resolveReadyWaiters();
   }
@@ -254,4 +282,8 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
     markReady,
     waitForReady,
   };
+}
+
+function browserRuntimeAvailable() {
+  return typeof window !== "undefined" && typeof WebSocket !== "undefined";
 }

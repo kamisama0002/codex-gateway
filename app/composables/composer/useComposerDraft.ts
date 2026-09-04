@@ -4,31 +4,40 @@ import { storeToRefs } from "pinia";
 import type { UploadedFileRecord } from "~~/shared/types";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
+import { useAuthStore } from "@/stores/auth";
 import { selectedThreadKey } from "@/stores/gateway/thread-utils/identity";
 import type { ComposerFileReference } from "@/stores/gateway/types";
+import {
+  readComposerTextDraft,
+  textDraftScopeKey,
+  writeComposerTextDraft,
+} from "./text-draft-storage";
 
 export type ComposerAttachment = UploadedFileRecord & { id: string; dataUrl?: string };
 
 export function useComposerDraft() {
   const composer = useGatewayComposerStore();
   const navigation = useGatewayNavigationStore();
-  const { selectedHostId, selectedThreadId } = storeToRefs(navigation);
+  const auth = useAuthStore();
+  const { selectedHostId, selectedProjectId, selectedThreadId } = storeToRefs(navigation);
   const turnText = ref("");
   const attachedFiles = ref<ComposerAttachment[]>([]);
   const fileReferences = ref<ComposerFileReference[]>([]);
   let activeHostId: number | null = null;
   let activeThreadId: string | null = null;
+  let activeTextDraftKey: string | null = null;
   let syncingDraft = false;
 
   watch(
-    [selectedHostId, selectedThreadId],
-    ([hostId, threadId]) => {
+    [selectedHostId, selectedProjectId, selectedThreadId],
+    ([hostId, projectId, threadId]) => {
       syncingDraft = true;
       activeHostId = hostId;
       activeThreadId = threadId;
+      activeTextDraftKey = textDraftScopeKey(hostId, projectId, threadId);
       const key = selectedThreadKey(hostId, threadId);
       const draft = key === null ? undefined : composer.composerDraftsByKey[key];
-      turnText.value = draft?.text ?? "";
+      turnText.value = draft?.text ?? readComposerTextDraft(auth.username, activeTextDraftKey);
       attachedFiles.value = [...(draft?.attachedFiles ?? [])];
       fileReferences.value = [...(draft?.fileReferences ?? [])];
       syncingDraft = false;
@@ -42,9 +51,9 @@ export function useComposerDraft() {
   watch(
     [turnText, attachedFiles, fileReferences],
     () => {
-      if (syncingDraft || activeHostId === null || activeThreadId === null) {
-        return;
-      }
+      if (syncingDraft) return;
+      writeComposerTextDraft(auth.username, activeTextDraftKey, turnText.value);
+      if (activeHostId === null || activeThreadId === null) return;
       composer.saveComposerDraft(activeHostId, activeThreadId, {
         text: turnText.value,
         attachedFiles: attachedFiles.value,
@@ -58,6 +67,7 @@ export function useComposerDraft() {
     turnText.value = "";
     attachedFiles.value = [];
     fileReferences.value = [];
+    writeComposerTextDraft(auth.username, activeTextDraftKey, "");
     if (activeHostId !== null && activeThreadId !== null) {
       composer.clearComposerDraft(activeHostId, activeThreadId);
     }

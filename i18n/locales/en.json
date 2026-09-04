@@ -6,6 +6,7 @@
     "loginDescription": "Use the account created by the administrator. Connection config is encrypted on the server.",
     "login": "Sign in",
     "loginFailed": "Sign-in failed",
+    "sessionExpired": "Your session has expired. Sign in again.",
     "dataOpsConnectingTitle": "Opening the Agent workspace",
     "dataOpsConnectingDescription": "Verifying your current DataOps session.",
     "dataOpsAuthFailedTitle": "Unable to open the Agent workspace",

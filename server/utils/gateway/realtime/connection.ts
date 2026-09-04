@@ -9,6 +9,7 @@ import { RealtimeAuthenticationRequiredError } from "./message-dispatcher";
 import { hostStore } from "../state/hosts";
 import { browserPreviewManager } from "../browser-preview/browser-preview-manager";
 import { recordFromUnknown } from "~~/shared/utils/records";
+import { REALTIME_AUTHENTICATION_CLOSE_CODE } from "~~/shared/runtime/realtime/close-codes";
 import { runPeerScoped, sendRealtimePeerMessage, stateFor, type RealtimePeer } from "./peer-state";
 import { clearOwnedSubscriptions, clearSubscriptions } from "./subscription-map";
 
@@ -20,7 +21,7 @@ export function openRealtimePeer(peer: RealtimePeer) {
         type: "error",
         message: "Realtime authentication timed out",
       });
-      peer.close(1008, "Authentication required");
+      peer.close(REALTIME_AUTHENTICATION_CLOSE_CODE, "Authentication required");
     }
   }, 10_000);
 }
@@ -86,7 +87,7 @@ function rejectUnauthenticatedPeer(peer: RealtimePeer, request: RealtimeClientMe
     message: "Realtime connection is not authenticated",
     request,
   });
-  peer.close(1008, "Authentication required");
+  peer.close(REALTIME_AUTHENTICATION_CLOSE_CODE, "Authentication required");
 }
 
 function parseClientMessage(raw: string): RealtimeClientMessage {

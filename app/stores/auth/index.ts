@@ -9,6 +9,8 @@ export const useAuthStore = defineStore("auth", () => {
   const username = ref("");
   const initialized = ref(false);
   const sessionEpoch = ref(0);
+  const sessionExpired = ref(false);
+  const logoutPending = ref(false);
   const storageMode = ref<AuthStorageMode>("standalone");
   const localToken = useLocalStorage<string | null>(AUTH_STORAGE_KEY, null);
   const localUsername = useLocalStorage<string | null>(`${AUTH_STORAGE_KEY}:username`, null);
@@ -69,6 +71,7 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   function setSession(nextToken: string, nextUsername: string, mode: AuthStorageMode) {
+    sessionExpired.value = false;
     storageMode.value = mode;
     replaceSession(nextToken, nextUsername);
     initialized.value = true;
@@ -78,6 +81,8 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function logout() {
+    sessionExpired.value = false;
+    logoutPending.value = true;
     const currentToken = token.value;
     if (currentToken !== "") {
       try {
@@ -87,16 +92,24 @@ export const useAuthStore = defineStore("auth", () => {
         });
       } finally {
         clearSession();
+        logoutPending.value = false;
       }
       return;
     }
     clearSession();
+    logoutPending.value = false;
   }
 
   function clearSession() {
     replaceSession("", "");
     initialized.value = true;
     clearStoredSession(storageMode.value);
+  }
+
+  function expireSession() {
+    if (token.value === "") return;
+    sessionExpired.value = !logoutPending.value;
+    clearSession();
   }
 
   function replaceSession(nextToken: string, nextUsername: string) {
@@ -126,12 +139,14 @@ export const useAuthStore = defineStore("auth", () => {
     username,
     initialized,
     sessionEpoch,
+    sessionExpired,
     storageMode,
     isAuthenticated,
     hydrate,
     login,
     loginWithDataOps,
     logout,
+    expireSession,
     isCurrentSession,
   };
 });

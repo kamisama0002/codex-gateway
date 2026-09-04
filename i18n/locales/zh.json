@@ -6,6 +6,7 @@
     "loginDescription": "输入管理员创建的账号密码，连接配置会加密保存在服务器端。",
     "login": "登录",
     "loginFailed": "登录失败",
+    "sessionExpired": "登录状态已失效，请重新登录。",
     "dataOpsConnectingTitle": "正在进入 Agent 工作台",
     "dataOpsConnectingDescription": "正在验证当前 DataOps 会话。",
     "dataOpsAuthFailedTitle": "无法进入 Agent 工作台",

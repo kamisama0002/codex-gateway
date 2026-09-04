@@ -11,6 +11,9 @@ const username = ref("");
 const password = ref("");
 const loading = ref(false);
 const error = ref("");
+const visibleError = computed(
+  () => error.value || (auth.sessionExpired ? t("app.sessionExpired") : ""),
+);
 
 async function submit() {
   error.value = "";
@@ -52,10 +55,11 @@ async function submit() {
         />
       </div>
       <div
-        v-if="error"
+        v-if="visibleError"
+        role="alert"
         class="mt-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
       >
-        {{ error }}
+        {{ visibleError }}
       </div>
       <Button
         type="submit"

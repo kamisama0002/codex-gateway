@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { expect, test } from "./fixtures/remote-workspace";
-import { openApp } from "./helpers/app";
+import { E2E_PASSWORD, E2E_USERNAME, openApp } from "./helpers/app";
 import {
   installRealtimeSocketProbe,
   realtimeClientMessageCount,
@@ -62,4 +62,41 @@ test("creates a thread and sends the first message from the centered composer", 
     messageOffset,
   );
   expect(submittedTurns).toBe(1);
+});
+
+test("restores an unthreaded project text draft after the session expires", async ({
+  page,
+  remoteWorkspace,
+}) => {
+  await installRealtimeSocketProbe(page);
+  await openApp(page, { interceptRealtime: false });
+  await remoteWorkspace.provision({
+    hostName: `expired-draft-host-${Date.now()}`,
+    projectName: `expired-draft-project-${Date.now()}`,
+  });
+
+  const marker = `登录失效草稿 ${Date.now()}`;
+  const composer = page.getByTestId("composer-input");
+  await composer.fill(marker);
+  const projectUrl = page.url();
+  const revoked = await page.evaluate(async () => {
+    const token = localStorage.getItem("codex-gateway-auth-token");
+    if (token === null || token === "") throw new Error("Missing E2E auth token");
+    return (
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).ok;
+  });
+
+  expect(revoked).toBe(true);
+  await expect(page.getByRole("heading", { name: "登录 Codex Gateway" })).toBeVisible();
+  await page.getByTestId("login-username").fill(E2E_USERNAME);
+  await page.getByTestId("login-password").fill(E2E_PASSWORD);
+  await page.getByTestId("login-submit").click();
+
+  await expect(page.getByTestId("new-thread-empty-state")).toBeVisible({ timeout: 30_000 });
+  expect(page.url()).toBe(projectUrl);
+  await expect(page.getByTestId("composer-input")).toHaveAttribute("data-value", marker);
 });
