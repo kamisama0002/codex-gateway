@@ -10,6 +10,7 @@ import MisalignmentRecoveryCard from "@/components/thread/MisalignmentRecoveryCa
 import GatewayPet from "@/components/pet/GatewayPet.vue";
 import McpRuntimeStatusBar from "@/components/thread/McpRuntimeStatusBar.vue";
 import ThreadRuntimeNotice from "@/components/thread/ThreadRuntimeNotice.vue";
+import RealtimeConnectionIndicator from "@/components/sidebar/RealtimeConnectionIndicator.vue";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { useChatWorkspaceState } from "./chat-workspace-state";
 
@@ -49,6 +50,7 @@ const showThreadLoading = computed(
   <div class="relative flex min-h-0 flex-1 overflow-hidden">
     <div data-testid="chat-main-pane" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <ThreadChatHeader />
+      <RealtimeConnectionIndicator class="mx-3 self-end" />
       <ActiveSubAgentsBar
         v-if="selectedThreadId"
         :turns="historyTurns"

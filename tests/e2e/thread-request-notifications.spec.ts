@@ -211,6 +211,25 @@ test("provider API key errors fail immediately with an actionable status", async
   await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "失败");
 });
 
+test("shows elapsed seconds while the selected thread is running", async ({ page }) => {
+  await openApp(page);
+  const threadId = "e2e-running-elapsed-thread";
+  await seedGatewayThread(page, {
+    threadId,
+    currentThread: { id: threadId, name: "Running Elapsed" },
+    history: { thread: { id: threadId, turns: [] } },
+    status: "running",
+  });
+
+  const notice = page.getByTestId("thread-runtime-notice");
+  await expect(notice.getByText("Agent 正在处理", { exact: true })).toBeVisible();
+  await expect(notice.getByText("Agent 正在处理你的请求。你可以随时停止。", { exact: true })).toBeVisible();
+  await expect(notice.getByTestId("thread-runtime-elapsed")).toHaveText("已用时 0 秒");
+  await expect(notice.getByTestId("thread-runtime-elapsed")).toHaveText("已用时 1 秒", {
+    timeout: 2_500,
+  });
+});
+
 test("approval and user-input requests expose distinct thread phases", async ({ page }) => {
   await openApp(page);
   const threadId = "e2e-waiting-phase-thread";

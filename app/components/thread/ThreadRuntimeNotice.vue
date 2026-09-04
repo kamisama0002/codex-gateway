@@ -31,6 +31,8 @@ const bootstrap = useGatewayBootstrapStore();
 const turns = useGatewayThreadTurnsStore();
 const now = ref(Date.now());
 let countdownTimer: number | null = null;
+const elapsedSeconds = ref(0);
+let elapsedTimer: number | null = null;
 
 const request = computed(() => {
   if (props.hostId === null || props.threadId === null) return undefined;
@@ -50,6 +52,7 @@ const visible = computed(
   () =>
     props.error !== null ||
     props.phase === "submitting" ||
+    props.phase === "running" ||
     props.phase === "waitingForApproval" ||
     props.phase === "waitingForInput" ||
     props.phase === "waitingForClient" ||
@@ -134,6 +137,7 @@ const description = computed(() => {
   if (categoryKey !== null) return t(categoryKey);
   const phaseDescription: Partial<Record<ThreadRuntimePhase, string>> = {
     submitting: "app.threadSubmittingDescription",
+    running: "app.threadRunningDescription",
     waitingForApproval: "app.threadWaitingApprovalDescription",
     waitingForInput: "app.threadWaitingInputDescription",
     waitingForClient: "app.threadWaitingClientDescription",
@@ -179,8 +183,23 @@ watch(
   { immediate: true },
 );
 
+watch(
+  [() => props.threadId, () => props.phase],
+  () => {
+    if (elapsedTimer !== null) window.clearInterval(elapsedTimer);
+    elapsedTimer = null;
+    elapsedSeconds.value = 0;
+    if (!active.value || props.threadId === null) return;
+    elapsedTimer = window.setInterval(() => {
+      elapsedSeconds.value += 1;
+    }, 1_000);
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
   if (countdownTimer !== null) window.clearInterval(countdownTimer);
+  if (elapsedTimer !== null) window.clearInterval(elapsedTimer);
 });
 
 function dismiss() {
@@ -246,6 +265,13 @@ function firstErrorLine(message?: string | null) {
             }}</span>
             <span v-if="retrySeconds !== null" class="text-xs tabular-nums text-ink-faint">
               {{ t("app.retryCountdown", { seconds: retrySeconds }) }}
+            </span>
+            <span
+              v-if="active"
+              data-testid="thread-runtime-elapsed"
+              class="text-xs tabular-nums text-ink-faint"
+            >
+              {{ t("app.threadRuntimeElapsed", { seconds: elapsedSeconds }) }}
             </span>
           </div>
           <p v-if="description" class="mt-0.5 leading-5 text-ink-muted">{{ description }}</p>

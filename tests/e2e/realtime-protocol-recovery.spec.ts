@@ -2,10 +2,23 @@ import { expect, test } from "@playwright/test";
 import { openApp } from "./helpers/app";
 import {
   activeRealtimeSocketCount,
+  closeRealtimeSockets,
   dispatchRealtimeServerFrame,
   installRealtimeSocketProbe,
   realtimeSocketCloseCalls,
 } from "./helpers/realtime-socket-probe";
+
+test("shows reconnecting state in the main conversation pane", async ({ page }) => {
+  await installRealtimeSocketProbe(page);
+  await openApp(page);
+  await expect.poll(() => activeRealtimeSocketCount(page)).toBe(1);
+
+  await closeRealtimeSockets(page);
+
+  await expect(
+    page.getByTestId("chat-main-pane").getByTestId("realtime-connection-indicator"),
+  ).toHaveText(/正在重新连接/);
+});
 
 test("closes the protocol stream instead of ignoring a malformed server frame", async ({
   page,

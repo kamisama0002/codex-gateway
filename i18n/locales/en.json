@@ -621,6 +621,8 @@
     "threadSubmittingTitle": "Submitting request",
     "threadSubmittingDescription": "The request is being sent to the Agent.",
     "threadRunningTitle": "Agent is working",
+    "threadRunningDescription": "The Agent is working on your request. You can stop it at any time.",
+    "threadRuntimeElapsed": "Elapsed {seconds}s",
     "threadWaitingApprovalTitle": "Approval required",
     "threadWaitingApprovalDescription": "Work is paused until you approve or reject the action in this thread.",
     "threadWaitingInputTitle": "Input required",
