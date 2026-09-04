@@ -2,10 +2,74 @@ import { describe, expect, it } from "vitest";
 import { createProviderStore } from "./provider-store";
 import { migrateGatewayDatabase } from "../storage/migrations";
 import { DatabaseSync } from "node:sqlite";
-import { issueRuntimeModelToken } from "./runtime-token";
+import { issueRuntimeModelToken, verifyRuntimeModelToken } from "./runtime-token";
 import { handleProviderResponses } from "./provider-proxy";
 
 describe("provider proxy", () => {
+  it("allows a runtime to switch to another granted model from the same provider", async () => {
+    const db = new DatabaseSync(":memory:");
+    migrateGatewayDatabase(db);
+    db.prepare(
+      "INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')",
+    ).run();
+    const store = createProviderStore(db);
+    const provider = store.create({
+      id: "p1",
+      name: "Provider",
+      baseUrl: "https://upstream.test/v1",
+      wireApi: "responses",
+      apiKey: "secret-key",
+    });
+    for (const modelId of ["m1", "m2"]) {
+      store.upsertModel(provider.id, {
+        modelId,
+        displayName: modelId.toUpperCase(),
+        capabilities: {
+          tools: true,
+          streamingTools: true,
+          vision: false,
+          reasoning: true,
+          maxContextTokens: null,
+        },
+      });
+      store.grant({ userId: 1, providerId: provider.id, modelId });
+    }
+    const token = issueRuntimeModelToken(
+      { userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" },
+      "test-secret",
+    );
+    const response = await handleProviderResponses(
+      new Request("http://gateway/api/internal/providers/p1/v1/responses", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "m2", input: "hello" }),
+      }),
+      "p1",
+      {
+        store,
+        verifyToken: (value, scope) => verifyRuntimeModelToken(value, scope, "test-secret"),
+        fetch: async (_url, init) => {
+          const upstreamBody = init?.body;
+          expect(typeof upstreamBody).toBe("string");
+          expect(
+            JSON.parse(typeof upstreamBody === "string" ? upstreamBody : "null"),
+          ).toMatchObject({ model: "m2" });
+          return Response.json({
+            id: "response-1",
+            object: "response",
+            model: "m2",
+            status: "completed",
+            output: [],
+          });
+        },
+        runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ model: "m2", status: "completed" });
+  });
+
   it("translates a Chat Completions upstream into Responses JSON", async () => {
     const db = new DatabaseSync(":memory:");
     migrateGatewayDatabase(db);
@@ -49,7 +113,7 @@ describe("provider proxy", () => {
         store,
         verifyToken: (value, scope) => {
           expect(value).toBe(token);
-          expect(scope).toEqual({ userId: 0, providerId: "p1", modelId: "m1" });
+          expect(scope).toEqual({ providerId: "p1" });
           return {
             userId: 1,
             runtimeId: "r1",
