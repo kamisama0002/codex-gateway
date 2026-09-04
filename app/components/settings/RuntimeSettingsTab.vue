@@ -22,6 +22,7 @@ const { t } = useI18n();
 const errorLabels = computed(() => errorMessageLabels(t));
 const loading = ref(true);
 const starting = ref(false);
+const restartingMine = ref(false);
 const restartingUserId = ref<number | null>(null);
 const error = ref("");
 const mine = ref<RuntimeStatusView | null>(null);
@@ -87,6 +88,24 @@ async function restartRuntime(userId: number) {
     error.value = messageFromError(caught, t("app.runtimeRestartFailed"), errorLabels.value);
   } finally {
     restartingUserId.value = null;
+  }
+}
+
+async function restartMine() {
+  restartingMine.value = true;
+  error.value = "";
+  try {
+    const next = await gatewayApi<RuntimeStatusView>("/api/runtime/restart", { method: "POST" });
+    mine.value = next;
+    if (canAdminister.value) {
+      runtimes.value = runtimes.value.map((runtime) =>
+        runtime.userId === next.userId ? next : runtime,
+      );
+    }
+  } catch (caught: unknown) {
+    error.value = messageFromError(caught, t("app.runtimeRestartFailed"), errorLabels.value);
+  } finally {
+    restartingMine.value = false;
   }
 }
 
@@ -156,6 +175,18 @@ function formatUpdatedAt(value: string) {
           <p v-else class="text-sm text-ink-secondary">{{ t("app.runtimeMineAbsent") }}</p>
         </div>
         <Button
+          v-if="mine"
+          data-testid="runtime-self-restart-button"
+          class="shrink-0"
+          :disabled="loading || restartingMine"
+          @click="restartMine"
+        >
+          <Loader2Icon v-if="restartingMine" class="size-4 animate-spin" />
+          <RefreshCwIcon v-else class="size-4" />
+          {{ t("app.runtimeRestart") }}
+        </Button>
+        <Button
+          v-else
           data-testid="runtime-start-button"
           class="shrink-0"
           :disabled="loading || starting"
