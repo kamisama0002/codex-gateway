@@ -29,7 +29,7 @@ export interface RealtimeRequestRejection {
 }
 
 interface RealtimeRequestBrokerOptions {
-  waitForReady: (timeoutMs: number) => Promise<void>;
+  waitForReady: (timeoutMs: number, signal?: AbortSignal) => Promise<void>;
   send: (message: RealtimeClientMessage) => boolean;
   unavailableMessage: () => string;
   timeoutMessage: () => string;
@@ -40,9 +40,11 @@ const REALTIME_READY_TIMEOUT_MS = 15_000;
 // SSH reconnect and a remote Codex upgrade can precede app-server RPC work.
 // Keep the browser deadline beyond the backend's 30-minute operation cap.
 const REALTIME_REQUEST_TIMEOUT_MS = 31 * 60_000;
+const MAX_INTENTIONALLY_ABORTED_REQUEST_IDS = 256;
 
 export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOptions) {
   const pendingRequests = new Map<string, PendingRealtimeRequest>();
+  const intentionallyAbortedRequestIds = new Set<string>();
 
   function request(
     buildMessage: (requestId: string) => RealtimeRequestMessage,
@@ -91,7 +93,10 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
         signal: requestOptions?.signal,
       });
       if (requestOptions?.signal !== undefined) {
-        const abortListener = () => rejectRequest(requestId, abortedRequestError(requestMessage));
+        const abortListener = () => {
+          rememberIntentionalAbort(requestId);
+          rejectRequest(requestId, abortedRequestError(requestMessage));
+        };
         pendingRequests.get(requestId)!.abortListener = abortListener;
         requestOptions.signal.addEventListener("abort", abortListener, { once: true });
         if (requestOptions.signal.aborted) {
@@ -114,14 +119,22 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
 
   function resolveRequest(message: RealtimeResponseMessage) {
     const pending = pendingRequests.get(message.requestId);
-    if (!pending) return;
+    if (!pending) {
+      intentionallyAbortedRequestIds.delete(message.requestId);
+      return;
+    }
     clearPendingRequest(message.requestId, pending);
     pending.resolve(message);
   }
 
   function rejectRequest(requestId: string, error: Error) {
     const pending = pendingRequests.get(requestId);
-    if (!pending) return { delivered: false, notify: true };
+    if (!pending) {
+      if (intentionallyAbortedRequestIds.delete(requestId)) {
+        return { delivered: true, notify: false };
+      }
+      return { delivered: false, notify: true };
+    }
     clearPendingRequest(requestId, pending);
     pending.reject(error);
     return {
@@ -139,27 +152,25 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
   }
 
   async function waitForReady(signal?: AbortSignal) {
-    if (signal === undefined) {
-      await options.waitForReady(REALTIME_READY_TIMEOUT_MS);
-      return;
+    try {
+      await options.waitForReady(REALTIME_READY_TIMEOUT_MS, signal);
+    } catch (error: unknown) {
+      if (signal?.aborted === true) throw abortedRequestError(undefined);
+      throw error;
     }
-    if (signal.aborted) throw abortedRequestError(undefined);
-    await new Promise<void>((resolve, reject) => {
-      const abortListener = () => reject(abortedRequestError(undefined));
-      signal.addEventListener("abort", abortListener, { once: true });
-      void options
-        .waitForReady(REALTIME_READY_TIMEOUT_MS)
-        .then(resolve, reject)
-        .finally(() => {
-          signal.removeEventListener("abort", abortListener);
-        });
-    });
   }
 
   function abortedRequestError(request: RealtimeRequestMessage | undefined) {
     return new RealtimeRequestError("Realtime request aborted", request, "aborted", {
       ...(request === undefined ? {} : options.requestContext(request)),
     });
+  }
+
+  function rememberIntentionalAbort(requestId: string) {
+    intentionallyAbortedRequestIds.add(requestId);
+    if (intentionallyAbortedRequestIds.size <= MAX_INTENTIONALLY_ABORTED_REQUEST_IDS) return;
+    const oldestRequestId = intentionallyAbortedRequestIds.values().next().value;
+    if (oldestRequestId !== undefined) intentionallyAbortedRequestIds.delete(oldestRequestId);
   }
 
   function rejectAllRequests(error: Error) {

@@ -53,7 +53,7 @@ const emit = defineEmits<{
         variant="ghost"
         size="icon"
         class="size-7 rounded-full bg-muted text-ink hover:bg-muted hover:text-ink"
-        :disabled="uploadingAttachments || !canAttachFiles"
+        :disabled="uploadingAttachments || creatingFirstThread || !canAttachFiles"
         :aria-label="$t('app.attachFile')"
         @click="emit('attach')"
       >
@@ -91,8 +91,8 @@ const emit = defineEmits<{
         :disabled="!canUsePrimaryAction || interruptingTurn"
         @click="emit('primaryAction')"
       >
-        <Loader2Icon v-if="uploadingAttachments" class="size-3.5 animate-spin" />
-        <SquareIcon v-else-if="creatingFirstThread" class="size-3.5 fill-current" />
+        <SquareIcon v-if="creatingFirstThread" class="size-3.5 fill-current" />
+        <Loader2Icon v-else-if="uploadingAttachments" class="size-3.5 animate-spin" />
         <Loader2Icon v-else-if="interruptingTurn" class="size-3.5 animate-spin" />
         <SendIcon v-else-if="hasComposerInput" class="size-3.5" />
         <SquareIcon v-else-if="canInterruptTurn" class="size-3.5 fill-current" />

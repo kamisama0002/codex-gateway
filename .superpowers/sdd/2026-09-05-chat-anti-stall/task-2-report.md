@@ -119,3 +119,67 @@ This failure occurs at the Windows shell entrypoint before Docker or Playwright 
 - The real containerized cancellation E2E is authored and type-checked but unexecuted on this Windows host because the mandated POSIX runner does not start. It must be run in the supported Docker/POSIX environment.
 - Repository-wide lint remains red until the parent task fixes the two Task 1 TS7006 errors listed above.
 - The full unit suite contains a timing-sensitive supervisor test that timed out once at 5 seconds; its isolated rerun and the final complete rerun passed.
+
+## Fix Round 1
+
+### Review Findings Addressed
+
+- Late errors for intentionally aborted requests are now suppressed without changing ordinary orphan-error behavior. The broker retains at most 256 intentional-abort request IDs. A matching late success or error consumes the ID; a second unmatched error returns to `{ delivered: false, notify: true }` and remains globally visible.
+- `waitForReady(timeoutMs, signal?)` now owns cancellation in the connection layer. Aborting removes the waiter from `readyWaiters`, clears its 15-second timer, removes its listener, and rejects immediately. The broker converts that rejection back to the distinguishable `RealtimeRequestError.reason === "aborted"` contract.
+- Attachment upload is disabled during first-thread creation. The primary action ignores upload state while creation is pending, stays enabled, and continues to show the cancellation icon and label.
+- The real cancellation E2E now also asserts that the attachment button is disabled while the real App Server request is paused.
+
+### RED Evidence
+
+Command:
+
+```text
+..\..\node_modules\.bin\vitest.cmd run app/stores/gateway-realtime/request-broker.test.ts app/stores/gateway-realtime/connection.test.ts
+```
+
+Observed before Fix Round 1 production changes:
+
+```text
+Test Files  2 failed (2)
+Tests       2 failed | 1 passed (3)
+late error: expected { delivered: true, notify: false }, received { delivered: false, notify: true }
+unready abort: expected rejection to equal AbortSignal.reason, received undefined
+```
+
+The unready-abort failure occurred before the timer/listener assertions, and the late-error failure directly exercised the return contract consumed by `server-message-handlers.ts`.
+
+### GREEN And Verification
+
+```text
+Focused unit: 3 test files passed, 5 tests passed
+Full unit: 60 test files passed, 250 tests passed
+Task 2 oxlint: exit 0
+E2E TypeScript: vue-tsc -p tests/e2e/tsconfig.json --noEmit (exit 0)
+Task 2 oxfmt --check: exit 0
+git diff --check: exit 0
+```
+
+`pnpm lint` ran the complete typecheck successfully and then stopped in global `lint:ox` on four Task 1 findings outside the allowed Task 2 files:
+
+```text
+server/utils/gateway/project-files/project-file-references.ts:130:42: prefer-promise-reject-errors
+server/utils/gateway/project-files/project-file-references.ts:133:20: prefer-promise-reject-errors
+server/utils/gateway/project-files/project-file-references.test.ts:40:56: no-unsafe-type-assertion
+server/utils/gateway/project-files/project-file-references.test.ts:48:56: no-unsafe-type-assertion
+```
+
+The standard repository format check remains blocked by pre-existing formatting in `nuxt.config.ts`, `playwright.config.ts`, and `tailwind.config.ts`. Task 2's targeted format check passes. The focused E2E still cannot start from this Windows shell because `pnpm test:e2e` cannot execute `tests/e2e/run-in-containers.sh`; no Playwright/Docker result is claimed.
+
+### Fix Round 1 Self-Review
+
+- The intentional-abort registry is bounded, insertion ordered, and consumption based; it is not an unbounded tombstone map.
+- Only request IDs created and aborted while pending are recorded. Readiness-stage aborts have no request ID and leave no tombstone.
+- A late success consumes the tombstone in `resolveRequest`; a late server error consumes it in `rejectRequest` and returns the existing handler's suppressing `{ delivered: true, notify: false }` contract.
+- Every connection waiter exit (ready, disconnect, timeout, abort) clears timer/listener/set ownership through `clearReadyWaiter`.
+- No server protocol cancellation message, fake response, draft clearing, or change to the 31-minute default was introduced.
+
+### Fix Round 1 Concerns
+
+- If more than 256 intentionally aborted requests remain unanswered simultaneously, the oldest request ID is evicted and a much later error for it can surface as an orphan error. This is the explicit bounded-memory tradeoff requested by review.
+- The real E2E assertion is authored and type-checked but remains unexecuted on this Windows host due to the POSIX runner entrypoint.
+- Global lint and global format remain red only in the task-external files listed above; they were not modified.

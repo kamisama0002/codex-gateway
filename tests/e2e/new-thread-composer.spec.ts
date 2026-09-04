@@ -127,6 +127,7 @@ test("cancels pending first-thread creation without clearing the draft or starti
 
     await expect(sendButton).toBeEnabled();
     await expect(sendButton).toHaveAttribute("aria-label", "取消创建会话");
+    await expect(page.getByRole("button", { name: "附加文件" })).toBeDisabled();
     await sendButton.click();
     await expect(composer).toHaveAttribute("data-value", marker);
 

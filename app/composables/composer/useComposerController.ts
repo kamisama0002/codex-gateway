@@ -100,12 +100,12 @@ export function useComposerController() {
     () =>
       selectedThreadId.value !== null && isThreadRunning.value && !submit.hasComposerInput.value,
   );
-  const canUsePrimaryAction = computed(() =>
-    Boolean(
-      (submit.submittingNewThread.value || canSendTurn.value || canInterruptTurn.value) &&
-      !attachmentUpload.uploadingAttachments.value,
-    ),
-  );
+  const canUsePrimaryAction = computed(() => {
+    if (submit.submittingNewThread.value) return true;
+    return Boolean(
+      (canSendTurn.value || canInterruptTurn.value) && !attachmentUpload.uploadingAttachments.value,
+    );
+  });
   const sendButtonLabel = computed(() => {
     if (submit.submittingNewThread.value) return t("app.cancelThreadCreation");
     if (submit.hasComposerInput.value) return t("app.send");

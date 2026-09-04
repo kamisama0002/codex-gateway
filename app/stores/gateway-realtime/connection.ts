@@ -14,8 +14,10 @@ interface RealtimeConnectionOptions {
 
 interface ReadyWaiter {
   resolve: () => void;
-  reject: (error: Error) => void;
+  reject: (error: unknown) => void;
   timer: number;
+  signal?: AbortSignal;
+  abortListener?: () => void;
 }
 
 export interface RealtimeConnectionState {
@@ -195,36 +197,56 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
     resolveReadyWaiters();
   }
 
-  function waitForReady(timeoutMs: number) {
+  function waitForReady(timeoutMs: number, signal?: AbortSignal) {
     connect();
     if (state.connected) return Promise.resolve();
+    if (signal?.aborted === true) return Promise.reject(abortReason(signal));
     return new Promise<void>((resolve, reject) => {
       const waiter: ReadyWaiter = {
         resolve,
         reject,
         timer: window.setTimeout(() => {
-          readyWaiters.delete(waiter);
+          clearReadyWaiter(waiter);
           reject(new Error(options.disconnectedMessage()));
         }, timeoutMs),
+        signal,
       };
+      if (signal !== undefined) {
+        waiter.abortListener = () => {
+          clearReadyWaiter(waiter);
+          reject(abortReason(signal));
+        };
+        signal.addEventListener("abort", waiter.abortListener, { once: true });
+      }
       readyWaiters.add(waiter);
+      if (signal?.aborted === true) waiter.abortListener?.();
     });
   }
 
   function resolveReadyWaiters() {
     for (const waiter of readyWaiters) {
-      window.clearTimeout(waiter.timer);
+      clearReadyWaiter(waiter);
       waiter.resolve();
     }
-    readyWaiters.clear();
   }
 
   function rejectReadyWaiters(error: Error) {
     for (const waiter of readyWaiters) {
-      window.clearTimeout(waiter.timer);
+      clearReadyWaiter(waiter);
       waiter.reject(error);
     }
-    readyWaiters.clear();
+  }
+
+  function clearReadyWaiter(waiter: ReadyWaiter) {
+    window.clearTimeout(waiter.timer);
+    if (waiter.signal !== undefined && waiter.abortListener !== undefined) {
+      waiter.signal.removeEventListener("abort", waiter.abortListener);
+    }
+    readyWaiters.delete(waiter);
+  }
+
+  function abortReason(signal: AbortSignal) {
+    return signal.reason instanceof Error ? signal.reason : new Error("Realtime readiness aborted");
   }
 
   function clearReconnectTimer() {

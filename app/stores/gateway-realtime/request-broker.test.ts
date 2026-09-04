@@ -54,15 +54,16 @@ describe("createRealtimeRequestBroker", () => {
     if (outbound === undefined || !("requestId" in outbound)) {
       throw new Error("Expected a realtime request id");
     }
-    broker.resolveRequest({
-      type: "browser.closed",
-      requestId: outbound.requestId,
-      sessionId: "session-1",
-    });
     expect(broker.rejectRequest(outbound.requestId, new Error("late rejection"))).toEqual({
-      delivered: false,
-      notify: true,
+      delivered: true,
+      notify: false,
     });
+    expect(broker.rejectRequest(outbound.requestId, new Error("duplicate late rejection"))).toEqual(
+      {
+        delivered: false,
+        notify: true,
+      },
+    );
     await Promise.resolve();
     await expect(request).rejects.toBeInstanceOf(RealtimeRequestError);
   });
