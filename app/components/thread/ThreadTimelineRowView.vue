@@ -25,7 +25,12 @@ const emit = defineEmits<{
     v-if="props.row.type === 'intermediateHeader'"
     :open="props.row.open"
     :count="props.row.count"
+    :tool-call-count="props.row.toolCallCount"
+    :message-count="props.row.messageCount"
+    :subagent-count="props.row.subagentCount"
     :loading="props.row.loading"
+    :loaded="props.row.loaded"
+    :active="props.row.active"
     @toggle="emit('intermediateToggle', props.row.turnId, $event)"
   />
   <ThreadItemView

@@ -20,8 +20,13 @@ export type ThreadTimelineRow =
       type: "intermediateHeader";
       turnId: string;
       count: number;
+      toolCallCount: number;
+      messageCount: number;
+      subagentCount: number;
       open: boolean;
       loading: boolean;
+      loaded: boolean;
+      active: boolean;
     }
   | {
       key: string;
@@ -67,13 +72,17 @@ export function buildThreadTimelineRows(input: {
     appendItemRows(rows, input.threadId, turn.id, "user", sections.userItems, sections);
 
     if (sections.intermediateItems.length || turn.itemsView !== "full") {
+      const summary = intermediateProcessSummary(sections.intermediateItems);
       rows.push({
         key: `${input.threadId}:turn-${turn.id}:intermediate-header`,
         type: "intermediateHeader",
         turnId: turn.id,
         count: sections.intermediateItems.length,
+        ...summary,
         open: intermediateOpen,
         loading: intermediateLoading,
+        loaded: turn.itemsView === "full",
+        active: sections.turnIsActive,
       });
       if (intermediateOpen) {
         appendItemRows(
@@ -182,8 +191,13 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
   if (left.type === "intermediateHeader" && right.type === "intermediateHeader") {
     return (
       left.count === right.count &&
+      left.toolCallCount === right.toolCallCount &&
+      left.messageCount === right.messageCount &&
+      left.subagentCount === right.subagentCount &&
       left.open === right.open &&
       left.loading === right.loading &&
+      left.loaded === right.loaded &&
+      left.active === right.active &&
       left.turnId === right.turnId
     );
   }
@@ -213,6 +227,42 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
     );
   }
   return false;
+}
+
+const intermediateToolItemTypes = new Set<ThreadTimelineItem["type"]>([
+  "attestationRequest",
+  "chatgptAuthTokensRefreshRequest",
+  "commandExecution",
+  "contextCompaction",
+  "dynamicToolClientRequest",
+  "dynamicToolCall",
+  "enteredReviewMode",
+  "exitedReviewMode",
+  "fileChange",
+  "hookPrompt",
+  "imageGeneration",
+  "imageView",
+  "mcpElicitationRequest",
+  "mcpToolCall",
+  "permissionsRequest",
+  "requestUserInput",
+  "serverRequest",
+  "sleep",
+  "webSearch",
+]);
+
+export function intermediateProcessSummary(items: ThreadTimelineItem[]) {
+  return items.reduce(
+    (summary, item) => {
+      if (intermediateToolItemTypes.has(item.type)) summary.toolCallCount += 1;
+      if (item.type === "agentMessage" || item.type === "reasoning") summary.messageCount += 1;
+      if (item.type === "collabAgentToolCall" || item.type === "subAgentActivity") {
+        summary.subagentCount += 1;
+      }
+      return summary;
+    },
+    { toolCallCount: 0, messageCount: 0, subagentCount: 0 },
+  );
 }
 
 function sameResponseUsage(

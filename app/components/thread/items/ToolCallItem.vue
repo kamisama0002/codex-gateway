@@ -1,20 +1,12 @@
 <script setup lang="ts">
 import type { ThreadHistoryItem } from "~~/shared/types";
-import {
-  CheckCircle2Icon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  ImageIcon,
-  Loader2Icon,
-  SearchIcon,
-  WrenchIcon,
-  XCircleIcon,
-} from "@lucide/vue";
+import { ChevronDownIcon, ChevronRightIcon, ImageIcon, SearchIcon, WrenchIcon } from "@lucide/vue";
 import { computed } from "vue";
 import { Source, Sources } from "@codex-gateway/ai-elements/sources";
 import { Collapsible, CollapsibleTrigger } from "@codex-gateway/ui/collapsible";
 import { ScrollArea } from "@codex-gateway/ui/scroll-area";
 import DeferredCollapsibleContent from "@/components/common/DeferredCollapsibleContent.vue";
+import StateDot from "@/components/common/StateDot.vue";
 import MarkdownContent from "@/components/common/MarkdownContent.vue";
 import StaticJsonCodeBlock from "@/components/common/StaticJsonCodeBlock.vue";
 import { isItemInProgress } from "@/utils/thread-items";
@@ -44,7 +36,8 @@ const visualStatus = computed<"running" | "completed" | "failed" | null>(() => {
 <template>
   <Collapsible v-slot="{ open }" class="max-w-4xl text-ink-muted">
     <CollapsibleTrigger
-      class="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-sm enabled:hover:bg-canvas-soft disabled:cursor-default"
+      class="timeline-process-row flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-sm enabled:hover:bg-canvas-soft disabled:cursor-default"
+      :data-state="visualStatus === 'running' ? 'running' : undefined"
       :disabled="detailSections.length === 0"
       :title="detailSections.length > 0 ? t('app.toolDetails') : undefined"
       data-testid="tool-call-toggle"
@@ -53,23 +46,15 @@ const visualStatus = computed<"running" | "completed" | "failed" | null>(() => {
       <ImageIcon v-else-if="iconType === 'image'" class="size-4" />
       <WrenchIcon v-else class="size-4" />
       <span class="min-w-0 flex-1 truncate">{{ title }}</span>
-      <Loader2Icon
-        v-if="visualStatus === 'running'"
-        class="size-4 shrink-0 animate-spin text-primary"
-        :aria-label="t('app.running')"
-      />
-      <CheckCircle2Icon
-        v-else-if="visualStatus === 'completed'"
-        class="size-4 shrink-0 text-accent-green"
-        role="img"
-        :aria-label="t('app.completed')"
-      />
-      <XCircleIcon
-        v-else-if="visualStatus === 'failed'"
-        class="size-4 shrink-0 text-destructive"
-        role="img"
-        :aria-label="t('app.failed')"
-      />
+      <span v-if="visualStatus === 'running'" role="img" :aria-label="t('app.running')">
+        <StateDot state="ongoing" />
+      </span>
+      <span v-else-if="visualStatus === 'completed'" role="img" :aria-label="t('app.completed')">
+        <StateDot state="done" />
+      </span>
+      <span v-else-if="visualStatus === 'failed'" role="img" :aria-label="t('app.failed')">
+        <StateDot state="error" />
+      </span>
       <ChevronDownIcon
         v-if="detailSections.length > 0 && open"
         class="size-4 shrink-0 text-ink-faint"

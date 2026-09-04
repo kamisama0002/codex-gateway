@@ -1,19 +1,13 @@
 <script setup lang="ts">
 import type { ThreadHistoryItem } from "~~/shared/types";
-import {
-  CheckCircle2Icon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  TerminalIcon,
-  XCircleIcon,
-} from "@lucide/vue";
+import { ChevronDownIcon, ChevronRightIcon, TerminalIcon } from "@lucide/vue";
 import { computed } from "vue";
-import { Loader } from "@codex-gateway/ai-elements/loader";
 import { ConfirmationAction } from "@codex-gateway/ai-elements/confirmation";
 import { Badge } from "@codex-gateway/ui/badge";
 import { Collapsible, CollapsibleTrigger } from "@codex-gateway/ui/collapsible";
 import HighlightedCode from "@/components/common/HighlightedCode.vue";
 import DeferredCollapsibleContent from "@/components/common/DeferredCollapsibleContent.vue";
+import StateDot from "@/components/common/StateDot.vue";
 import { ChatStickToBottomScrollArea } from "@/components/common/chat-virtualizer";
 import CodexApprovalConfirmation from "@/components/thread/items/approval/CodexApprovalConfirmation.vue";
 import { useServerRequestResponder } from "@/composables/thread/useServerRequestResponder";
@@ -78,38 +72,39 @@ async function respond(result: unknown) {
 <template>
   <Collapsible v-slot="{ open }" class="max-w-4xl text-ink-muted">
     <CollapsibleTrigger
-      class="flex w-full items-center gap-2 rounded-md py-1 text-left text-sm hover:bg-canvas-soft"
+      class="timeline-process-row flex w-full items-center gap-2 rounded-md py-1 text-left text-sm hover:bg-canvas-soft"
+      :data-state="visualStatus === 'running' ? 'running' : undefined"
     >
       <TerminalIcon class="size-4 shrink-0" />
       <span class="min-w-0 flex-1 truncate">{{ title }}</span>
       <Badge v-if="pendingApproval" variant="outline">{{ t("app.waitingApproval") }}</Badge>
-      <!-- The icon is the complete command lifecycle indicator. AI Elements owns the spinner
-           geometry and animation; use the primary foreground token because accent is a surface
-           token in this theme and is too faint for an active command. Do not add a status badge
-           beside it: app-server's raw status repeats the same information and truncates commands. -->
-      <Loader
+      <span
         v-if="visualStatus === 'running'"
         data-testid="command-status-running"
-        class="size-4 shrink-0 text-primary"
+        role="img"
         :aria-label="t('app.running')"
         :title="t('app.running')"
-      />
-      <CheckCircle2Icon
+      >
+        <StateDot state="ongoing" />
+      </span>
+      <span
         v-else-if="visualStatus === 'completed'"
         data-testid="command-status-completed"
-        class="size-4 shrink-0 text-accent-green"
         role="img"
         :aria-label="t('app.completed')"
         :title="t('app.completed')"
-      />
-      <XCircleIcon
+      >
+        <StateDot state="done" />
+      </span>
+      <span
         v-else-if="visualStatus === 'failed'"
         data-testid="command-status-failed"
-        class="size-4 shrink-0 text-destructive"
         role="img"
         :aria-label="t('app.failed')"
         :title="t('app.failed')"
-      />
+      >
+        <StateDot state="error" />
+      </span>
       <span class="rounded-full p-0.5">
         <ChevronDownIcon v-if="open" class="size-4 shrink-0 text-ink-faint" />
         <ChevronRightIcon v-else class="size-4 shrink-0 text-ink-faint" />

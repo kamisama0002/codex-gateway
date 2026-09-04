@@ -75,7 +75,7 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
         :data-selected="selected ? 'true' : 'false'"
         :data-archived="archived ? 'true' : 'false'"
         variant="ghost"
-        class="group/session w-full min-w-0 justify-start overflow-hidden font-normal focus-visible:ring-0"
+        class="session-row group/session w-full min-w-0 justify-start overflow-hidden font-normal focus-visible:ring-0"
         :class="[
           compact
             ? 'h-8 min-h-8 rounded-lg px-2 py-0 text-sm hover:bg-muted'
@@ -196,3 +196,21 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
     </ContextMenuContent>
   </ContextMenu>
 </template>
+
+<style scoped>
+.session-row {
+  animation: session-row-in 150ms ease-out;
+}
+
+@keyframes session-row-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-row {
+    animation: none;
+  }
+}
+</style>

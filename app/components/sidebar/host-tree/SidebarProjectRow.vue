@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { ChevronRightIcon, FolderIcon, FolderOpenIcon, FolderXIcon, PlusIcon, Trash2Icon } from "@lucide/vue";
+import {
+  ChevronRightIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  FolderXIcon,
+  PlusIcon,
+  Trash2Icon,
+} from "@lucide/vue";
 import type { ProjectRecord } from "~~/shared/types";
 import { Button } from "@codex-gateway/ui/button";
 import {
@@ -43,10 +50,7 @@ const folderLabel = computed(() => workspaceFolderLabel(props.project));
         v-bind="longPressHandlers"
         variant="ghost"
         class="group/project h-[2.125rem] w-full min-w-0 justify-start gap-1.5 overflow-hidden rounded-lg px-2 text-sm font-normal hover:bg-muted focus-visible:ring-0"
-        :class="[
-          missing ? 'text-ink-faint' : 'text-ink',
-          selected && !missing ? 'bg-muted' : '',
-        ]"
+        :class="[missing ? 'text-ink-faint' : 'text-ink', selected && !missing ? 'bg-muted' : '']"
         :data-project-missing="missing ? 'true' : 'false'"
         @click="selectProject"
       >
@@ -63,7 +67,12 @@ const folderLabel = computed(() => workspaceFolderLabel(props.project));
           <span
             class="inline-flex size-4 shrink-0 items-center justify-center group-hover/project:hidden"
           >
-            <FolderIcon class="size-4 text-ink-muted" />
+            <FolderOpenIcon
+              v-if="expanded"
+              class="size-4"
+              :class="selected ? 'text-primary' : 'text-ink-muted'"
+            />
+            <FolderIcon v-else class="size-4 text-ink-muted" />
           </span>
         </template>
         <span class="min-w-0 flex-1 truncate text-left" :title="folderLabel">
