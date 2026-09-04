@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { ProjectRecord, ProjectUpdateInput } from "~~/shared/types";
+import { isManagedRuntimeHostId } from "~~/shared/runtime/managed-runtime";
 
 export const hostBaseSchema = z
   .object({
@@ -48,3 +50,25 @@ export const projectCreateSchema = z.object({
 });
 
 export const projectUpdateSchema = projectCreateSchema;
+
+export function constrainProjectUpdate(
+  existing: ProjectRecord,
+  input: ProjectUpdateInput,
+): ProjectUpdateInput {
+  if (input.hostId !== existing.hostId) {
+    throw new Error("Project host cannot be changed");
+  }
+  if (
+    isManagedRuntimeHostId(existing.hostId) &&
+    input.remotePath.trim() !== existing.remotePath.trim()
+  ) {
+    throw new Error("Managed workspace path cannot be changed");
+  }
+  return {
+    ...input,
+    hostId: existing.hostId,
+    remotePath: isManagedRuntimeHostId(existing.hostId)
+      ? existing.remotePath.trim()
+      : input.remotePath.trim(),
+  };
+}

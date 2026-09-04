@@ -42,19 +42,29 @@ const visibleDirectories = computed(() =>
 );
 const editing = computed(() => Boolean(props.project));
 const dialogTitleKey = computed(() => {
-  if (editing.value) return "app.editProject";
+  if (editing.value) return managedHost.value ? "app.editWorkspace" : "app.editProject";
   return managedHost.value ? "app.addWorkspace" : "app.addProject";
 });
 const dialogDescriptionKey = computed(() => {
-  if (editing.value) return "app.editProjectDescription";
+  if (editing.value)
+    return managedHost.value ? "app.editWorkspaceDescription" : "app.editProjectDescription";
   return managedHost.value ? "app.addWorkspaceDescription" : "app.addProjectDescription";
 });
+const saveLabelKey = computed(() => {
+  if (!editing.value) return dialogTitleKey.value;
+  return managedHost.value ? "app.saveWorkspace" : "app.saveProject";
+});
 const defaultBrowsePath = computed(() => (managedHost.value ? MANAGED_WORKSPACE_PATH : "~"));
+const canSave = computed(
+  () =>
+    props.host !== null &&
+    projectForm.value.name.trim() !== "" &&
+    projectForm.value.remotePath.trim() !== "",
+);
 
 watch(open, (isOpen) => {
   if (isOpen) {
     resetForm();
-    if (managedHost.value) void browseDirectories();
   }
 });
 
@@ -62,7 +72,12 @@ watch(
   () => projectForm.value.name,
   (name) => {
     if (!managedHost.value || editing.value || pathLocked.value) return;
-    projectForm.value.remotePath = name.trim() === "" ? "" : managedWorkspaceFolderFromName(name);
+    if (name.trim() === "") {
+      projectForm.value.remotePath = "";
+      return;
+    }
+    const path = managedWorkspaceFolderFromName(name);
+    projectForm.value.remotePath = path === MANAGED_WORKSPACE_PATH ? "" : path;
   },
 );
 
@@ -142,12 +157,12 @@ function resetForm() {
       </DialogHeader>
 
       <div class="min-h-0 flex-1 space-y-3 overflow-y-auto">
-        <div class="grid grid-cols-[1fr_auto] gap-2">
+        <div v-if="!managedHost" class="grid grid-cols-[1fr_auto] gap-2">
           <Input
             v-model="directoryPath"
             data-testid="project-browse-path-input"
             :aria-label="t('app.remotePath')"
-            :placeholder="managedHost ? MANAGED_WORKSPACE_PATH : t('app.remotePath')"
+            :placeholder="t('app.remotePath')"
           />
           <Button variant="secondary" :disabled="!host || browsing" @click="browseDirectories">
             <FolderOpenIcon class="size-4" />
@@ -155,7 +170,7 @@ function resetForm() {
           </Button>
         </div>
 
-        <div v-if="visibleDirectories.length" class="grid grid-cols-2 gap-1">
+        <div v-if="!managedHost && visibleDirectories.length" class="grid grid-cols-2 gap-1">
           <Button
             v-for="entry in visibleDirectories"
             :key="entry.path"
@@ -169,26 +184,27 @@ function resetForm() {
         </div>
 
         <div
-          v-if="directoryError"
+          v-if="!managedHost && directoryError"
           class="whitespace-pre-line rounded-md bg-destructive/10 p-3 text-sm text-destructive"
         >
           {{ directoryError }}
         </div>
 
-        <Separator />
+        <Separator v-if="!managedHost" />
 
-        <div class="grid gap-3 md:grid-cols-2">
+        <div class="grid gap-3" :class="managedHost ? 'grid-cols-1' : 'md:grid-cols-2'">
           <Input
             v-model="projectForm.name"
             data-testid="project-name-input"
-            :aria-label="t('app.projectName')"
-            :placeholder="t('app.projectName')"
+            :aria-label="t(managedHost ? 'app.workspaceName' : 'app.projectName')"
+            :placeholder="t(managedHost ? 'app.workspaceName' : 'app.projectName')"
           />
           <Input
+            v-if="!managedHost"
             v-model="projectForm.remotePath"
             data-testid="project-path-input"
             :aria-label="t('app.remotePath')"
-            :placeholder="managedHost ? `${MANAGED_WORKSPACE_PATH}/my-app` : t('app.remotePath')"
+            :placeholder="t('app.remotePath')"
             @input="pathLocked = true"
           />
         </div>
@@ -197,11 +213,11 @@ function resetForm() {
       <Button
         data-testid="add-project-button"
         class="w-full"
-        :disabled="!host || !projectForm.name || !projectForm.remotePath || saving"
+        :disabled="!canSave || saving"
         @click="saveProject"
       >
         <FolderIcon class="size-4" />
-        {{ editing ? t("app.saveProject") : t(dialogTitleKey) }}
+        {{ t(saveLabelKey) }}
       </Button>
     </DialogContent>
   </Dialog>
