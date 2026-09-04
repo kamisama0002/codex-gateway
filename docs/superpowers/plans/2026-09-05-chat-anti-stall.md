@@ -131,4 +131,3 @@
 - [ ] Run Nuxt typecheck, E2E TypeScript typecheck, oxlint, and changed-file formatting checks.
 - [ ] Run focused containerized E2E for new-thread cancellation, reconnect status, Provider failure, scroll anchoring, and multi-client selection.
 - [ ] Run `git diff --check` and a final code review before PR/deployment.
-
