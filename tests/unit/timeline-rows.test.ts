@@ -24,6 +24,43 @@ describe("intermediate process summary", () => {
       subagentCount: 2,
     });
   });
+
+  it("does not render a disclosure for an unloaded summary with no known process items", () => {
+    const summaryOnly = turnState({
+      id: "turn-summary-only",
+      status: "completed",
+      itemsView: "summary",
+      prompt: "1等于几",
+      response: "1",
+    });
+
+    const rows = buildThreadTimelineRows({
+      threadId: "thread-1",
+      turns: [summaryOnly],
+      agentActionsAvailable: true,
+    });
+
+    expect(rows.some((row) => row.type === "intermediateHeader")).toBe(false);
+  });
+
+  it("keeps the disclosure when a summary already proves process content exists", () => {
+    const summaryWithProcess = turnState({
+      id: "turn-summary-process",
+      status: "completed",
+      itemsView: "summary",
+      prompt: "查看营业额",
+      intermediateResponse: "正在查询业务数据",
+      response: "营业额为 100 万元",
+    });
+
+    const rows = buildThreadTimelineRows({
+      threadId: "thread-1",
+      turns: [summaryWithProcess],
+      agentActionsAvailable: true,
+    });
+
+    expect(rows.some((row) => row.type === "intermediateHeader")).toBe(true);
+  });
 });
 
 describe("turn navigation metadata", () => {
@@ -71,6 +108,7 @@ describe("turn navigation metadata", () => {
 function turnState(input: {
   id: string;
   status: string;
+  itemsView?: "notLoaded" | "summary" | "full";
   prompt: string;
   intermediateResponse?: string;
   response: string;
@@ -101,7 +139,7 @@ function turnState(input: {
   const turn: ThreadTimelineTurn = {
     id: input.id,
     status: input.status,
-    itemsView: "full",
+    itemsView: input.itemsView ?? "full",
     items: [userItem, ...intermediateItems, agentItem],
   };
   return {

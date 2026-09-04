@@ -28,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   reachStart: [];
   userDetachedChange: [detached: boolean];
+  visibleTurnIdsChange: [turnIds: string[]];
 }>();
 
 const scrollFrameRef = ref<InstanceType<typeof ChatVirtualScrollFrame> | null>(null);
@@ -75,6 +76,14 @@ const chatVirtualizer = useChatVirtualizer({
 });
 
 const virtualRows = chatVirtualizer.virtualItems;
+const visibleTurnIds = computed(() => [
+  ...new Set(
+    virtualRows.value.flatMap((virtualRow) => {
+      const turnId = props.rows[virtualRow.index]?.turnId;
+      return turnId === undefined || turnId === "" ? [] : [turnId];
+    }),
+  ),
+]);
 const viewportElement = computed(() => scrollViewport());
 const viewportVisible = useElementVisibility(viewportElement);
 const documentVisibility = useDocumentVisibility();
@@ -220,6 +229,14 @@ watch(
   (detached) => {
     if (!detached) startControlsVisible.value = false;
     emit("userDetachedChange", detached);
+  },
+  { immediate: true },
+);
+
+watch(
+  visibleTurnIds,
+  (turnIds) => {
+    emit("visibleTurnIdsChange", turnIds);
   },
   { immediate: true },
 );

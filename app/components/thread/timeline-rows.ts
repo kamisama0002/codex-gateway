@@ -82,7 +82,9 @@ export function buildThreadTimelineRows(input: {
     const timingTarget = sections.finalItems.findLast((item) => item.type === "agentMessage");
     appendItemRows(rows, input.threadId, turn.id, "user", sections.userItems, sections);
 
-    if (sections.intermediateItems.length || turn.itemsView !== "full") {
+    // Match DSH's foldable-process rule: incomplete history is not evidence that a process exists.
+    // Visible summary Turns are hydrated in the background; only real process items add this row.
+    if (sections.intermediateItems.length > 0) {
       const summary = intermediateProcessSummary(sections.intermediateItems);
       rows.push({
         key: `${input.threadId}:turn-${turn.id}:intermediate-header`,
