@@ -6,6 +6,7 @@ import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayRealtimeStore } from "@/stores/gateway-realtime";
+import { isRealtimeRequestAbortError } from "@/stores/gateway-realtime/request-errors";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import {
   applyStartedThreadResult,
@@ -288,7 +289,7 @@ export function createThreadOpenActions() {
 
     async startThread(
       options: ComposerTurnOptions = {},
-      context?: { hostId?: number; projectId?: number | null },
+      context?: { hostId?: number; projectId?: number | null; signal?: AbortSignal },
     ) {
       const navigation = useGatewayNavigationStore();
       cacheSelectedThreadView();
@@ -305,6 +306,7 @@ export function createThreadOpenActions() {
       try {
         const result = await requestStartThread(options, {
           projectId: navigation.selectedProjectId,
+          signal: context?.signal,
         });
         if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
         const threadId = applyStartedThreadResult(result);
@@ -321,11 +323,11 @@ export function createThreadOpenActions() {
         // Creating the thread is the authoritative state transition. Commit its selection and URL
         // before refreshing the sidebar catalog: that secondary RPC may be slow while a host has
         // just upgraded/restarted, but it must not leave a successfully created thread unreachable.
-        await navigation.listThreads();
-        cacheSelectedThreadView();
+        void navigation.listThreads();
         return threadId;
       } catch (error: unknown) {
         if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
+        if (isRealtimeRequestAbortError(error)) return null;
         gateway.setError(
           messageFromError(error, gateway.t("app.startThreadFailed"), gateway.errorLabels),
           {

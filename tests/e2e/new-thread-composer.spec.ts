@@ -6,7 +6,7 @@ import {
   realtimeClientMessageCount,
   waitForRealtimeClientMessage,
 } from "./helpers/realtime-socket-probe";
-import { waitForSelectedThreadId } from "./helpers/remote-codex";
+import { execRemoteSsh, waitForSelectedThreadId } from "./helpers/remote-codex";
 
 test("creates a thread and sends the first message from the centered composer", async ({
   page,
@@ -62,4 +62,97 @@ test("creates a thread and sends the first message from the centered composer", 
     messageOffset,
   );
   expect(submittedTurns).toBe(1);
+});
+
+test("cancels pending first-thread creation without clearing the draft or starting a turn", async ({
+  page,
+  remoteWorkspace,
+}) => {
+  await installRealtimeSocketProbe(page);
+  await openApp(page);
+  await remoteWorkspace.provision({
+    hostName: `cancel-new-thread-host-${Date.now()}`,
+    projectName: `cancel-new-thread-project-${Date.now()}`,
+  });
+
+  const paused = await execRemoteSsh(
+    remoteWorkspace.remote,
+    `pids="$(pgrep -f '[c]odex app-server' | tr '\\n' ' ')"; test -n "$pids"; kill -STOP $pids; printf '%s' "$pids"`,
+  );
+  const pausedPids = paused.stdout
+    .trim()
+    .split(/\s+/)
+    .filter((pid) => /^\d+$/.test(pid));
+  expect(pausedPids.length).toBeGreaterThan(0);
+  let resumed = false;
+
+  try {
+    const marker = `取消首次会话创建 ${Date.now()}`;
+    const composer = page.getByTestId("composer-input");
+    const sendButton = page.getByTestId("send-turn-button");
+    await composer.fill(marker);
+    const messageOffset = await realtimeClientMessageCount(page);
+    await sendButton.click();
+
+    const threadStart = z
+      .object({ type: z.literal("thread.start"), requestId: z.string() })
+      .loose()
+      .parse(await waitForRealtimeClientMessage(page, "thread.start", messageOffset));
+    await page.evaluate((requestId) => {
+      const state = window as typeof window & {
+        __threadStartedResponses?: Array<Record<string, unknown>>;
+      };
+      state.__threadStartedResponses = [];
+      for (const socket of window.__gatewayRealtimeProbe?.sockets ?? []) {
+        socket.addEventListener("message", (event) => {
+          if (typeof event.data !== "string") return;
+          try {
+            const message: unknown = JSON.parse(event.data);
+            if (
+              message !== null &&
+              typeof message === "object" &&
+              "type" in message &&
+              message.type === "thread.started" &&
+              "requestId" in message &&
+              message.requestId === requestId
+            ) {
+              state.__threadStartedResponses?.push(message);
+            }
+          } catch {
+            // Ignore non-protocol frames.
+          }
+        });
+      }
+    }, threadStart.requestId);
+
+    await expect(sendButton).toBeEnabled();
+    await expect(sendButton).toHaveAttribute("aria-label", "取消创建会话");
+    await sendButton.click();
+    await expect(composer).toHaveAttribute("data-value", marker);
+
+    await execRemoteSsh(remoteWorkspace.remote, `kill -CONT ${pausedPids.join(" ")}`);
+    resumed = true;
+    await page.waitForFunction(
+      () =>
+        ((window as typeof window & { __threadStartedResponses?: unknown[] })
+          .__threadStartedResponses?.length ?? 0) > 0,
+      undefined,
+      { timeout: 30_000 },
+    );
+
+    await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
+    await expect(composer).toHaveAttribute("data-value", marker);
+    const submittedTurns = await page.evaluate(
+      (offset) =>
+        (window.__gatewayRealtimeProbe?.messages ?? [])
+          .slice(offset)
+          .filter((message) => message.type === "turn.start").length,
+      messageOffset,
+    );
+    expect(submittedTurns).toBe(0);
+  } finally {
+    if (!resumed) {
+      await execRemoteSsh(remoteWorkspace.remote, `kill -CONT ${pausedPids.join(" ")}`);
+    }
+  }
 });

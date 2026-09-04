@@ -6,12 +6,16 @@ export class RealtimeRequestError extends Error {
   constructor(
     message: string,
     readonly request: RealtimeRequestMessage | undefined,
-    readonly reason: "timeout" | "unavailable" | "disconnected" | "server",
+    readonly reason: "timeout" | "unavailable" | "disconnected" | "server" | "aborted",
     readonly details: Record<string, unknown> = {},
   ) {
     super(formatRealtimeRequestError(message, request, details));
     this.name = "RealtimeRequestError";
   }
+}
+
+export function isRealtimeRequestAbortError(error: unknown): error is RealtimeRequestError {
+  return error instanceof RealtimeRequestError && error.reason === "aborted";
 }
 
 export function realtimeRequestErrorFromServer(

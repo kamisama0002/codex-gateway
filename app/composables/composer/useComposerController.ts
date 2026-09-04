@@ -102,10 +102,12 @@ export function useComposerController() {
   );
   const canUsePrimaryAction = computed(() =>
     Boolean(
-      (canSendTurn.value || canInterruptTurn.value) && !attachmentUpload.uploadingAttachments.value,
+      (submit.submittingNewThread.value || canSendTurn.value || canInterruptTurn.value) &&
+      !attachmentUpload.uploadingAttachments.value,
     ),
   );
   const sendButtonLabel = computed(() => {
+    if (submit.submittingNewThread.value) return t("app.cancelThreadCreation");
     if (submit.hasComposerInput.value) return t("app.send");
     if (isThreadRunning.value) return t("app.interruptTurn");
     if (selectedThreadStatus.value === "completed") return t("app.completed");
@@ -155,6 +157,10 @@ export function useComposerController() {
   }
 
   function handlePrimaryAction() {
+    if (submit.submittingNewThread.value) {
+      submit.cancelPendingThreadStart();
+      return;
+    }
     if (canInterruptTurn.value) {
       void submit.interruptTurn();
       return;
@@ -193,7 +199,7 @@ export function useComposerController() {
     deactivatePlanMode: submit.deactivatePlanMode,
     hasComposerInput: submit.hasComposerInput,
     interruptingTurn: submit.interruptingTurn,
-    submittingNewThread: submit.submittingNewThread,
+    creatingFirstThread: submit.submittingNewThread,
     composerInputEnabled,
     selectedHostId,
     selectedThreadId,

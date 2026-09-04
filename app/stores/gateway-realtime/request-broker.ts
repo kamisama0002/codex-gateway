@@ -1,6 +1,6 @@
 import type { RealtimeClientMessage, RealtimeServerMessage } from "~~/shared/types";
 import { createUuid } from "@/lib/uuid";
-import { RealtimeRequestError } from "./request-errors";
+import { isRealtimeRequestAbortError, RealtimeRequestError } from "./request-errors";
 
 type RealtimeRequestMessage = Extract<RealtimeClientMessage, { requestId: string }>;
 type RealtimeResponseMessage = Extract<RealtimeServerMessage, { requestId: string }>;
@@ -11,6 +11,8 @@ interface PendingRealtimeRequest {
   timer: number;
   request: RealtimeRequestMessage;
   errorMode: RealtimeRequestErrorMode;
+  signal?: AbortSignal;
+  abortListener?: () => void;
 }
 
 export type RealtimeRequestErrorMode = "return" | "notify";
@@ -18,6 +20,7 @@ export type RealtimeRequestErrorMode = "return" | "notify";
 interface RealtimeRequestOptions {
   timeoutMs?: number;
   errorMode?: RealtimeRequestErrorMode;
+  signal?: AbortSignal;
 }
 
 export interface RealtimeRequestRejection {
@@ -55,19 +58,22 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
     parseOrOptions?: ((message: RealtimeResponseMessage) => T) | RealtimeRequestOptions,
     configuredOptions?: RealtimeRequestOptions,
   ): Promise<RealtimeResponseMessage | T> {
-    await options.waitForReady(REALTIME_READY_TIMEOUT_MS);
-    const requestId = `gateway-ws-${createUuid()}`;
-    const requestMessage = buildMessage(requestId);
     const parse = typeof parseOrOptions === "function" ? parseOrOptions : undefined;
     const requestOptions =
       typeof parseOrOptions === "function" ? configuredOptions : parseOrOptions;
+    await waitForReady(requestOptions?.signal);
+    const requestId = `gateway-ws-${createUuid()}`;
+    const requestMessage = buildMessage(requestId);
+    if (requestOptions?.signal?.aborted === true) {
+      throw abortedRequestError(requestMessage);
+    }
     const timeoutMs = requestOptions?.timeoutMs ?? REALTIME_REQUEST_TIMEOUT_MS;
     const errorMode = requestOptions?.errorMode ?? "return";
 
     const response = await new Promise<RealtimeResponseMessage>((resolve, reject) => {
       const timer = window.setTimeout(() => {
-        pendingRequests.delete(requestId);
-        reject(
+        rejectRequest(
+          requestId,
           new RealtimeRequestError(options.timeoutMessage(), requestMessage, "timeout", {
             requestId,
             timeoutMs,
@@ -82,7 +88,17 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
         timer,
         request: requestMessage,
         errorMode,
+        signal: requestOptions?.signal,
       });
+      if (requestOptions?.signal !== undefined) {
+        const abortListener = () => rejectRequest(requestId, abortedRequestError(requestMessage));
+        pendingRequests.get(requestId)!.abortListener = abortListener;
+        requestOptions.signal.addEventListener("abort", abortListener, { once: true });
+        if (requestOptions.signal.aborted) {
+          abortListener();
+          return;
+        }
+      }
       if (!options.send(requestMessage)) {
         rejectRequest(
           requestId,
@@ -99,18 +115,51 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
   function resolveRequest(message: RealtimeResponseMessage) {
     const pending = pendingRequests.get(message.requestId);
     if (!pending) return;
-    window.clearTimeout(pending.timer);
-    pendingRequests.delete(message.requestId);
+    clearPendingRequest(message.requestId, pending);
     pending.resolve(message);
   }
 
   function rejectRequest(requestId: string, error: Error) {
     const pending = pendingRequests.get(requestId);
     if (!pending) return { delivered: false, notify: true };
-    window.clearTimeout(pending.timer);
-    pendingRequests.delete(requestId);
+    clearPendingRequest(requestId, pending);
     pending.reject(error);
-    return { delivered: true, notify: pending.errorMode === "notify" };
+    return {
+      delivered: true,
+      notify: pending.errorMode === "notify" && !isRealtimeRequestAbortError(error),
+    };
+  }
+
+  function clearPendingRequest(requestId: string, pending: PendingRealtimeRequest) {
+    window.clearTimeout(pending.timer);
+    if (pending.signal !== undefined && pending.abortListener !== undefined) {
+      pending.signal.removeEventListener("abort", pending.abortListener);
+    }
+    pendingRequests.delete(requestId);
+  }
+
+  async function waitForReady(signal?: AbortSignal) {
+    if (signal === undefined) {
+      await options.waitForReady(REALTIME_READY_TIMEOUT_MS);
+      return;
+    }
+    if (signal.aborted) throw abortedRequestError(undefined);
+    await new Promise<void>((resolve, reject) => {
+      const abortListener = () => reject(abortedRequestError(undefined));
+      signal.addEventListener("abort", abortListener, { once: true });
+      void options
+        .waitForReady(REALTIME_READY_TIMEOUT_MS)
+        .then(resolve, reject)
+        .finally(() => {
+          signal.removeEventListener("abort", abortListener);
+        });
+    });
+  }
+
+  function abortedRequestError(request: RealtimeRequestMessage | undefined) {
+    return new RealtimeRequestError("Realtime request aborted", request, "aborted", {
+      ...(request === undefined ? {} : options.requestContext(request)),
+    });
   }
 
   function rejectAllRequests(error: Error) {

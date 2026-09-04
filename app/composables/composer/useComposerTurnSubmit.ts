@@ -35,6 +35,7 @@ export function useComposerTurnSubmit(input: {
   const threadTurns = useGatewayThreadTurnsStore();
   const interruptingTurn = ref(false);
   const submittingNewThread = ref(false);
+  let pendingThreadStart: AbortController | null = null;
   const planModeActive = computed(() => composer.selectedThreadCollaborationMode === "plan");
   const hasComposerInput = computed(() =>
     Boolean(input.turnText.value.trim() || input.attachedFiles.value.length),
@@ -80,20 +81,33 @@ export function useComposerTurnSubmit(input: {
     const startingNewThread = navigation.selectedThreadId === null;
     if (startingNewThread && navigation.selectedProjectId === null) return;
 
-    if (startingNewThread) submittingNewThread.value = true;
-    try {
-      if (startingNewThread) {
-        const threadId = await threadView.startThread(turnOptions);
-        if (threadId === null || navigation.selectedThreadId !== threadId) return;
+    if (startingNewThread) {
+      const controller = new AbortController();
+      pendingThreadStart = controller;
+      submittingNewThread.value = true;
+      try {
+        const threadId = await threadView.startThread(turnOptions, { signal: controller.signal });
+        if (
+          controller.signal.aborted ||
+          threadId === null ||
+          navigation.selectedThreadId !== threadId
+        ) {
+          return;
+        }
+      } finally {
+        if (pendingThreadStart === controller) pendingThreadStart = null;
+        submittingNewThread.value = false;
       }
-      if (planModeActive.value) {
-        composer.dismissLatestSelectedPlanPrompt();
-      }
-      input.clearDraft();
-      await threadTurns.sendTurn(message, sendOptions);
-    } finally {
-      if (startingNewThread) submittingNewThread.value = false;
     }
+    if (planModeActive.value) {
+      composer.dismissLatestSelectedPlanPrompt();
+    }
+    input.clearDraft();
+    await threadTurns.sendTurn(message, sendOptions);
+  }
+
+  function cancelPendingThreadStart() {
+    pendingThreadStart?.abort();
   }
 
   async function interruptTurn() {
@@ -132,6 +146,7 @@ export function useComposerTurnSubmit(input: {
     deactivatePlanMode,
     startNewThread,
     submitTurn,
+    cancelPendingThreadStart,
     interruptTurn,
   };
 }

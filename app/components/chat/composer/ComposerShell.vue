@@ -52,7 +52,7 @@ const props = withDefaults(
     canInterruptTurn: boolean;
     canUsePrimaryAction: boolean;
     interruptingTurn: boolean;
-    submittingNewThread: boolean;
+    creatingFirstThread: boolean;
     selectedThreadStatus: ThreadRuntimeStatus;
     sendButtonLabel: string;
     placement?: "centered" | "docked";
@@ -177,7 +177,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           :can-interrupt-turn="canInterruptTurn"
           :can-use-primary-action="canUsePrimaryAction"
           :interrupting-turn="interruptingTurn"
-          :submitting-new-thread="submittingNewThread"
+          :creating-first-thread="creatingFirstThread"
           :can-attach-files="composerInputEnabled"
           :selected-thread-status="selectedThreadStatus"
           :send-button-label="sendButtonLabel"
