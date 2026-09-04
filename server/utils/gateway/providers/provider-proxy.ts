@@ -24,10 +24,7 @@ const HOP_BY_HOP_HEADERS = new Set([
 export interface ProviderProxyOptions {
   store?: Pick<ProviderStore, "listForUser" | "getWithSecret">;
   fetch?: typeof globalThis.fetch;
-  verifyToken?: (
-    token: string,
-    scope: { userId: number; providerId: string; modelId: string },
-  ) => RuntimeModelTokenClaims;
+  verifyToken?: (token: string, scope: { providerId: string }) => RuntimeModelTokenClaims;
   runtimeStore?: { getByUserId(userId: number): { status: string } | null };
 }
 
@@ -43,7 +40,7 @@ export async function handleProviderResponses(
   const payload = parsePayload(body);
   const modelId = typeof payload.model === "string" ? payload.model : "";
   if (modelId === "") return jsonError(400, "invalid_request");
-  const claims = extractClaims(token, providerId, modelId, options);
+  const claims = extractClaims(token, providerId, options);
   const activeRuntimeStore = options.runtimeStore ?? runtimeStore;
   const runtime = activeRuntimeStore.getByUserId(claims.userId);
   if (runtime === null || runtime.status !== "ready") return jsonError(401, "runtime_not_ready");
@@ -94,13 +91,12 @@ export async function handleProviderResponses(
 function extractClaims(
   token: string,
   providerId: string,
-  modelId: string,
   options: ProviderProxyOptions,
 ): RuntimeModelTokenClaims {
   try {
-    const claims = options.verifyToken?.(token, { userId: 0, providerId, modelId });
+    const claims = options.verifyToken?.(token, { providerId });
     if (claims !== undefined) return claims;
-    return verifyRuntimeModelToken(token, { providerId, modelId });
+    return verifyRuntimeModelToken(token, { providerId });
   } catch {
     throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
   }
