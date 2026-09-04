@@ -158,7 +158,11 @@ const retryMeta = computed(() => {
 const technicalDetails = computed(() => {
   const message = props.error?.message?.trim() ?? "";
   const summary = description.value.trim();
-  return [message !== "" && message !== summary ? message : null, props.error?.details, props.error?.code]
+  return [
+    message !== "" && message !== summary ? message : null,
+    props.error?.details,
+    props.error?.code,
+  ]
     .filter((value, index, values): value is string =>
       Boolean(value && values.indexOf(value) === index),
     )

@@ -223,7 +223,9 @@ test("shows elapsed seconds while the selected thread is running", async ({ page
 
   const notice = page.getByTestId("thread-runtime-notice");
   await expect(notice.getByText("Agent 正在处理", { exact: true })).toBeVisible();
-  await expect(notice.getByText("Agent 正在处理你的请求。你可以随时停止。", { exact: true })).toBeVisible();
+  await expect(
+    notice.getByText("Agent 正在处理你的请求。你可以随时停止。", { exact: true }),
+  ).toBeVisible();
   await expect(notice.getByTestId("thread-runtime-elapsed")).toHaveText("已用时 0 秒");
   await expect(notice.getByTestId("thread-runtime-elapsed")).toHaveText("已用时 1 秒", {
     timeout: 2_500,

@@ -101,3 +101,28 @@ git diff --check: exit 0
 - The composable uses the shared `isActiveThreadRuntimePhase` predicate, keeping its active-phase definition aligned with gateway runtime projection.
 - Tests use actual Vue watcher and scope disposal behavior rather than mocked watcher calls or implementation-only timer assertions.
 - Existing E2E assertions remain unchanged for the real main-pane reconnect and running-notice surfaces. The pending CentOS E2E execution remains owned by the parent task.
+
+## Final Formatting Fix
+
+Only three branch files required a repository `oxfmt --write` pass:
+
+- `app/components/thread/ThreadRuntimeNotice.vue`
+- `tests/e2e/thread-request-notifications.spec.ts`
+- `docs/superpowers/plans/2026-09-05-chat-anti-stall.md`
+
+The diff is mechanical only: an array expression and a long E2E expectation were wrapped, and Markdown list spacing was normalized. No runtime branch, string literal, expected value, or test control flow changed.
+
+Verification after formatting:
+
+```text
+Elapsed unit: 1 file passed, 4 tests passed
+E2E TypeScript: vue-tsc -p tests/e2e/tsconfig.json --noEmit passed
+oxlint: passed
+Blob-aware oxfmt: 13 branch-changed tracked files since 30abf4e passed
+Direct oxfmt --check: all 3 rewritten files passed
+git diff --check: passed
+```
+
+On this Windows checkout, direct `oxfmt --check` for untouched LF Git blobs reports CRLF-only differences. The branch-wide check therefore compares LF-normalized source blobs/current targets with `oxfmt --stdin-filepath` output; it passed for all 13 task-baseline files. The direct check above verifies the three files actually rewritten in the working tree.
+
+The temporary blob archive used for that no-write verification remains at `C:\Users\56870\AppData\Local\Temp\codex-gateway-task3-oxfmt-289264`: execution policy rejected its exact-path cleanup command. It is outside the repository and contains only a `git archive HEAD` snapshot plus copies of the three formatted files.

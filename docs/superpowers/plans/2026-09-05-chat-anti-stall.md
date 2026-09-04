@@ -25,12 +25,14 @@
 ### Task 1: Bound Backend Streaming And File Validation
 
 **Files:**
+
 - Modify: `server/utils/gateway/providers/provider-proxy.ts`
 - Modify: `server/utils/gateway/providers/provider-proxy.test.ts`
 - Modify: `server/utils/gateway/project-files/project-file-references.ts`
 - Create: `server/utils/gateway/project-files/project-file-references.test.ts`
 
 **Interfaces:**
+
 - `ProviderProxyOptions.streamIdleTimeoutMs?: number`
 - `validateProjectFileReferences(host, project, references, { timeoutMs? })`
 
@@ -44,6 +46,7 @@
 ### Task 2: Abort Managed Runtime Requests And First-Thread Creation
 
 **Files:**
+
 - Modify: `app/stores/gateway-realtime/request-broker.ts`
 - Create: `app/stores/gateway-realtime/request-broker.test.ts`
 - Modify: `app/stores/gateway-realtime/request-errors.ts`
@@ -61,6 +64,7 @@
 - Modify: `tests/e2e/new-thread-composer.spec.ts`
 
 **Interfaces:**
+
 - Realtime request options gain `signal?: AbortSignal`.
 - Managed request timeout helper returns `130000` for host `2000000000`, otherwise `undefined`.
 - `startThread` context accepts `signal?: AbortSignal`.
@@ -78,6 +82,7 @@
 ### Task 3: Show Main-Pane Connection And Active Wait State
 
 **Files:**
+
 - Modify: `app/components/chat/AgentWorkspacePane.vue`
 - Modify: `app/components/thread/ThreadRuntimeNotice.vue`
 - Modify: `i18n/locales/zh.json`
@@ -86,6 +91,7 @@
 - Modify: `tests/e2e/thread-request-notifications.spec.ts`
 
 **Interfaces:**
+
 - Reuse `RealtimeConnectionIndicator` in the main pane.
 - `ThreadRuntimeNotice` derives elapsed seconds from its current thread/phase lifecycle.
 
@@ -98,6 +104,7 @@
 ### Task 4: Reproduce And Fix Scroll Anchoring
 
 **Files:**
+
 - Test: `tests/e2e/thread-scroll-behavior.spec.ts`
 - Modify only if reproduced: `app/components/thread/VirtualTimelineViewport.vue`
 - Modify only if reproduced: `app/components/common/chat-virtualizer/*`
@@ -111,6 +118,7 @@
 ### Task 5: Reproduce And Fix New-Thread Selection Race
 
 **Files:**
+
 - Test: `tests/e2e/realtime-multi-client.spec.ts`
 - Modify only if reproduced: `app/stores/gateway-thread-view/actions/thread-open.ts`
 - Modify only if reproduced: `app/stores/gateway/thread-open/view-state.ts`
@@ -125,6 +133,7 @@
 ### Task 6: Integrated Verification
 
 **Files:**
+
 - Review all files changed by Tasks 1-5.
 
 - [ ] Run all new/changed unit tests.
