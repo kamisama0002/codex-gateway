@@ -1,16 +1,12 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import ChatWorkspace from "@/components/chat/ChatWorkspace.vue";
 import GatewaySidebar from "@/components/sidebar/GatewaySidebar.vue";
 import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from "@codex-gateway/ui/sidebar";
-
-const route = useRoute();
-const sidebarDefaultOpen = computed(() => (route.query.embedded === "1" ? false : undefined));
 </script>
 
 <template>
   <main data-testid="desktop-layout" class="h-[100dvh] overflow-hidden bg-canvas-soft text-ink">
-    <SidebarProvider :default-open="sidebarDefaultOpen" class="h-full min-h-0">
+    <SidebarProvider class="h-full min-h-0">
       <Sidebar collapsible="offcanvas">
         <GatewaySidebar />
         <SidebarRail
