@@ -127,12 +127,18 @@ function withFileReferenceTimeout<Value>(operation: () => Promise<Value>, timeou
     try {
       void operation().then(
         (value) => finish(() => resolve(value)),
-        (error: unknown) => finish(() => reject(error)),
+        (error: unknown) => finish(() => reject(fileReferenceOperationError(error))),
       );
     } catch (error) {
-      finish(() => reject(error));
+      finish(() => reject(fileReferenceOperationError(error)));
     }
   });
+}
+
+function fileReferenceOperationError(error: unknown) {
+  return error instanceof Error
+    ? error
+    : new Error("SFTP file reference operation failed", { cause: error });
 }
 
 export function fileReferencesAdditionalContext(
