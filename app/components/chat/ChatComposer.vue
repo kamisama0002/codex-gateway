@@ -2,6 +2,15 @@
 import ComposerShell from "@/components/chat/composer/ComposerShell.vue";
 import { useComposerController } from "@/composables/composer/useComposerController";
 
+withDefaults(
+  defineProps<{
+    placement?: "centered" | "docked";
+  }>(),
+  {
+    placement: "docked",
+  },
+);
+
 const {
   activeEffortCompactLabel,
   activeEffortValue,
@@ -42,6 +51,7 @@ const {
   selectedThreadStatus,
   selectedThreadTokenUsage,
   sendButtonLabel,
+  submittingNewThread,
   saveSelectedThreadGoal,
   stopSelectedThreadGoal,
   resumeSelectedThreadGoal,
@@ -92,6 +102,8 @@ const {
     :interrupting-turn="interruptingTurn"
     :selected-thread-status="selectedThreadStatus"
     :send-button-label="sendButtonLabel"
+    :submitting-new-thread="submittingNewThread"
+    :placement="placement"
     @deactivate-plan="deactivatePlanMode"
     @save-goal="saveSelectedThreadGoal"
     @stop-goal="stopSelectedThreadGoal"

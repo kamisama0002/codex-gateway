@@ -18,42 +18,49 @@ import ComposerToolbar from "@/components/chat/composer/ComposerToolbar.vue";
 import SlashCommandMenu from "@/components/chat/composer/SlashCommandMenu.vue";
 import ComposerEditor from "@/components/chat/composer/ComposerEditor.vue";
 
-const props = defineProps<{
-  modelValue: string;
-  fileReferences: ComposerFileReference[];
-  attachedFiles: ComposerAttachment[];
-  planModeActive: boolean;
-  planSummary: string;
-  goalInputActive: boolean;
-  goal: ThreadGoal | null;
-  goalObservedAt: number | null;
-  goalActionPending: ComposerGoalPendingAction | null;
-  slashMenuOpen: boolean;
-  filteredSlashCommands: SlashMenuItem[];
-  selectedSlashCommandIndex: number;
-  composerInputEnabled: boolean;
-  uploadingAttachments: boolean;
-  selectedThreadId: string | null;
-  selectedHostId: number | null;
-  selectedProjectId: number | null;
-  selectedApprovalMode: ApprovalPolicy | "custom";
-  selectedThreadTokenUsage: ThreadTokenUsageState | null;
-  models: ModelRecord[];
-  loadingModels: boolean;
-  activeModel: string;
-  activeModelLabel: string;
-  activeEffortValue: string;
-  activeEffortCompactLabel: string;
-  effortOptions: Array<{ value: ReasoningEffort; label?: string }>;
-  labelEffortOption: (option: { value: ReasoningEffort; label?: string }) => string;
-  modelOptionValue: (modelOption: { model?: string; id: string }) => string;
-  hasComposerInput: boolean;
-  canInterruptTurn: boolean;
-  canUsePrimaryAction: boolean;
-  interruptingTurn: boolean;
-  selectedThreadStatus: ThreadRuntimeStatus;
-  sendButtonLabel: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue: string;
+    fileReferences: ComposerFileReference[];
+    attachedFiles: ComposerAttachment[];
+    planModeActive: boolean;
+    planSummary: string;
+    goalInputActive: boolean;
+    goal: ThreadGoal | null;
+    goalObservedAt: number | null;
+    goalActionPending: ComposerGoalPendingAction | null;
+    slashMenuOpen: boolean;
+    filteredSlashCommands: SlashMenuItem[];
+    selectedSlashCommandIndex: number;
+    composerInputEnabled: boolean;
+    uploadingAttachments: boolean;
+    selectedThreadId: string | null;
+    selectedHostId: number | null;
+    selectedProjectId: number | null;
+    selectedApprovalMode: ApprovalPolicy | "custom";
+    selectedThreadTokenUsage: ThreadTokenUsageState | null;
+    models: ModelRecord[];
+    loadingModels: boolean;
+    activeModel: string;
+    activeModelLabel: string;
+    activeEffortValue: string;
+    activeEffortCompactLabel: string;
+    effortOptions: Array<{ value: ReasoningEffort; label?: string }>;
+    labelEffortOption: (option: { value: ReasoningEffort; label?: string }) => string;
+    modelOptionValue: (modelOption: { model?: string; id: string }) => string;
+    hasComposerInput: boolean;
+    canInterruptTurn: boolean;
+    canUsePrimaryAction: boolean;
+    interruptingTurn: boolean;
+    submittingNewThread: boolean;
+    selectedThreadStatus: ThreadRuntimeStatus;
+    sendButtonLabel: string;
+    placement?: "centered" | "docked";
+  }>(),
+  {
+    placement: "docked",
+  },
+);
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
@@ -97,7 +104,12 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
 
 <template>
   <div
-    class="shrink-0 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] md:px-[clamp(1rem,3vw,2rem)] md:pb-[clamp(0.5rem,1.4vh,0.75rem)]"
+    class="shrink-0"
+    :class="
+      placement === 'centered'
+        ? 'w-full'
+        : 'px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] md:px-[clamp(1rem,3vw,2rem)] md:pb-[clamp(0.5rem,1.4vh,0.75rem)]'
+    "
   >
     <div class="thread-column">
       <ComposerModeStrip
@@ -165,6 +177,8 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           :can-interrupt-turn="canInterruptTurn"
           :can-use-primary-action="canUsePrimaryAction"
           :interrupting-turn="interruptingTurn"
+          :submitting-new-thread="submittingNewThread"
+          :can-attach-files="composerInputEnabled"
           :selected-thread-status="selectedThreadStatus"
           :send-button-label="sendButtonLabel"
           @attach="openAttachmentPicker"

@@ -48,9 +48,9 @@ test("uses the mobile layout with hidden sidebar and usable composer shell", asy
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("settings-toggle")).toBeHidden();
 
-  await expect(page.getByTestId("chat-scroll-area")).toBeVisible();
-  await expect(page.getByTestId("project-thread-list")).toBeVisible();
-  await expect(page.getByText("这个项目还没有会话")).toBeVisible();
+  await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
+  await expect(page.getByTestId("new-thread-welcome")).toHaveText("你好，今天想完成什么？");
+  await expect(page.getByTestId("composer-input")).toBeEnabled();
 });
 
 test("shows effort and compact context usage without mobile approval controls", async ({
@@ -602,7 +602,7 @@ test("opens sidebar context actions with long press on mobile", async ({
 
   await page.getByTestId("mobile-sidebar-toggle").click();
   await page.getByTestId(`project-button-${project.id}`).click();
-  await expect(page.getByTestId("project-thread-list")).toBeVisible();
+  await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
   await expect(page.getByTestId("open-tmux-mobile-button")).toBeVisible();
   await expect(page.getByTestId("open-host-monitor-mobile-button")).toBeVisible();
   await page.getByTestId("open-host-monitor-mobile-button").click();
@@ -611,14 +611,19 @@ test("opens sidebar context actions with long press on mobile", async ({
   await page.getByTestId("open-terminal-mobile-button").click();
   await expect(page.getByTestId("terminal-panel")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("tab", { name: /Agent/ }).click();
-  await expect(page.getByTestId("project-thread-list")).toBeVisible();
-  const threadButton = page.getByTestId(`project-thread-row-${threadId}`);
+  await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
+  const threadButton = page.getByTestId(`thread-button-${threadId}`);
+  if (!(await threadButton.isVisible().catch(() => false))) {
+    await page.getByTestId("mobile-sidebar-toggle").click();
+  }
   await expect(threadButton).toBeVisible({ timeout: 30_000 });
 
   await longPress(page, threadButton);
   await page.getByRole("menuitem", { name: /置顶/ }).click();
-  await page.getByTestId("mobile-sidebar-toggle").click();
   const pinnedThread = page.getByTestId(`pinned-thread-button-${threadId}`);
+  if (!(await pinnedThread.isVisible().catch(() => false))) {
+    await page.getByTestId("mobile-sidebar-toggle").click();
+  }
   await expect(pinnedThread).toBeVisible();
 
   await longPress(page, pinnedThread);

@@ -30,6 +30,8 @@ defineProps<{
   canInterruptTurn: boolean;
   canUsePrimaryAction: boolean;
   interruptingTurn: boolean;
+  submittingNewThread: boolean;
+  canAttachFiles: boolean;
   selectedThreadStatus: ThreadRuntimeStatus;
   sendButtonLabel: string;
 }>();
@@ -51,7 +53,7 @@ const emit = defineEmits<{
         variant="ghost"
         size="icon"
         class="size-7 rounded-full bg-muted text-ink hover:bg-muted hover:text-ink"
-        :disabled="uploadingAttachments || !selectedThreadId"
+        :disabled="uploadingAttachments || !canAttachFiles"
         :aria-label="$t('app.attachFile')"
         @click="emit('attach')"
       >
@@ -86,10 +88,13 @@ const emit = defineEmits<{
         data-testid="send-turn-button"
         class="size-[2.125rem] shrink-0 -translate-y-0.5 rounded-full bg-primary p-0 text-white hover:bg-primary-active disabled:opacity-40"
         :aria-label="sendButtonLabel"
-        :disabled="!canUsePrimaryAction || interruptingTurn"
+        :disabled="!canUsePrimaryAction || interruptingTurn || submittingNewThread"
         @click="emit('primaryAction')"
       >
-        <Loader2Icon v-if="uploadingAttachments" class="size-3.5 animate-spin" />
+        <Loader2Icon
+          v-if="uploadingAttachments || submittingNewThread"
+          class="size-3.5 animate-spin"
+        />
         <Loader2Icon v-else-if="interruptingTurn" class="size-3.5 animate-spin" />
         <SendIcon v-else-if="hasComposerInput" class="size-3.5" />
         <SquareIcon v-else-if="canInterruptTurn" class="size-3.5 fill-current" />

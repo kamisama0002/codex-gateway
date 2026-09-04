@@ -91,8 +91,9 @@ export function useComposerController() {
   );
   const canSendTurn = computed(
     () =>
-      selectedThreadId.value !== null &&
+      (selectedThreadId.value !== null || selectedProjectId.value !== null) &&
       submit.hasComposerInput.value &&
+      !submit.submittingNewThread.value &&
       !attachmentUpload.uploadingAttachments.value,
   );
   const canInterruptTurn = computed(
@@ -147,7 +148,7 @@ export function useComposerController() {
       return;
     }
     event.preventDefault();
-    if (selectedThreadId.value === null) {
+    if (!canSendTurn.value) {
       return;
     }
     void submitComposer();
@@ -192,6 +193,7 @@ export function useComposerController() {
     deactivatePlanMode: submit.deactivatePlanMode,
     hasComposerInput: submit.hasComposerInput,
     interruptingTurn: submit.interruptingTurn,
+    submittingNewThread: submit.submittingNewThread,
     composerInputEnabled,
     selectedHostId,
     selectedThreadId,

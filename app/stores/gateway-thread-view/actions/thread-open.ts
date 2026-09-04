@@ -299,14 +299,14 @@ export function createThreadOpenActions() {
         navigation.selectedProjectId = context.projectId ?? null;
         clearCurrentThreadView();
       }
-      if (navigation.selectedHostId === null) return;
+      if (navigation.selectedHostId === null) return null;
       const sessionIsCurrent = captureSessionEpoch();
       const gateway = useGatewayBootstrapStore();
       try {
         const result = await requestStartThread(options, {
           projectId: navigation.selectedProjectId,
         });
-        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
         const threadId = applyStartedThreadResult(result);
         cacheSelectedThreadView();
         rememberOpenThread(threadId);
@@ -323,8 +323,9 @@ export function createThreadOpenActions() {
         // just upgraded/restarted, but it must not leave a successfully created thread unreachable.
         await navigation.listThreads();
         cacheSelectedThreadView();
+        return threadId;
       } catch (error: unknown) {
-        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
         gateway.setError(
           messageFromError(error, gateway.t("app.startThreadFailed"), gateway.errorLabels),
           {
@@ -332,6 +333,7 @@ export function createThreadOpenActions() {
             projectId: navigation.selectedProjectId,
           },
         );
+        return null;
       }
     },
   };

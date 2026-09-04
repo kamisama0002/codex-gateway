@@ -3,10 +3,8 @@ import { FolderIcon, Loader2Icon } from "@lucide/vue";
 import { computed } from "vue";
 import ChatComposer from "@/components/chat/ChatComposer.vue";
 import ChatPanelScrollArea from "@/components/chat/ChatPanelScrollArea.vue";
-import ProjectThreadList from "@/components/chat/ProjectThreadList.vue";
 import ThreadChatHeader from "@/components/thread/ThreadChatHeader.vue";
 import ThreadVirtualTimeline from "@/components/thread/ThreadVirtualTimeline.vue";
-import ThreadEmptyState from "@/components/thread/ThreadEmptyState.vue";
 import ActiveSubAgentsBar from "@/components/thread/subagent/ActiveSubAgentsBar.vue";
 import MisalignmentRecoveryCard from "@/components/thread/MisalignmentRecoveryCard.vue";
 import McpRuntimeStatusBar from "@/components/thread/McpRuntimeStatusBar.vue";
@@ -71,13 +69,8 @@ const showThreadLoading = computed(
         </div>
       </ChatPanelScrollArea>
 
-      <ThreadEmptyState
-        v-else-if="selectedThreadId && historyTurns.length === 0"
-        :workspace="currentThread?.cwd"
-      />
-
       <ThreadVirtualTimeline
-        v-else-if="selectedThreadId"
+        v-else-if="selectedThreadId && historyTurns.length > 0"
         :thread-id="selectedThreadId"
         :thread-status="selectedThreadStatus"
         :turns="historyTurns"
@@ -91,17 +84,26 @@ const showThreadLoading = computed(
         @load-older="threadTurns.loadOlderTurns"
       />
 
-      <ChatPanelScrollArea v-else-if="selectedProjectId">
-        <ProjectThreadList />
-      </ChatPanelScrollArea>
+      <div
+        v-else-if="selectedProjectId"
+        data-testid="new-thread-empty-state"
+        class="flex min-h-0 flex-1 items-center overflow-y-auto px-3 py-6 md:px-[clamp(1rem,3vw,2rem)]"
+      >
+        <div class="flex w-full flex-col gap-6">
+          <h1 data-testid="new-thread-welcome" class="text-center text-2xl font-medium text-ink">
+            {{ t("app.newThreadWelcome") }}
+          </h1>
+          <ChatComposer placement="centered" />
+        </div>
+      </div>
 
       <ChatPanelScrollArea v-else class="flex items-center justify-center">
         <div class="mx-auto max-w-md text-center text-sm leading-6 text-ink-muted">
           <div class="mb-1 flex items-center justify-center gap-2">
             <FolderIcon class="size-4" />
-            {{ selectedProjectId ? t("app.selectThreadFirst") : t("app.selectProjectFirst") }}
+            {{ t("app.selectProjectFirst") }}
           </div>
-          {{ selectedProjectId ? t("app.noThread") : t("app.chooseProject") }}
+          {{ t("app.chooseProject") }}
         </div>
       </ChatPanelScrollArea>
 
@@ -114,7 +116,7 @@ const showThreadLoading = computed(
         :phase="selectedThreadPhase"
         :error="runtimeError"
       />
-      <ChatComposer v-if="selectedThreadId || selectedProjectId" />
+      <ChatComposer v-if="selectedThreadId && historyTurns.length > 0" placement="docked" />
     </div>
   </div>
 </template>

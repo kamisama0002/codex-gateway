@@ -31,7 +31,7 @@ test("fans out a real remote app-server thread to multiple browser clients acros
   expect(typeof resumePing.nonce).toBe("string");
 
   const { host, project } = await remoteWorkspace.provision();
-  await expect(page.getByTestId("project-thread-list")).toBeVisible();
+  await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
   const threadId = await remoteWorkspace.startThread(project.id);
 
   const firstMarker = `E2E 第一轮 ${Date.now()}`;

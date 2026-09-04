@@ -4,6 +4,7 @@ import type { ComposerTurnOptions } from "~~/shared/types";
 import type { ComposerFileReference } from "@/stores/gateway/types";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
+import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { buildThreadCollaborationMode } from "@/utils/thread-collaboration-mode";
@@ -29,9 +30,11 @@ export function useComposerTurnSubmit(input: {
 }) {
   const gateway = useGatewayBootstrapStore();
   const composer = useGatewayComposerStore();
+  const navigation = useGatewayNavigationStore();
   const threadView = useGatewayThreadViewStore();
   const threadTurns = useGatewayThreadTurnsStore();
   const interruptingTurn = ref(false);
+  const submittingNewThread = ref(false);
   const planModeActive = computed(() => composer.selectedThreadCollaborationMode === "plan");
   const hasComposerInput = computed(() =>
     Boolean(input.turnText.value.trim() || input.attachedFiles.value.length),
@@ -51,11 +54,9 @@ export function useComposerTurnSubmit(input: {
   }
 
   async function submitTurn() {
+    if (submittingNewThread.value) return;
     const text = input.turnText.value.trim();
     if (!text && !input.attachedFiles.value.length) return;
-    if (planModeActive.value) {
-      composer.dismissLatestSelectedPlanPrompt();
-    }
     const files = [...input.attachedFiles.value];
     const remoteFiles = files.filter((file) => !file.isImage);
     const attachedImages = files.filter((file) => file.isImage);
@@ -65,19 +66,34 @@ export function useComposerTurnSubmit(input: {
       name,
     }));
     const collaborationMode = composer.selectedThreadSettings.collaborationMode ?? undefined;
-    input.clearDraft();
-    await threadTurns.sendTurn(
-      messageWithFileReferences(text, remoteFiles, input.fileReferencesLabel.value),
-      {
-        ...input.selectedTurnOptions(),
-        collaborationMode,
-        images: attachedImages
-          .map((file) => ({ url: file.dataUrl, detail: "auto" as const }))
-          .filter((image): image is { url: string; detail: "auto" } => Boolean(image.url)),
-        files: remoteFiles,
-        references,
-      },
-    );
+    const turnOptions = input.selectedTurnOptions();
+    const message = messageWithFileReferences(text, remoteFiles, input.fileReferencesLabel.value);
+    const sendOptions = {
+      ...turnOptions,
+      collaborationMode,
+      images: attachedImages
+        .map((file) => ({ url: file.dataUrl, detail: "auto" as const }))
+        .filter((image): image is { url: string; detail: "auto" } => Boolean(image.url)),
+      files: remoteFiles,
+      references,
+    };
+    const startingNewThread = navigation.selectedThreadId === null;
+    if (startingNewThread && navigation.selectedProjectId === null) return;
+
+    if (startingNewThread) submittingNewThread.value = true;
+    try {
+      if (startingNewThread) {
+        const threadId = await threadView.startThread(turnOptions);
+        if (threadId === null || navigation.selectedThreadId !== threadId) return;
+      }
+      if (planModeActive.value) {
+        composer.dismissLatestSelectedPlanPrompt();
+      }
+      input.clearDraft();
+      await threadTurns.sendTurn(message, sendOptions);
+    } finally {
+      if (startingNewThread) submittingNewThread.value = false;
+    }
   }
 
   async function interruptTurn() {
@@ -111,6 +127,7 @@ export function useComposerTurnSubmit(input: {
     planModeActive,
     hasComposerInput,
     interruptingTurn,
+    submittingNewThread,
     activatePlanMode,
     deactivatePlanMode,
     startNewThread,

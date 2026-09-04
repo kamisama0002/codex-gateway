@@ -271,6 +271,7 @@
     "refreshThreadGoalFailed": "Failed to sync thread goal",
     "composerPlaceholder": "Ask for follow-up changes",
     "askNewThread": "What do you want to do?",
+    "newThreadWelcome": "What would you like to accomplish today?",
     "emptyThreadTitle": "Start a new task",
     "emptyThreadWorkspace": "Current workspace · {workspace}",
     "send": "Send",

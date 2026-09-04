@@ -271,6 +271,7 @@
     "refreshThreadGoalFailed": "同步会话目标失败",
     "composerPlaceholder": "输入后续修改要求",
     "askNewThread": "有什么可以帮你的",
+    "newThreadWelcome": "你好，今天想完成什么？",
     "emptyThreadTitle": "开始一个新任务",
     "emptyThreadWorkspace": "当前工作区 · {workspace}",
     "send": "发送",

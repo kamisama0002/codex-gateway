@@ -227,10 +227,8 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
 
   const project = await remoteWorkspace.addProject(host.id);
 
-  await expect(page.getByTestId("project-thread-list")).toBeVisible();
-  await expect(
-    page.getByTestId("project-thread-list").getByRole("heading", { name: project.name }),
-  ).toBeVisible();
+  await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
+  await expect(page.getByTestId("new-thread-welcome")).toHaveText("你好，今天想完成什么？");
   await page.getByTestId("open-terminal-button").click();
   await expect(page.getByTestId("terminal-panel")).toBeVisible({ timeout: 30_000 });
   await runTerminalCommand(page, "pwd");
@@ -239,7 +237,7 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
   await runTerminalCommand(page, `echo ${terminalMarker}`);
   await expectTerminalContains(page, terminalMarker);
   await page.getByRole("tab", { name: /Agent/ }).click();
-  await expect(page.getByTestId("project-thread-list")).toBeVisible();
+  await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
   await page.getByRole("tab", { name: project.name }).click();
   await expectTerminalContains(page, terminalMarker);
   await reloadApp(page);
