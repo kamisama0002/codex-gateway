@@ -34,6 +34,7 @@ const props = withDefaults(
     selectedSlashCommandIndex: number;
     composerInputEnabled: boolean;
     uploadingAttachments: boolean;
+    uploadingWorkspace: boolean;
     selectedThreadId: string | null;
     selectedHostId: number | null;
     selectedProjectId: number | null;
@@ -73,6 +74,7 @@ const emit = defineEmits<{
   hoverSlashCommand: [index: number];
   selectSlashCommand: [command: SlashMenuItem];
   attachmentChange: [event: Event];
+  workspaceSelection: [event: Event, selection: "files" | "folder"];
   paste: [event: ClipboardEvent];
   removeAttachment: [id: string];
   keydown: [event: KeyboardEvent];
@@ -84,9 +86,19 @@ const emit = defineEmits<{
 }>();
 
 const uploadInput = ref<HTMLInputElement | null>(null);
+const workspaceFileInput = ref<HTMLInputElement | null>(null);
+const workspaceFolderInput = ref<HTMLInputElement | null>(null);
 
 function openAttachmentPicker() {
   uploadInput.value?.click();
+}
+
+function openWorkspaceFilePicker() {
+  workspaceFileInput.value?.click();
+}
+
+function openWorkspaceFolderPicker() {
+  workspaceFolderInput.value?.click();
 }
 
 function composerScopeKey() {
@@ -142,6 +154,23 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           multiple
           @change="emit('attachmentChange', $event)"
         />
+        <input
+          ref="workspaceFileInput"
+          data-testid="workspace-file-input"
+          class="hidden"
+          type="file"
+          multiple
+          @change="emit('workspaceSelection', $event, 'files')"
+        />
+        <input
+          ref="workspaceFolderInput"
+          data-testid="workspace-folder-input"
+          class="hidden"
+          type="file"
+          multiple
+          webkitdirectory
+          @change="emit('workspaceSelection', $event, 'folder')"
+        />
         <AttachmentChips :files="attachedFiles" @remove="emit('removeAttachment', $event)" />
         <ComposerEditor
           :key="composerScopeKey()"
@@ -161,6 +190,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
         />
         <ComposerToolbar
           :uploading-attachments="uploadingAttachments"
+          :uploading-workspace="uploadingWorkspace"
           :selected-thread-id="selectedThreadId"
           :selected-approval-mode="selectedApprovalMode"
           :selected-thread-token-usage="selectedThreadTokenUsage"
@@ -179,9 +209,12 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           :interrupting-turn="interruptingTurn"
           :submission-pending="submissionPending"
           :can-attach-files="composerInputEnabled"
+          :can-upload-workspace="selectedHostId !== null && selectedProjectId !== null"
           :selected-thread-status="selectedThreadStatus"
           :send-button-label="sendButtonLabel"
           @attach="openAttachmentPicker"
+          @upload-workspace-files="openWorkspaceFilePicker"
+          @upload-workspace-folder="openWorkspaceFolderPicker"
           @primary-action="emit('primaryAction')"
           @update-selected-approval-mode="emit('updateSelectedApprovalMode', $event)"
           @select-model="emit('selectModel', $event)"

@@ -47,6 +47,19 @@ export class RemoteFileService {
     return this.ssh.uploadFile(host, localPath, remotePath);
   }
 
+  async existingPaths(host: HostWithSecret, remotePaths: string[]) {
+    const paths = [...new Set(remotePaths)];
+    if (paths.some((path) => !path.startsWith("/"))) {
+      throw new RemoteFileInvalidPathError(paths.find((path) => !path.startsWith("/")) ?? "");
+    }
+    const sftp = await this.ssh.sftp(host);
+    const inspect = pLimit(8);
+    const results = await Promise.all(
+      paths.map(async (path) => [path, await inspect(() => remotePathExists(sftp, path))] as const),
+    );
+    return results.filter(([, exists]) => exists).map(([path]) => path);
+  }
+
   async deleteFile(host: HostWithSecret, path: string) {
     if (!path.startsWith("/")) {
       throw new RemoteFileInvalidPathError(path);
@@ -226,6 +239,19 @@ function statFile(sftp: Awaited<ReturnType<SshConnectionPool["sftp"]>>, path: st
       if (error) return reject(classifyRemoteFileError(error, path));
       if (!stats.isFile()) return reject(new RemoteFileNotRegularError(path));
       resolve({ size: stats.size, modifiedAt: stats.mtime * 1000, mode: stats.mode });
+    });
+  });
+}
+
+function remotePathExists(sftp: Awaited<ReturnType<SshConnectionPool["sftp"]>>, path: string) {
+  return new Promise<boolean>((resolve, reject) => {
+    sftp.stat(path, (error) => {
+      if (error) {
+        if (isMissingSftpPath(error)) resolve(false);
+        else reject(classifyRemoteFileError(error, path));
+        return;
+      }
+      resolve(true);
     });
   });
 }

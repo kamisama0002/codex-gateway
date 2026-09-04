@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ComposerShell from "@/components/chat/composer/ComposerShell.vue";
+import WorkspaceUploadConflictDialog from "@/components/chat/composer/WorkspaceUploadConflictDialog.vue";
 import { useComposerController } from "@/composables/composer/useComposerController";
 
 withDefaults(
@@ -62,6 +63,11 @@ const {
   slashMenuOpen,
   turnText,
   uploadingAttachments,
+  uploadingWorkspace,
+  pendingWorkspaceUploadConflict,
+  handleWorkspaceSelection,
+  confirmWorkspaceOverwrite,
+  cancelWorkspaceUploadConflict,
   handleFileReferenceLimit,
 } = useComposerController();
 </script>
@@ -82,6 +88,7 @@ const {
     :selected-slash-command-index="selectedSlashCommandIndex"
     :composer-input-enabled="composerInputEnabled"
     :uploading-attachments="uploadingAttachments"
+    :uploading-workspace="uploadingWorkspace"
     :selected-thread-id="selectedThreadId"
     :selected-host-id="selectedHostId"
     :selected-project-id="selectedProjectId"
@@ -112,6 +119,7 @@ const {
     @hover-slash-command="selectSlashCommandIndex"
     @select-slash-command="runSlashCommand"
     @attachment-change="handleAttachmentChange"
+    @workspace-selection="handleWorkspaceSelection"
     @paste="handlePaste"
     @remove-attachment="removeAttachment"
     @keydown="handleComposerKeydown"
@@ -120,5 +128,11 @@ const {
     @update-selected-approval-mode="setSelectedApprovalMode"
     @select-model="setSelectedModel"
     @select-effort="setSelectedEffort"
+  />
+  <WorkspaceUploadConflictDialog
+    :conflict="pendingWorkspaceUploadConflict"
+    :uploading="uploadingWorkspace"
+    @cancel="cancelWorkspaceUploadConflict"
+    @overwrite="confirmWorkspaceOverwrite"
   />
 </template>

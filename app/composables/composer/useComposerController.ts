@@ -6,6 +6,7 @@ import { useComposerGoalControls } from "./useComposerGoalControls";
 import { useComposerSlashActions } from "./useComposerSlashActions";
 import { useComposerTurnSubmit } from "./useComposerTurnSubmit";
 import { useThreadSettingsControls } from "./useThreadSettingsControls";
+import { useWorkspaceUpload } from "./useWorkspaceUpload";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
@@ -54,6 +55,11 @@ export function useComposerController() {
   const goalControls = useComposerGoalControls(turnText);
   const settings = useThreadSettingsControls();
   const attachmentUpload = useAttachmentUpload(selectedHostId, attachedFiles);
+  const workspaceUpload = useWorkspaceUpload({
+    selectedHostId,
+    selectedProjectId,
+    selectedThreadId,
+  });
   const selectedRuntime = computed(() =>
     selectedHostId.value !== null && selectedThreadId.value !== null
       ? runtime.threadRuntimeProjection(selectedHostId.value, selectedThreadId.value)
@@ -201,7 +207,12 @@ export function useComposerController() {
     turnText,
     uploadInputRef: attachmentUpload.uploadInputRef,
     uploadingAttachments: attachmentUpload.uploadingAttachments,
+    uploadingWorkspace: workspaceUpload.uploadingWorkspace,
+    pendingWorkspaceUploadConflict: workspaceUpload.pendingConflict,
     handleAttachmentChange: attachmentUpload.handleAttachmentChange,
+    handleWorkspaceSelection: workspaceUpload.handleWorkspaceSelection,
+    confirmWorkspaceOverwrite: workspaceUpload.confirmOverwrite,
+    cancelWorkspaceUploadConflict: workspaceUpload.cancelConflict,
     handlePaste: attachmentUpload.handlePaste,
     removeAttachment: attachmentUpload.removeAttachment,
     openAttachmentPicker: attachmentUpload.openAttachmentPicker,
