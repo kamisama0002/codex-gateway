@@ -26,7 +26,11 @@ interface CreateUserInput {
 }
 
 export class UserRepository {
-  constructor(private readonly db: GatewayDb) {}
+  private readonly db: GatewayDb;
+
+  constructor(db: GatewayDb) {
+    this.db = db;
+  }
 
   async createWithAutomaticRole(input: Omit<CreateUserInput, "role">): Promise<StoredUser> {
     return await this.db.transaction(async (tx) => {
@@ -90,6 +94,13 @@ export class UserRepository {
       now,
       userId,
     ]);
+  }
+
+  async updatePassword(userId: number, passwordHash: string, now: string): Promise<void> {
+    await this.db.execute(
+      "UPDATE users SET password_hash = ?, is_active = 1, updated_at = ? WHERE id = ?",
+      [passwordHash, now, userId],
+    );
   }
 }
 

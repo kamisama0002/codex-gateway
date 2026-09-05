@@ -1,90 +1,83 @@
 #!/usr/bin/env node
-import { argon2Sync, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { migrateGatewayDatabase } from "../server/utils/gateway/storage/migrations.ts";
+import { UserRepository } from "../server/utils/gateway/auth/user-repository.ts";
+import { hashPassword } from "../server/utils/gateway/storage/crypto.ts";
+import { createMysqlGatewayDb } from "../server/utils/gateway/storage/mysql.ts";
 
-const [, , usernameArg = "", passwordArg = "", roleFlag, roleArg] = process.argv;
-const username = usernameArg.trim().toLowerCase();
-const password = passwordArg;
-const explicitRole = parseRole(roleFlag, roleArg);
+async function main() {
+  const { username, password, explicitRole } = parseArguments(process.argv);
+  const db = createMysqlGatewayDb(requiredDatabaseUrl());
 
-if (!username || !password) {
-  console.error("Usage: node scripts/create-user.mjs <username> <password> [--role admin|user]");
-  process.exit(1);
+  try {
+    await db.one("SELECT version FROM schema_migrations WHERE version = 1");
+    const users = new UserRepository(db);
+    const existing = await users.findByUsername(username);
+    const now = new Date().toISOString();
+    let role;
+
+    if (existing === null) {
+      if (explicitRole === null) {
+        role = (
+          await users.createWithAutomaticRole({
+            username,
+            passwordHash: hashPassword(password),
+            now,
+          })
+        ).role;
+      } else {
+        role = (
+          await users.create({
+            username,
+            passwordHash: hashPassword(password),
+            role: explicitRole,
+            now,
+          })
+        ).role;
+      }
+    } else {
+      await users.updatePassword(existing.id, hashPassword(password), now);
+      role = explicitRole ?? existing.role;
+      if (explicitRole !== null) {
+        await users.updateRole(existing.id, explicitRole, now);
+      }
+    }
+
+    console.log(`User ${username} is ready with role ${role}`);
+  } finally {
+    await db.close();
+  }
 }
 
-if (password.length < 8) {
-  console.error("Password must be at least 8 characters");
-  process.exit(1);
+function parseArguments(argv) {
+  const [, , usernameArg = "", password = "", roleFlag, roleArg] = argv;
+  const username = usernameArg.trim().toLowerCase();
+  if (username === "" || password === "") {
+    throw new CliUsageError(
+      "Usage: node scripts/create-user.mjs <username> <password> [--role admin|user]",
+    );
+  }
+  if (password.length < 8) {
+    throw new CliUsageError("Password must be at least 8 characters");
+  }
+  return { username, password, explicitRole: parseRole(roleFlag, roleArg) };
 }
 
-const configuredDbPath = process.env.CODEX_GATEWAY_DB_PATH;
-const dbPath = resolve(
-  configuredDbPath === undefined || configuredDbPath.length === 0
-    ? "/data/codex-gateway.db"
-    : configuredDbPath,
-);
-const directory = dirname(dbPath);
-if (!existsSync(directory)) {
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
+function requiredDatabaseUrl() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (databaseUrl === undefined || databaseUrl.length === 0) {
+    throw new CliUsageError("DATABASE_URL is required");
+  }
+  return databaseUrl;
 }
 
-const db = new DatabaseSync(dbPath);
-db.exec(`
-  PRAGMA journal_mode = WAL;
-  PRAGMA foreign_keys = ON;
-`);
-migrateGatewayDatabase(db);
-
-const now = new Date().toISOString();
-const role = explicitRole ?? (userCount(db) === 0 ? "admin" : "user");
-db.prepare(
-  `
-    INSERT INTO users (username, password_hash, is_active, role, created_at, updated_at)
-    VALUES (?, ?, 1, ?, ?, ?)
-    ON CONFLICT(username) DO UPDATE SET
-      password_hash = excluded.password_hash,
-      is_active = 1,
-      role = CASE WHEN ? THEN excluded.role ELSE role END,
-      updated_at = excluded.updated_at
-  `,
-).run(username, hashPassword(password), role, now, now, explicitRole !== null ? 1 : 0);
-
-console.log(`User ${username} is ready in ${dbPath} with role ${role}`);
-
-/** @param {string | undefined} flag @param {string | undefined} value @returns {"admin" | "user" | null} */
 function parseRole(flag, value) {
   if (flag === undefined && value === undefined) return null;
   if (flag === "--role" && (value === "admin" || value === "user")) return value;
-  console.error("Role must be admin or user");
-  process.exit(1);
+  throw new CliUsageError("Role must be admin or user");
 }
 
-/** @param {DatabaseSync} database */
-function userCount(database) {
-  /** @type {unknown} */
-  const row = database.prepare("SELECT COUNT(*) AS count FROM users").get();
-  if (!isCountRow(row)) throw new Error("Could not count database users");
-  return row.count;
-}
+class CliUsageError extends Error {}
 
-/** @param {unknown} value @returns {value is { count: number }} */
-function isCountRow(value) {
-  return typeof value === "object" && value !== null && "count" in value && typeof value.count === "number";
-}
-
-/** @param {string} value */
-function hashPassword(value) {
-  const salt = randomBytes(16);
-  const hash = argon2Sync("argon2id", {
-    message: Buffer.from(value),
-    nonce: salt,
-    tagLength: 32,
-    memory: 64 * 1024,
-    passes: 3,
-    parallelism: 1,
-  });
-  return `argon2id$${salt.toString("base64url")}$${Buffer.from(hash).toString("base64url")}`;
-}
+void main().catch((error) => {
+  console.error(error instanceof CliUsageError ? error.message : "Could not create user");
+  process.exitCode = 1;
+});

@@ -43,12 +43,14 @@ RUN pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild ../../script
     --platform=node \
     --format=esm \
     --target=node24 \
+    --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" \
     --outfile=/app/.runtime-scripts/create-user.mjs
 RUN pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild ../../scripts/database/migrate.mjs \
     --bundle \
     --platform=node \
     --format=esm \
     --target=node24 \
+    --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" \
     --outfile=/app/.runtime-scripts/migrate.mjs
 
 FROM node:${NODE_VERSION} AS runner
