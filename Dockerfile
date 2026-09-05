@@ -52,6 +52,20 @@ RUN pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild ../../script
     --target=node24 \
     --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" \
     --outfile=/app/.runtime-scripts/migrate.mjs
+RUN pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild ../../scripts/database/import-sqlite.mjs \
+    --bundle \
+    --platform=node \
+    --format=esm \
+    --target=node24 \
+    --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" \
+    --outfile=/app/.runtime-scripts/import-sqlite.mjs
+RUN pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild ../../scripts/database/verify-import.mjs \
+    --bundle \
+    --platform=node \
+    --format=esm \
+    --target=node24 \
+    --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" \
+    --outfile=/app/.runtime-scripts/verify-import.mjs
 
 FROM node:${NODE_VERSION} AS runner
 ARG DEBIAN_MIRROR=
@@ -68,6 +82,8 @@ COPY --from=build /app/.output ./.output
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/.runtime-scripts/create-user.mjs ./scripts/create-user.mjs
 COPY --from=build /app/.runtime-scripts/migrate.mjs ./scripts/database/migrate.mjs
+COPY --from=build /app/.runtime-scripts/import-sqlite.mjs ./scripts/database/import-sqlite.mjs
+COPY --from=build /app/.runtime-scripts/verify-import.mjs ./scripts/database/verify-import.mjs
 EXPOSE 3000
 ENTRYPOINT ["/usr/bin/tini", "--"]
 # The 1 GiB container also hosts SSH/TLS/native buffers. Keep V8 old-space bounded to leave room

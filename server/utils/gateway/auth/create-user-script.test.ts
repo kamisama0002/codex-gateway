@@ -16,7 +16,7 @@ describe("create-user", () => {
       dockerfile.match(
         /--banner:js="import \{ createRequire \} from 'node:module'; const require = createRequire\(import\.meta\.url\);"/g,
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(4);
     expect(dockerfile).toContain(
       "COPY --from=build /app/.runtime-scripts/create-user.mjs ./scripts/create-user.mjs",
     );

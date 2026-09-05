@@ -1,0 +1,4 @@
+{
+  "extends": "../../scripts/database/tsconfig.json",
+  "include": ["./**/*.mjs"]
+}
