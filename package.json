@@ -80,6 +80,7 @@
     "lru-cache": "^11.5.2",
     "media-chrome": "^4.19.2",
     "motion-v": "^2.4.0",
+    "mysql2": "^3.24.3",
     "nanoid": "^6.0.1",
     "nuxt": "^4.5.1",
     "ofetch": "^1.5.1",
