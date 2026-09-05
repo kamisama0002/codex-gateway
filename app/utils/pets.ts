@@ -6,14 +6,15 @@ export interface GatewayPetOption {
 }
 
 const PET_NAMES: Record<GatewayPetId, string> = {
-  codex: "Codex",
-  dewey: "Dewey",
-  fireball: "Fireball",
-  rocky: "Rocky",
-  seedy: "Seedy",
-  stacky: "Stacky",
-  bsod: "BSOD",
-  "null-signal": "Null Signal",
+  congming: "葱明仔",
+  jiangjiang: "姜将仔",
+  suanlele: "蒜乐乐",
+};
+
+const PET_ATLAS_ROWS: Record<GatewayPetId, number> = {
+  congming: 9,
+  jiangjiang: 11,
+  suanlele: 11,
 };
 
 export const GATEWAY_PET_OPTIONS: GatewayPetOption[] = GATEWAY_PET_IDS.map((id) => ({
@@ -21,10 +22,24 @@ export const GATEWAY_PET_OPTIONS: GatewayPetOption[] = GATEWAY_PET_IDS.map((id) 
   name: PET_NAMES[id],
 }));
 
-const PET_CDN_ROOT = "https://persistent.oaistatic.com/codex/pets/v1";
-
 export function petSpritesheetUrl(petId: GatewayPetId) {
-  return `${PET_CDN_ROOT}/${petId}-spritesheet-v4.webp`;
+  return `/pets/${petId}/spritesheet.webp`;
+}
+
+export function petSpritesheetRows(petId: GatewayPetId) {
+  return PET_ATLAS_ROWS[petId];
+}
+
+export function petSpriteStyle(petId: GatewayPetId, frame: number) {
+  const columns = 8;
+  const rows = petSpritesheetRows(petId);
+  const column = frame % columns;
+  const row = Math.floor(frame / columns);
+  return {
+    backgroundImage: `url(${JSON.stringify(petSpritesheetUrl(petId))})`,
+    backgroundPosition: `${(column / (columns - 1)) * 100}% ${(row / (rows - 1)) * 100}%`,
+    backgroundSize: `${columns * 100}% ${rows * 100}%`,
+  };
 }
 
 interface PetAnimation {
@@ -50,8 +65,8 @@ export const PET_ANIMATIONS: Record<GatewayPetStatus, PetAnimation> = {
     finalFrameDurationMs: 260,
   },
   ready: {
-    frames: [64, 65, 66, 67, 68, 69],
-    frameDurationMs: 150,
+    frames: [32, 33, 34, 35, 36],
+    frameDurationMs: 140,
     finalFrameDurationMs: 280,
   },
   failed: {
