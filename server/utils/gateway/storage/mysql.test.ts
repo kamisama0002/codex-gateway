@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { freshMysqlTestDatabase } from "../../../../tests/mysql/helpers";
 import {
   closeMysqlGatewayDatabase,
@@ -6,6 +6,19 @@ import {
   verifyMysqlGatewayDatabase,
 } from "./mysql-database";
 import { createMysqlGatewayDb } from "./mysql";
+
+const mysqlPoolFactory = vi.hoisted(() => ({ calls: 0 }));
+
+vi.mock("mysql2/promise", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("mysql2/promise")>();
+  return {
+    ...actual,
+    createPool: (...args: Parameters<typeof actual.createPool>) => {
+      mysqlPoolFactory.calls += 1;
+      return actual.createPool(...args);
+    },
+  };
+});
 
 describe("MySQL gateway database", () => {
   afterEach(async () => {
@@ -31,10 +44,12 @@ describe("MySQL gateway database", () => {
   });
 
   it("rejects malformed and non-MySQL database URLs before connecting", () => {
+    mysqlPoolFactory.calls = 0;
     expect(() => createMysqlGatewayDb("not a database URL")).toThrow("DATABASE_URL");
     expect(() =>
       createMysqlGatewayDb("postgres://user:password@localhost:5432/codex_gateway"),
     ).toThrow("DATABASE_URL");
+    expect(mysqlPoolFactory.calls).toBe(0);
   });
 
   it("rejects multiple SQL statements", async () => {
