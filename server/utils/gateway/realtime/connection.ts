@@ -46,7 +46,7 @@ export async function handleRealtimePeerMessage(peer: RealtimePeer, rawMessage: 
       type: "error",
       message: error instanceof Error ? error.message : "Realtime message failed",
       requestId: request && "requestId" in request ? request.requestId : undefined,
-      request,
+      request: safeRealtimeErrorRequest(request),
       code: realtimeErrorCode(error),
       details,
     });
@@ -90,9 +90,16 @@ function rejectUnauthenticatedPeer(peer: RealtimePeer, request: RealtimeClientMe
   sendRealtimePeerMessage(peer, {
     type: "error",
     message: "Realtime connection is not authenticated",
-    request,
+    request: safeRealtimeErrorRequest(request),
   });
   peer.close(REALTIME_AUTHENTICATION_CLOSE_CODE, "Authentication required");
+}
+
+function safeRealtimeErrorRequest(request: RealtimeClientMessage | undefined) {
+  if (request?.type === "auth.authenticate") {
+    return { ...request, token: "[REDACTED]" };
+  }
+  return request;
 }
 
 function parseClientMessage(raw: string): RealtimeClientMessage {

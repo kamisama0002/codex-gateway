@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseRealtimeServerMessage } from "~~/shared/runtime/realtime";
 import { userStore } from "../auth/users";
 import { handleRealtimePeerMessage } from "./connection";
 import type { RealtimePeer } from "./peer-state";
@@ -30,7 +31,7 @@ describe("realtime authentication failure", () => {
   });
 
   it("sends database_unavailable without authenticating when token storage rejects", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const logError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.spyOn(userStore, "authenticateToken").mockRejectedValue(
       Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" }),
     );
@@ -41,14 +42,17 @@ describe("realtime authentication failure", () => {
       context: {},
     };
 
-    await handleRealtimePeerMessage(
-      peer,
-      JSON.stringify({ type: "auth.authenticate", token: "stored-session-token" }),
-    );
+    const token = "stored-session-token";
+    await handleRealtimePeerMessage(peer, JSON.stringify({ type: "auth.authenticate", token }));
 
-    expect(JSON.parse(String(send.mock.calls[0]?.[0]))).toMatchObject({
+    const serializedError = String(send.mock.calls[0]?.[0]);
+    const errorFrame = parseRealtimeServerMessage(JSON.parse(serializedError));
+    expect(errorFrame).toMatchObject({
       type: "error",
       code: "database_unavailable",
+      request: { type: "auth.authenticate", token: "[REDACTED]" },
     });
+    expect(serializedError).not.toContain(token);
+    expect(JSON.stringify(logError.mock.calls)).not.toContain(token);
   });
 });

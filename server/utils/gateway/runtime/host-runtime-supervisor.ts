@@ -132,13 +132,17 @@ class HostRuntimeSupervisor {
     this.slots.delete(key);
     activeMainThreadMonitor.forgetHost(slot.userId, slot.hostId);
     const connection = slot.connectPromise;
+    const closeHost = () => {
+      runWithGatewayUser(slot.userId, () => threadBroker.closeHost(slot.hostId));
+    };
+    closeHost();
     if (connection !== null) {
       void connection
         .finally(() => {
-          // HostResourceLifecycle closes the current session synchronously, but an SSH/RPC connect
-          // already in flight can finish afterwards. Replacement slots wait on this same promise,
-          // so closing here cannot race a new target and removes any late old-identity session.
-          runWithGatewayUser(slot.userId, () => threadBroker.closeHost(slot.hostId));
+          // An SSH/RPC connect already in flight can finish after the immediate close. Replacement
+          // slots wait on this same promise, so closing again removes any late old-identity session
+          // before the replacement can connect.
+          closeHost();
         })
         .catch(() => {});
     }

@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostRecord } from "~~/shared/types";
 import { userStore } from "../auth/users";
+import { currentGatewayUserId } from "../state/memory";
+import { activeMainThreadMonitor } from "./active-main-thread-monitor";
+import { threadBroker } from "./broker";
 import { hostRuntimeSupervisor } from "./host-runtime-supervisor";
 
 const runtimeConnection = vi.hoisted(() => ({
@@ -11,6 +14,10 @@ vi.mock("./host-runtime-connection", () => ({
   connectHostRuntime: runtimeConnection.connect,
   publishHostRuntimeFailure: vi.fn(),
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 afterEach(() => {
   hostRuntimeSupervisor.stop();
@@ -65,6 +72,61 @@ describe("HostRuntimeSupervisor", () => {
     ]);
 
     expect(listStoredConfigs).toHaveBeenCalledOnce();
+  });
+
+  it("closes a settled host session under its user scope when stopped", async () => {
+    vi.useFakeTimers();
+    const closedHosts: Array<{ userId: number | null; hostId: number }> = [];
+    vi.spyOn(threadBroker, "closeHost").mockImplementation((hostId) => {
+      closedHosts.push({ userId: currentGatewayUserId(), hostId });
+    });
+    const forgetHost = vi.spyOn(activeMainThreadMonitor, "forgetHost").mockImplementation(() => {});
+    vi.spyOn(userStore, "listStoredConfigs").mockResolvedValue([storedConfig()]);
+    hostRuntimeSupervisor.start();
+    await hostRuntimeSupervisor.bootstrapStoredUsers();
+    await vi.runAllTimersAsync();
+    expect(runtimeConnection.connect).toHaveBeenCalledOnce();
+
+    hostRuntimeSupervisor.stop();
+
+    expect(closedHosts).toEqual([{ userId: 7, hostId: 11 }]);
+    expect(forgetHost).toHaveBeenCalledOnce();
+    expect(forgetHost).toHaveBeenCalledWith(7, 11);
+  });
+
+  it("closes an in-flight host immediately and again after a late connection settles", async () => {
+    vi.useFakeTimers();
+    let resolveConnection!: () => void;
+    runtimeConnection.connect.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveConnection = resolve;
+      }),
+    );
+    const closedHosts: Array<{ userId: number | null; hostId: number }> = [];
+    let resolveLateClose!: () => void;
+    const lateClose = new Promise<void>((resolve) => {
+      resolveLateClose = resolve;
+    });
+    vi.spyOn(threadBroker, "closeHost").mockImplementation((hostId) => {
+      closedHosts.push({ userId: currentGatewayUserId(), hostId });
+      if (closedHosts.length === 2) resolveLateClose();
+    });
+    vi.spyOn(userStore, "listStoredConfigs").mockResolvedValue([storedConfig()]);
+    hostRuntimeSupervisor.start();
+    await hostRuntimeSupervisor.bootstrapStoredUsers();
+    await vi.runAllTimersAsync();
+    expect(runtimeConnection.connect).toHaveBeenCalledOnce();
+
+    hostRuntimeSupervisor.stop();
+    const closedBeforeConnectionSettled = [...closedHosts];
+    resolveConnection();
+
+    expect(closedBeforeConnectionSettled).toEqual([{ userId: 7, hostId: 11 }]);
+    await lateClose;
+    expect(closedHosts).toEqual([
+      { userId: 7, hostId: 11 },
+      { userId: 7, hostId: 11 },
+    ]);
   });
 });
 
