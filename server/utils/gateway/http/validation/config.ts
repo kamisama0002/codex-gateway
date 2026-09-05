@@ -10,6 +10,17 @@ import {
   MANAGED_RUNTIME_PROJECT_ID,
 } from "~~/shared/runtime/managed-runtime";
 
+const LEGACY_GATEWAY_PET_IDS = new Set([
+  "codex",
+  "dewey",
+  "fireball",
+  "rocky",
+  "seedy",
+  "stacky",
+  "bsod",
+  "null-signal",
+]);
+
 export const pinnedThreadSchema = z
   .object({
     hostId: z.coerce.number().int().positive(),
@@ -45,10 +56,12 @@ export const petSettingsSchema: z.ZodType<GatewayPetSettings> = z
   .object({
     enabled: z.boolean().default(true),
     petId: z
-      .preprocess(
-        (value) => (typeof value === "string" ? value.trim() : value),
-        z.enum(GATEWAY_PET_IDS),
-      )
+      .preprocess((value) => {
+        const petId = typeof value === "string" ? value.trim() : value;
+        return typeof petId === "string" && LEGACY_GATEWAY_PET_IDS.has(petId)
+          ? DEFAULT_PET_ID
+          : petId;
+      }, z.enum(GATEWAY_PET_IDS))
       .default(DEFAULT_PET_ID),
     animations: z.boolean().default(true),
   })

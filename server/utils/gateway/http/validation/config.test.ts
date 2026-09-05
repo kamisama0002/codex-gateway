@@ -8,16 +8,27 @@ import { parseGatewayConfig } from "./config";
 describe("parseGatewayConfig", () => {
   it("defaults and normalizes pet settings for stored legacy configs", () => {
     const config = parseGatewayConfig({ version: 1 });
-    expect(config.pet).toEqual({ enabled: true, petId: "codex", animations: true });
+    expect(config.pet).toEqual({ enabled: true, petId: "congming", animations: true });
   });
 
   it("keeps explicit pet settings", () => {
     const config = parseGatewayConfig({
       version: 1,
-      pet: { enabled: false, petId: "  dewey  ", animations: false },
+      pet: { enabled: false, petId: "  jiangjiang  ", animations: false },
     });
-    expect(config.pet).toEqual({ enabled: false, petId: "dewey", animations: false });
+    expect(config.pet).toEqual({ enabled: false, petId: "jiangjiang", animations: false });
   });
+
+  it.each(["codex", "dewey", "fireball", "rocky", "seedy", "stacky", "bsod", "null-signal"])(
+    "migrates the legacy pet id %s to the new default",
+    (petId) => {
+      const config = parseGatewayConfig({
+        version: 1,
+        pet: { enabled: true, petId, animations: true },
+      });
+      expect(config.pet.petId).toBe("congming");
+    },
+  );
 
   it("rejects unknown pet ids", () => {
     expect(() =>

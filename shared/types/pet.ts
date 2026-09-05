@@ -1,15 +1,6 @@
 export type GatewayPetStatus = "idle" | "running" | "waiting" | "ready" | "failed";
 
-export const GATEWAY_PET_IDS = [
-  "codex",
-  "dewey",
-  "fireball",
-  "rocky",
-  "seedy",
-  "stacky",
-  "bsod",
-  "null-signal",
-] as const;
+export const GATEWAY_PET_IDS = ["congming", "jiangjiang", "suanlele"] as const;
 
 export type GatewayPetId = (typeof GATEWAY_PET_IDS)[number];
 

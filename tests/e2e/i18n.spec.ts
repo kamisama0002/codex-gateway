@@ -42,7 +42,7 @@ test("opens pet settings from the main settings panel", async ({ page }) => {
   await expect(petTab).toBeVisible();
   await petTab.click();
   await expect(settingsPanel.getByTestId("pet-enabled")).toBeChecked();
-  await settingsPanel.getByTestId("pet-option-fireball").click();
+  await settingsPanel.getByTestId("pet-option-jiangjiang").click();
   await settingsPanel.getByTestId("pet-animations").click();
   await settingsPanel.getByTestId("save-pet-settings").click();
   await expect(page.getByText("桌宠设置已保存")).toBeVisible();
@@ -59,7 +59,7 @@ test("opens pet settings from the main settings panel", async ({ page }) => {
       .loose()
       .parse(value),
   );
-  expect(config.pet).toEqual({ enabled: true, petId: "fireball", animations: false });
+  expect(config.pet).toEqual({ enabled: true, petId: "jiangjiang", animations: false });
 });
 
 test("can revoke the current session from appearance settings", async ({ page }) => {

@@ -11,7 +11,7 @@ export const SERVER_THREAD_CACHE_LIMIT = 100;
 export const CLIENT_THREAD_CACHE_LIMIT = 24;
 export const DEFAULT_BARK_SERVER_URL = "https://api.day.app";
 export const DEFAULT_BARK_GROUP = "Codex Gateway";
-export const DEFAULT_PET_ID: GatewayPetId = "codex";
+export const DEFAULT_PET_ID: GatewayPetId = "congming";
 
 export function defaultNotificationSettings(): GatewayNotificationSettings {
   return {

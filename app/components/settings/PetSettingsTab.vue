@@ -59,7 +59,7 @@ async function saveSettings() {
 
     <fieldset class="space-y-3" :disabled="!form.enabled">
       <legend class="text-sm font-medium text-ink">{{ t("app.choosePet") }}</legend>
-      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <button
           v-for="option in GATEWAY_PET_OPTIONS"
           :key="option.id"

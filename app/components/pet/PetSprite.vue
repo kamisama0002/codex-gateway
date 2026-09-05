@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { GatewayPetId, GatewayPetStatus } from "~~/shared/types";
-import { PET_ANIMATIONS, petSpritesheetUrl } from "@/utils/pets";
+import { PET_ANIMATIONS, petSpritesheetUrl, petSpriteStyle } from "@/utils/pets";
 
 const props = withDefaults(
   defineProps<{
@@ -22,15 +22,7 @@ const animation = computed(() => PET_ANIMATIONS[props.status]);
 const spriteFrame = computed(
   () => animation.value.frames[frameOffset.value % animation.value.frames.length] ?? 0,
 );
-const spriteStyle = computed(() => {
-  const column = spriteFrame.value % 8;
-  const row = Math.floor(spriteFrame.value / 8);
-  return {
-    backgroundImage: `url(${JSON.stringify(petSpritesheetUrl(props.petId))})`,
-    backgroundPosition: `${(column / 7) * 100}% ${(row / 8) * 100}%`,
-    backgroundSize: "800% 900%",
-  };
-});
+const spriteStyle = computed(() => petSpriteStyle(props.petId, spriteFrame.value));
 
 watch(
   () => props.petId,
@@ -89,11 +81,7 @@ function clearFrameTimer() {
 
 <template>
   <span class="block aspect-[12/13] w-16 shrink-0" role="img" :aria-label="label">
-    <span
-      v-if="assetReady"
-      class="block size-full bg-no-repeat [image-rendering:pixelated]"
-      :style="spriteStyle"
-    />
+    <span v-if="assetReady" class="block size-full bg-no-repeat" :style="spriteStyle" />
     <img
       v-else
       src="/android-chrome-192x192.png"
