@@ -158,10 +158,27 @@ and uniqueness, decryptable sampled configuration/provider blobs, and a final pa
 continue on any mismatch, and do not retry a real import into a partially populated target. Drop and
 recreate only the target database after investigating the cause.
 
+Before starting a write-capable Gateway, preserve this exact pristine post-import state:
+
+1. Keep the verified SQLite snapshot read-only and retain its SHA-256 file. This remains the source
+   for every cutover retry.
+2. Store the import and independent verification reports off-host with the release and snapshot
+   identifiers.
+3. Follow the [backup and restore runbook](mysql-backup-restore.md) to capture a post-import,
+   pre-smoke MySQL backup and binlog position. Label it as the pristine verification point and do not
+   replace it with a backup taken after smoke writes.
+
 ## 6. Start cold and smoke-test before switching entry
 
-Keep public and DataOps entry points in maintenance mode. Start Gateway against MySQL and confirm
-the one-shot migration completed successfully.
+This step crosses the technical MySQL-write boundary for the current target. Starting Gateway makes
+the database write-capable; password login inserts a session, and DataOps login can update users,
+external identities, sessions, and external session contexts. From this point, do not treat the live
+MySQL target as the pristine import result recorded in step 5.
+
+Keep the public entry, ordinary DataOps ticket issuance, and every other external writer in
+maintenance mode. Only the named operator's private endpoint and controlled one-time smoke ticket
+may reach Gateway. Start Gateway against MySQL and confirm the one-shot migration completed
+successfully.
 
 ```bash
 "${COMPOSE[@]}" up -d codex-gateway
@@ -180,34 +197,58 @@ bodies or tokens. Verify all of the following through the private/pre-entry endp
 - MySQL read-only count checks for `agent_audit_events` and `tmux_monitors` match the import report;
 - the Gateway healthcheck remains healthy and no database/startup errors appear in logs.
 
+These private smoke writes are controlled and disposable. They do not authorize public traffic and
+must never be merged into another target or accepted as part of the imported source state.
+
+If any private smoke check fails:
+
+1. Keep the public and DataOps entries blocked and stop the smoke Gateway.
+2. Preserve secret-safe failure logs, but discard the entire smoke-written MySQL target.
+3. Recreate an empty target, run schema migration, and import again from the same verified read-only
+   SQLite snapshot retained in step 5.
+4. Run independent verification again and create a new pristine post-import recovery point before
+   repeating any smoke check.
+
+Never selectively delete, merge, or trust partial smoke writes. Only after every private smoke check
+succeeds may the operator continue to the public/DataOps entry switch.
+
 Do not restart or reprovision an Agent merely to validate database cutover. Runtime Manager and
 workspace/codex-home data are outside this migration.
 
-## 7. Switch the entry and mark the rollback boundary
+## 7. Switch the entry and cross the production rollback boundary
 
-1. Record the final verification report and MySQL backup/binlog position.
-2. Switch the reverse proxy/load balancer and re-enable DataOps ticket issuance.
-3. Watch login, provider, runtime, audit, and tmux requests while the first production traffic runs.
-4. Record the timestamp of the first post-switch business write accepted by MySQL.
+1. Confirm every private smoke check passed and the pristine post-import MySQL recovery point,
+   read-only SQLite snapshot, and verification reports remain preserved.
+2. Take a separate post-smoke MySQL backup and record its binlog position for forward recovery.
+3. Switch the reverse proxy/load balancer and re-enable ordinary DataOps ticket issuance.
+4. Record the entry-open timestamp and the first externally initiated business write accepted by
+   MySQL. Watch login, provider, runtime, audit, and tmux requests as production traffic begins.
 
 Schema migration and the controlled import do not move the rollback boundary because the old SQLite
 database remains frozen and no new production state exists only in MySQL. The boundary is crossed as
-soon as the new Gateway accepts the first post-switch business write in MySQL, including a session,
-activity timestamp, config revision, audit event, runtime state, provider change, or tmux monitor.
+soon as the public/DataOps entry opens or the first externally initiated business write reaches
+MySQL, whichever occurs first. Do not wait for telemetry to prove a first write after opening entry;
+assume one can race immediately. Business writes include a session, activity timestamp, config
+revision, audit event, runtime state, provider change, or tmux monitor.
 
-**After that first MySQL business write, direct rollback to SQLite is forbidden.** Use a forward fix
-or restore MySQL from backup plus binlogs. A reverse export is allowed only if a separately reviewed
-and rehearsed tool preserves all post-cutover data; this release does not provide such a tool.
+**After the public/DataOps entry opens or the first external MySQL business write, direct rollback to
+SQLite is forbidden.** Use a forward fix or restore MySQL from backup plus binlogs. A reverse export
+is allowed only if a separately reviewed and rehearsed tool preserves all post-cutover data; this
+release does not provide such a tool.
 
-## Rollback before the boundary
+## Recovery before the public entry boundary
 
-Before public entry is enabled and before any MySQL-only business write:
+Private smoke writes cross the technical boundary for that MySQL target, but remain disposable while
+all public and DataOps entry paths are blocked. Before opening entry, choose one complete recovery
+path rather than reconciling databases:
 
-1. Stop the new Gateway.
-2. Keep the failed MySQL target for diagnosis or remove only that explicitly named target.
-3. Restore the old Gateway image/Compose artifact with the original secrets.
-4. Start it against the untouched frozen SQLite database.
-5. Smoke-test privately, then restore the entry.
+- To retry MySQL cutover, stop Gateway, discard and recreate the exact target, migrate, re-import the
+  same verified read-only SQLite snapshot, independently verify it, preserve a new pristine recovery
+  point, and repeat the private smoke sequence.
+- To abandon cutover, stop Gateway, discard the smoke-written MySQL target, restore the old Gateway
+  image/Compose artifact with the original secrets, and start it against the untouched frozen SQLite
+  database. Smoke-test the old path privately before restoring its entry.
 
-Never copy the snapshot over the live database while any old Gateway process is running. Never roll
-back only the application binary after MySQL has accepted production writes.
+Never merge partial smoke writes into a rebuilt target, copy the snapshot over the live database
+while any old Gateway process is running, or roll back only the application binary after the
+public/DataOps entry boundary has been crossed.
