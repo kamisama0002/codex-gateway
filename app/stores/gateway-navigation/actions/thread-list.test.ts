@@ -83,6 +83,40 @@ describe("thread list refresh modes", () => {
     expect(runtime.phaseFor(hostId, threadId)).toBe("running");
   });
 
+  it("does not clear a failed host state when a passive catalog refresh succeeds", async () => {
+    vi.stubGlobal(
+      "$fetch",
+      vi.fn(() => Promise.resolve(threadListResponse())),
+    );
+    const { catalog, navigation } = seedSelectedThread();
+    catalog.setHostConnectionStatus(hostId, "failed", "keep host failure");
+    const existingHostState = catalog.hostConnectionStatuses[hostId];
+
+    await navigation.listThreads("", { mode: "passive" });
+
+    expect(catalog.hostConnectionStatuses[hostId]).toBe(existingHostState);
+  });
+
+  it.each([
+    "submitting",
+    "retrying",
+    "waitingForApproval",
+    "waitingForInput",
+    "waitingForClient",
+  ] as const)("keeps the realtime %s phase when a passive snapshot is active", async (phase) => {
+    vi.stubGlobal(
+      "$fetch",
+      vi.fn(() => Promise.resolve(threadListResponse({ type: "active", activeFlags: [] }))),
+    );
+    const { navigation, runtime } = seedSelectedThread();
+    runtime.setThreadStatus(hostId, threadId, "running", { phase });
+
+    await navigation.listThreads("", { mode: "passive" });
+
+    expect(runtime.statusFor(hostId, threadId)).toBe("running");
+    expect(runtime.phaseFor(hostId, threadId)).toBe(phase);
+  });
+
   it("retains foreground loading, error, host, and snapshot behavior", async () => {
     const request = deferred<ReturnType<typeof threadListResponse>>();
     vi.stubGlobal(
@@ -123,9 +157,9 @@ function seedSelectedThread() {
   return { bootstrap, catalog, navigation, runtime, views };
 }
 
-function threadListResponse() {
+function threadListResponse(status: GatewayThread["status"] = { type: "idle" }) {
   return {
-    data: [gatewayThread({ type: "idle" })],
+    data: [gatewayThread(status)],
     projects: [projectRecord("Refreshed project")],
   };
 }

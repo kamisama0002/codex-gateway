@@ -8,11 +8,12 @@ export function useThreadRuntimeElapsed(
 ) {
   const elapsedSeconds = ref(0);
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+  let activeStartedAt: number | null = null;
 
   function clearElapsedTimer() {
-    if (elapsedTimer === null) return;
-    clearInterval(elapsedTimer);
+    if (elapsedTimer !== null) clearInterval(elapsedTimer);
     elapsedTimer = null;
+    activeStartedAt = null;
   }
 
   watch(
@@ -21,8 +22,10 @@ export function useThreadRuntimeElapsed(
       clearElapsedTimer();
       elapsedSeconds.value = 0;
       if (nextThreadId === null || !isActiveThreadRuntimePhase(nextPhase)) return;
+      activeStartedAt = Date.now();
       elapsedTimer = setInterval(() => {
-        elapsedSeconds.value += 1;
+        if (activeStartedAt === null) return;
+        elapsedSeconds.value = Math.max(0, Math.floor((Date.now() - activeStartedAt) / 1_000));
       }, 1_000);
     },
     { immediate: true },

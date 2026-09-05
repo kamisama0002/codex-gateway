@@ -15,18 +15,24 @@ import {
 const props = defineProps<{
   conflict: WorkspaceUploadConflictState | null;
   uploading: boolean;
+  creatingFirstThread: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   cancel: [];
   overwrite: [];
 }>();
 
+const dialogOpen = computed(() => props.conflict !== null && !props.creatingFirstThread);
 const visibleConflicts = computed(() => props.conflict?.conflicts.slice(0, 8) ?? []);
+
+function handleOpenChange(open: boolean) {
+  if (!open && !props.creatingFirstThread) emit("cancel");
+}
 </script>
 
 <template>
-  <AlertDialog :open="conflict !== null" @update:open="(open) => !open && $emit('cancel')">
+  <AlertDialog :open="dialogOpen" @update:open="handleOpenChange">
     <AlertDialogContent data-testid="workspace-upload-conflict-dialog">
       <AlertDialogHeader>
         <AlertDialogTitle>{{ $t("app.workspaceUploadConflictTitle") }}</AlertDialogTitle>
@@ -52,14 +58,14 @@ const visibleConflicts = computed(() => props.conflict?.conflicts.slice(0, 8) ??
         </li>
       </ul>
       <AlertDialogFooter>
-        <AlertDialogCancel :disabled="uploading" @click="$emit('cancel')">
+        <AlertDialogCancel :disabled="uploading || creatingFirstThread" @click="emit('cancel')">
           {{ $t("app.cancel") }}
         </AlertDialogCancel>
         <AlertDialogAction
           variant="destructive"
           data-testid="workspace-upload-overwrite"
-          :disabled="uploading"
-          @click.capture="$emit('overwrite')"
+          :disabled="uploading || creatingFirstThread"
+          @click.capture="emit('overwrite')"
         >
           {{ $t("app.workspaceUploadOverwrite") }}
         </AlertDialogAction>

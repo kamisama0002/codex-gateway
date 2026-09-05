@@ -134,6 +134,7 @@ const {
   <WorkspaceUploadConflictDialog
     :conflict="pendingWorkspaceUploadConflict"
     :uploading="uploadingWorkspace"
+    :creating-first-thread="creatingFirstThread"
     @cancel="cancelWorkspaceUploadConflict"
     @overwrite="confirmWorkspaceOverwrite"
   />

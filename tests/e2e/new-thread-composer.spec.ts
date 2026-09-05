@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { z } from "zod";
 import { expect, test } from "./fixtures/remote-workspace";
 import { E2E_PASSWORD, E2E_USERNAME, openApp } from "./helpers/app";
@@ -72,15 +73,39 @@ test("creates a thread and sends the first message from the centered composer", 
   expect(submittedTurns).toBe(1);
 });
 
-test("cancels pending first-thread creation through the server without clearing the draft", async ({
+test("cancels pending first-thread creation while retaining a delayed workspace conflict", async ({
   page,
   remoteWorkspace,
-}) => {
+}, testInfo) => {
   await installRealtimeSocketProbe(page);
   await openApp(page);
-  const { host } = await remoteWorkspace.provision({
+  const conflictMarker = String(Date.now());
+  const conflictName = `delayed-conflict-${conflictMarker}.txt`;
+  const remotePath = `/home/codex/delayed-conflict-${conflictMarker}`;
+  await execRemoteSsh(
+    remoteWorkspace.remote,
+    `mkdir -p ${shellQuote(remotePath)}; printf %s ${shellQuote("server original")} > ${shellQuote(`${remotePath}/${conflictName}`)}`,
+  );
+  const { host, project } = await remoteWorkspace.provision({
     hostName: `cancel-new-thread-host-${Date.now()}`,
     projectName: `cancel-new-thread-project-${Date.now()}`,
+    remotePath,
+  });
+  const conflictFile = testInfo.outputPath(conflictName);
+  await writeFile(conflictFile, "browser overwrite", "utf8");
+  const conflictResponseReady = deferred<void>();
+  const releaseConflictResponse = deferred<void>();
+  let delayNextConflictResponse = true;
+  await page.route("**/api/workspace/uploads?*", async (route) => {
+    if (!delayNextConflictResponse) {
+      await route.continue();
+      return;
+    }
+    delayNextConflictResponse = false;
+    const response = await route.fetch();
+    conflictResponseReady.resolve();
+    await releaseConflictResponse.promise;
+    await route.fulfill({ response });
   });
 
   const paused = await execRemoteSsh(
@@ -106,6 +131,13 @@ test("cancels pending first-thread creation through the server without clearing 
     const approvalSelect = page.getByRole("button", {
       name: /^(请求审批|帮我审批|完全访问|自定义)$/,
     });
+    const deliveredConflictResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/workspace/uploads" &&
+        response.request().method() === "POST",
+    );
+    await workspaceFileInput.setInputFiles(conflictFile);
+    await conflictResponseReady.promise;
     await uploadInput.setInputFiles({
       name: "frozen-preview.png",
       mimeType: "image/png",
@@ -160,8 +192,21 @@ test("cancels pending first-thread creation through the server without clearing 
       { requestId: threadStart.requestId, hostId: host.id },
     );
 
+    await expect(sendButton).toBeFocused();
+    releaseConflictResponse.resolve();
+    await deliveredConflictResponse;
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    const conflictDialog = page.getByTestId("workspace-upload-conflict-dialog");
+    await expect(conflictDialog).toBeHidden();
+    await page.keyboard.press("Escape");
     await expect(sendButton).toBeEnabled();
     await expect(sendButton).toHaveAttribute("aria-label", "取消创建会话");
+    await expect(sendButton).toBeFocused();
     await expect(composer).toHaveAttribute("contenteditable", "false");
     await expect(uploadInput).toBeDisabled();
     await expect(workspaceFileInput).toBeDisabled();
@@ -185,6 +230,23 @@ test("cancels pending first-thread creation through the server without clearing 
       .strict()
       .parse(await waitForRealtimeClientMessage(page, "request.cancel", messageOffset));
     expect(cancellation.targetRequestId).toBe(threadStart.requestId);
+
+    await expect(conflictDialog).toBeVisible();
+    const overwrite = page.getByTestId("workspace-upload-overwrite");
+    await expect(overwrite).toBeEnabled();
+    await overwrite.click();
+    await expect(conflictDialog).toBeHidden();
+    await expect
+      .poll(
+        async () =>
+          (
+            await execRemoteSsh(
+              remoteWorkspace.remote,
+              `cat ${shellQuote(`${project.remotePath}/${conflictName}`)}`,
+            )
+          ).stdout,
+      )
+      .toBe("browser overwrite");
 
     await expect(composer).toHaveAttribute("data-value", marker);
     await expect(composer).toHaveAttribute("contenteditable", "true");
@@ -241,6 +303,7 @@ test("cancels pending first-thread creation through the server without clearing 
     );
     expect(submittedTurns).toBe(0);
   } finally {
+    releaseConflictResponse.resolve();
     if (!resumed) {
       await execRemoteSsh(remoteWorkspace.remote, `kill -CONT ${pausedPids.join(" ")}`);
     }
@@ -283,3 +346,17 @@ test("restores an unthreaded project text draft after the session expires", asyn
   expect(page.url()).toBe(projectUrl);
   await expect(page.getByTestId("composer-input")).toHaveAttribute("data-value", marker);
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function shellQuote(value: string) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}

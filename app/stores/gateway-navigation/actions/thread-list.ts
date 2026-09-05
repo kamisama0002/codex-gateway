@@ -98,9 +98,9 @@ export function createThreadListActions() {
         if (response.projects !== undefined) catalog.mergeProjects(response.projects);
         applyProjectDirectoryAvailability(response);
         useGatewayThreadActivityStore().ingestGatewayThreads(response.data ?? [], catalog.projects);
-        catalog.setHostConnectionStatus(hostId, "connected");
+        if (!passive) catalog.setHostConnectionStatus(hostId, "connected");
         syncThreadStatusesFromList(hostId, response.data ?? [], {
-          preserveActiveFromInactive: passive,
+          preserveActive: passive,
         });
         // Sub-agent threads remain addressable by their explicit panel links, but they are not
         // top-level navigation entries. Filter once at the catalog boundary so every sidebar
@@ -170,15 +170,14 @@ function applyProjectDirectoryAvailability(response: ThreadListResponse) {
 function syncThreadStatusesFromList(
   hostId: number,
   threads: GatewayThread[],
-  options: { preserveActiveFromInactive?: boolean } = {},
+  options: { preserveActive?: boolean } = {},
 ) {
   const runtime = useGatewayThreadRuntimeStore();
   for (const thread of threads) {
     const phase = runtimePhaseFromAppThreadStatus(thread.status);
     if (
-      options.preserveActiveFromInactive === true &&
-      isActiveThreadRuntimePhase(runtime.phaseFor(hostId, thread.id)) &&
-      !isActiveThreadRuntimePhase(phase)
+      options.preserveActive === true &&
+      isActiveThreadRuntimePhase(runtime.phaseFor(hostId, thread.id))
     ) {
       continue;
     }

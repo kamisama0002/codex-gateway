@@ -206,6 +206,16 @@ export function useComposerController() {
     workspaceUpload.handleWorkspaceSelection(event, selection);
   }
 
+  async function confirmWorkspaceOverwrite() {
+    if (submit.submittingNewThread.value) return;
+    await workspaceUpload.confirmOverwrite();
+  }
+
+  function cancelWorkspaceUploadConflict() {
+    if (submit.submittingNewThread.value) return;
+    workspaceUpload.cancelConflict();
+  }
+
   function handlePaste(event: ClipboardEvent) {
     if (submit.submittingNewThread.value) {
       event.preventDefault();
@@ -253,8 +263,8 @@ export function useComposerController() {
     pendingWorkspaceUploadConflict: workspaceUpload.pendingConflict,
     handleAttachmentChange,
     handleWorkspaceSelection,
-    confirmWorkspaceOverwrite: workspaceUpload.confirmOverwrite,
-    cancelWorkspaceUploadConflict: workspaceUpload.cancelConflict,
+    confirmWorkspaceOverwrite,
+    cancelWorkspaceUploadConflict,
     handlePaste,
     removeAttachment,
     openAttachmentPicker: attachmentUpload.openAttachmentPicker,

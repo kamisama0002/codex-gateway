@@ -45,6 +45,7 @@ export function useComposerTurnSubmit(input: {
   const submissionPending = ref(false);
   const failedDrafts: SubmittedDraft[] = [];
   let submissionController: AbortController | null = null;
+  let submissionHostId: number | null = null;
   let submissionThreadId: string | null = null;
   let composerReleased = false;
   let restoringFailedDrafts = false;
@@ -92,6 +93,7 @@ export function useComposerTurnSubmit(input: {
     };
     const startingNewThread = navigation.selectedThreadId === null;
     if (startingNewThread && navigation.selectedProjectId === null) return;
+    submissionHostId = navigation.selectedHostId;
     submissionThreadId = navigation.selectedThreadId;
     const draftSnapshot: SubmittedDraft = {
       text: input.turnText.value,
@@ -122,6 +124,7 @@ export function useComposerTurnSubmit(input: {
       if (startingNewThread) submittingNewThread.value = false;
       if (submissionController === controller) {
         submissionController = null;
+        submissionHostId = null;
         submissionThreadId = null;
         submissionPending.value = false;
       }
@@ -163,8 +166,8 @@ export function useComposerTurnSubmit(input: {
   }
 
   function rememberFailedDraft(draft: SubmittedDraft) {
-    if (composerReleased && submissionThreadId !== null && navigation.selectedHostId !== null) {
-      composer.queueFailedComposerDraft(navigation.selectedHostId, submissionThreadId, draft);
+    if (composerReleased && submissionHostId !== null && submissionThreadId !== null) {
+      composer.queueFailedComposerDraft(submissionHostId, submissionThreadId, draft);
       return;
     }
     failedDrafts.push(draft);
@@ -195,7 +198,12 @@ export function useComposerTurnSubmit(input: {
   });
   onScopeDispose(() => {
     composerReleased = true;
-    if (submissionThreadId !== null && navigation.selectedThreadId === submissionThreadId) {
+    if (
+      submissionHostId !== null &&
+      submissionThreadId !== null &&
+      navigation.selectedHostId === submissionHostId &&
+      navigation.selectedThreadId === submissionThreadId
+    ) {
       return;
     }
     submissionController?.abort(new Error("Composer released"));

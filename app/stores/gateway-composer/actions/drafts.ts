@@ -41,6 +41,7 @@ export function createComposerActions() {
       const key = selectedThreadKey(hostId, threadId);
       if (key === null) return [];
       const queued = composer.failedComposerDraftsByKey[key] ?? [];
+      if (queued.length === 0) return [];
       const { [key]: _removed, ...remaining } = composer.failedComposerDraftsByKey;
       composer.failedComposerDraftsByKey = remaining;
       return queued.map(cloneDraft);
