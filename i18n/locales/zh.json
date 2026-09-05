@@ -704,7 +704,7 @@
     "turnProcessMessages": "{count} 条消息",
     "turnProcessSubagents": "{count} 个子 Agent",
     "turnProcessSeparator": " · ",
-    "turnProcessThoughtForAWhile": "思考了一会儿",
+    "turnProcessThoughtForAWhile": "已思考",
     "turnProcessAccessibleLabel": "{title}：{summary}",
     "reasoning": "思考",
     "copyAgentOutput": "复制输出",
