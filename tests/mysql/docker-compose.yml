@@ -8,11 +8,7 @@ services:
       MYSQL_ROOT_PASSWORD: codex-gateway-mysql-test-root-password
       MYSQL_USER: codex_gateway_test
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent",
-        ]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 1s
       timeout: 3s
       retries: 60

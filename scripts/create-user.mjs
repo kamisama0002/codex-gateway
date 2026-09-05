@@ -1,7 +1,11 @@
 #!/usr/bin/env node
+import process from "node:process";
 import { UserRepository } from "../server/utils/gateway/auth/user-repository.ts";
 import { hashPassword } from "../server/utils/gateway/storage/crypto.ts";
 import { createMysqlGatewayDb } from "../server/utils/gateway/storage/mysql.ts";
+
+/** @typedef {"admin" | "user"} UserRole */
+/** @typedef {{ username: string, password: string, explicitRole: UserRole | null }} CreateUserOptions */
 
 async function main() {
   const { username, password, explicitRole } = parseArguments(process.argv);
@@ -12,6 +16,7 @@ async function main() {
     const users = new UserRepository(db);
     const existing = await users.findByUsername(username);
     const now = new Date().toISOString();
+    /** @type {UserRole} */
     let role;
 
     if (existing === null) {
@@ -49,6 +54,10 @@ async function main() {
   }
 }
 
+/**
+ * @param {string[]} argv
+ * @returns {CreateUserOptions}
+ */
 function parseArguments(argv) {
   const [, , usernameArg = "", password = "", roleFlag, roleArg] = argv;
   const username = usernameArg.trim().toLowerCase();
@@ -63,6 +72,7 @@ function parseArguments(argv) {
   return { username, password, explicitRole: parseRole(roleFlag, roleArg) };
 }
 
+/** @returns {string} */
 function requiredDatabaseUrl() {
   const databaseUrl = process.env.DATABASE_URL;
   if (databaseUrl === undefined || databaseUrl.length === 0) {
@@ -71,6 +81,11 @@ function requiredDatabaseUrl() {
   return databaseUrl;
 }
 
+/**
+ * @param {string | undefined} flag
+ * @param {string | undefined} value
+ * @returns {UserRole | null}
+ */
 function parseRole(flag, value) {
   if (flag === undefined && value === undefined) return null;
   if (flag === "--role" && (value === "admin" || value === "user")) return value;

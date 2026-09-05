@@ -189,7 +189,10 @@ describe("Agent runtime image policy", () => {
       expect(runnerDockerfile).toContain(
         "COPY tests/e2e/gateway-supervisor.sh /usr/local/bin/codex-gateway-e2e-supervisor",
       );
-      const compose = readFileSync(e2eComposePath, "utf8").replace(/\s+/g, " ");
+      const compose = readFileSync(e2eComposePath, "utf8")
+        .replace(/\s+/g, " ")
+        .replace(/\[\s+/g, "[")
+        .replace(/,\s+\]/g, "]");
       expect(compose).toContain(
         'command: ["/usr/local/bin/codex-gateway-e2e-supervisor", "node", "--expose-gc", "--max-old-space-size=512", "/e2e-output/server/index.mjs"]',
       );

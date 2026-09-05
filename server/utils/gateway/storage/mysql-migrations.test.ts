@@ -28,9 +28,9 @@ describe("MySQL gateway migrations", () => {
         "schema_migrations",
       ]),
     );
-    expect(await db.one("SELECT version, checksum FROM schema_migrations ORDER BY version DESC")).toEqual(
-      expect.objectContaining({ version: 8 }),
-    );
+    expect(
+      await db.one("SELECT version, checksum FROM schema_migrations ORDER BY version DESC"),
+    ).toEqual(expect.objectContaining({ version: 8 }));
   });
 
   it("rejects a changed checksum for an applied migration", async () => {
@@ -180,12 +180,14 @@ describe("MySQL gateway migrations", () => {
 
     expect(await db.many("SELECT username FROM users ORDER BY username")).toHaveLength(2);
     expect(await db.many("SELECT id FROM model_providers ORDER BY id")).toHaveLength(2);
-    expect(await db.many("SELECT model_id FROM provider_models WHERE provider_id = ?", ["provider"])).toHaveLength(
-      2,
-    );
-    expect(await db.many("SELECT external_subject FROM external_identities WHERE provider = ?", ["dataops"])).toHaveLength(
-      2,
-    );
+    expect(
+      await db.many("SELECT model_id FROM provider_models WHERE provider_id = ?", ["provider"]),
+    ).toHaveLength(2);
+    expect(
+      await db.many("SELECT external_subject FROM external_identities WHERE provider = ?", [
+        "dataops",
+      ]),
+    ).toHaveLength(2);
     await expect(
       db.execute(
         "INSERT INTO tmux_monitors (user_id, host_id, session_name, session_id, session_created, window_index, window_name, pane_index, pane_id, pane_pid, initial_command, last_command, mode, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

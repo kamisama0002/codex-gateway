@@ -84,7 +84,7 @@ describe("defineGatewayEventHandler", () => {
       config: ReturnType<typeof defaultGatewayConfig>;
       revision: number;
     }) => void;
-    vi.spyOn(userStore, "loadConfig").mockReturnValue(
+    const loadConfig = vi.spyOn(userStore, "loadConfig").mockReturnValue(
       new Promise((resolve) => {
         resolveLoad = resolve;
       }),
@@ -92,7 +92,7 @@ describe("defineGatewayEventHandler", () => {
     const handler = defineGatewayEventHandler(() => currentGatewayMemoryState().configRevision);
 
     const loading = handler(gatewayEvent(704));
-    await vi.waitFor(() => expect(userStore.loadConfig).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(loadConfig).toHaveBeenCalledOnce());
     runWithGatewayUser(704, () => {
       const state = currentGatewayMemoryState();
       state.events.push({

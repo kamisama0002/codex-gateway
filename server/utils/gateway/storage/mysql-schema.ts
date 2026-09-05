@@ -231,9 +231,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
   },
   {
     version: 7,
-    statements: [
-      "CREATE INDEX idx_model_providers_enabled ON model_providers(enabled, name)",
-    ],
+    statements: ["CREATE INDEX idx_model_providers_enabled ON model_providers(enabled, name)"],
   },
   {
     version: 8,

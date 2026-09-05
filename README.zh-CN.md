@@ -107,12 +107,12 @@ Codex Gateway 是一个面向官方 Codex app-server 的 Web 前端与连接网�
 Browser
   └─ HTTP + WebSocket
      └─ Codex Gateway (Nuxt server)
-        ├─ SQLite encrypted config
+        ├─ MySQL encrypted config
         ├─ SSH connection pool
         ├─ one shared RPC client per host
         ├─ direct SSH PTY terminal sessions
         ├─ HTTP/WebSocket preview proxy over SSH
-        ├─ SQLite-backed tmux monitor scheduler
+        ├─ MySQL-backed tmux monitor scheduler
         ├─ thread/event cache
         └─ remote official codex app-server
 ```
@@ -127,7 +127,7 @@ Browser
 
 ## 功能
 
-- **服务端账号与配置**：手动创建用户，Bearer token 登录，host/project/thread 配置加密存储在 SQLite。
+- **服务端账号与配置**：手动创建用户，Bearer token 登录，host/project/thread 配置加密存储在 MySQL。
 - **远端主机**：支持 SSH password、private key、ssh-agent，以及可选 SSH proxy。
 - **Codex runtime 管理**：检测远端 Codex 版本，升级旧版本，重启 stale app-server，并自动重连。
 - **会话发现与恢复**：从远端状态发现 Codex 会话，打开 thread 时优先加载较小的缓存 turn 窗口。
@@ -139,7 +139,7 @@ Browser
 - **远程终端 tab**：基于 `@xterm/xterm` 打开独立 SSH PTY 终端，和 agent loop 并排显示；终端 session 按用户和 host 隔离。
 - **远程浏览器 tab**：通过 SSH 在 Dockview 中预览 Host 上的 `localhost` HTTP/HTTPS 应用，完整代理同源资源和 WebSocket，不需要额外暴露 Gateway 端口；资源失败会直接显示在预览界面中。
 - **主机与 GPU 可观测性**：通过共享实时连接采集 CPU、内存、网络、磁盘、GPU 利用率、温度和显存指标；GPU 进程表会标明远端用户、PID、运行时间、内存和命令。
-- **用户级 tmux 监控**：集中扫描所有已配置 Host 的 tmux session，查看最新 pane 输出，并把监控绑定到相关 Codex thread。一次性监控会在当前任务退出或回到 shell 时通知；永久监控会等待后续任务再次运行，并在每次运行结束后通知。活动监控和历史记录持久化到 SQLite。
+- **用户级 tmux 监控**：集中扫描所有已配置 Host 的 tmux session，查看最新 pane 输出，并把监控绑定到相关 Codex thread。一次性监控会在当前任务退出或回到 shell 时通知；永久监控会等待后续任务再次运行，并在每次运行结束后通知。活动监控和历史记录持久化到 MySQL。
 - **多客户端同步**：多个浏览器 tab 打开同一个 thread 时，通过 Gateway 接收同一条 app-server 事件流。
 - **状态修复**：SSH/app-server 重连后，Gateway 会刷新 running thread 状态；Nitro 定时任务也会扫描 stale running thread。
 - **可操作通知**：主 turn 或 tmux 任务完成时显示浏览器 Sonner 通知，并可选发送服务端 Bark 推送。点击 thread 通知可进入对应对话，点击 tmux 通知可打开对应监控和 pane 输出；通知按用户和完成事件去重。
@@ -173,11 +173,13 @@ git clone --recurse-submodules https://github.com/yunhaoli24/codex-gateway.git
 cd codex-gateway
 
 cp .env.example .env
-# 使用 openssl rand -hex 32 替换 .env 中的 CODEX_GATEWAY_CONFIG_SECRET
+# 在 .env 中设置 CODEX_GATEWAY_CONFIG_SECRET、MYSQL_PASSWORD 和 MYSQL_ROOT_PASSWORD。
+# 三个值分别使用 openssl rand -hex 32 生成。
 
 docker network create web-common 2>/dev/null || true
-docker compose build
-docker compose run --rm codex-gateway \
+docker compose build codex-gateway
+docker compose run --rm database-migrate
+docker compose run --rm --no-deps codex-gateway \
   node scripts/create-user.mjs admin '<至少-8-位-密码>'
 docker compose up -d
 ```
@@ -204,7 +206,11 @@ pnpm test:e2e
 | 变量 | 是否必需 | 说明 |
 | --- | --- | --- |
 | `CODEX_GATEWAY_CONFIG_SECRET` | 生产环境必需 | 用于加密保存 host/project/thread 配置的稳定 secret。 |
-| `CODEX_GATEWAY_DB_PATH` | 否 | SQLite 数据库路径。Docker 默认使用 `/data/codex-gateway.db`。 |
+| `DATABASE_URL` | 外部 MySQL 模式 | MySQL 8 连接 URL；设置后使用外部数据库 Compose 覆盖。 |
+| `MYSQL_DATABASE` | 自带 Compose | 自带 MySQL 的数据库名，默认为 `codex_gateway`。 |
+| `MYSQL_USER` | 自带 Compose | 自带 MySQL 的应用用户，默认为 `codex_gateway`。 |
+| `MYSQL_PASSWORD` | 自带 Compose | 自带 MySQL 的应用密码；应使用 URL-safe 随机值。 |
+| `MYSQL_ROOT_PASSWORD` | 自带 Compose | 自带 MySQL 的管理密码；Gateway 不会收到该值。 |
 | `HOST` | 否 | Nuxt 监听地址。Docker 使用 `0.0.0.0`。 |
 | `PORT` | 否 | Nuxt 监听端口。Docker 使用 `3000`。 |
 | `BROWSER_PREVIEW_DOMAIN` | 使用浏览器预览时 | 隔离预览 origin 使用的父域名；需要为 `p-*.your-domain` 配置 wildcard DNS。 |
@@ -216,7 +222,10 @@ pnpm test:e2e
 
 ```bash
 CODEX_GATEWAY_CONFIG_SECRET="replace-with-a-long-random-secret" \
-CODEX_GATEWAY_DB_PATH="./data/codex-gateway.db" \
+DATABASE_URL="mysql://user:password@127.0.0.1:3306/codex_gateway" \
+pnpm db:migrate
+CODEX_GATEWAY_CONFIG_SECRET="replace-with-a-long-random-secret" \
+DATABASE_URL="mysql://user:password@127.0.0.1:3306/codex_gateway" \
 pnpm user:create <username> <password>
 ```
 
@@ -226,7 +235,7 @@ pnpm user:create <username> <password>
 
 - SSH 凭据和 Codex token 只保存在服务端。
 - 浏览器通过 Bearer token 登录 Gateway。
-- 连接配置使用 `CODEX_GATEWAY_CONFIG_SECRET` 加密后存入 SQLite。
+- 连接配置使用 `CODEX_GATEWAY_CONFIG_SECRET` 加密后存入 MySQL。
 - 远程终端 tab、tmux 检查和浏览器预览代理都使用服务端 SSH channel，不会把 SSH key 或远端端口暴露给浏览器。
 - 公网部署应该放在可信反向代理和 HTTPS 后面。
 
@@ -234,10 +243,24 @@ pnpm user:create <username> <password>
 
 ```bash
 export CODEX_GATEWAY_CONFIG_SECRET="replace-with-a-long-random-secret"
+export MYSQL_PASSWORD="$(openssl rand -hex 32)"
+export MYSQL_ROOT_PASSWORD="$(openssl rand -hex 32)"
 docker compose up -d --build
 ```
 
-默认容器只把 `3000` 暴露到 Docker 网络，适合放在 nginx、Caddy、Cloudflare Tunnel 或其他可信反向代理后面。SQLite 数据保存在 `/data/codex-gateway.db`，并通过 `./data:/data` 持久化。
+自带栈把 MySQL 放在内部 Docker 网络，数据持久化到 `mysql-data` named volume，先一次性执行 schema migration，只有 migration 成功后才启动 Gateway。MySQL 和 Gateway 都不发布宿主机端口；Gateway 应通过 `web-common` 后的 nginx、Caddy、Cloudflare Tunnel 或其他可信反向代理对外提供服务。
+
+使用生产托管的外部 MySQL 8 时，设置 `DATABASE_URL`，并在站点本地 override 之前叠加外部数据库 override：
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.external-db.yml \
+  -f docker-compose.override.yml \
+  up -d --build codex-gateway
+```
+
+外部模式不会启动自带 MySQL。`DATABASE_URL` 和所有密码只能保存在未提交的环境文件或 secret store 中。已有 SQLite 部署切换前必须执行 [MySQL 切换手册](docs/operations/mysql-cutover.md)，日常运维参考 [备份与恢复手册](docs/operations/mysql-backup-restore.md)。
 
 远程浏览器面板使用 `p-<hmac>.example.com` 形式的隔离 origin。需要为 `p-*.example.com` 配置 wildcard DNS，并把这些 host 转发到 Codex Gateway 同一个 Nitro 端口 `3000`。反向代理必须保留 Host header 和 WebSocket Upgrade；不需要增加第二个监听端口或发布新的容器端口。Gateway 会保留上游的 `Content-Security-Policy` 与 `X-Frame-Options`，因此明确禁止 iframe 嵌入的应用仍会被浏览器阻止。
 
