@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { createProviderStore } from "./provider-store";
-import { migrateGatewayDatabase } from "../storage/migrations";
-import { DatabaseSync } from "node:sqlite";
+import { freshMysqlTestDatabase } from "../../../../tests/mysql/helpers";
+import { createProviderStore, type ProviderStore } from "./provider-store";
+import { migrateMysqlGatewayDatabase } from "../storage/mysql-migrations";
 import { issueRuntimeModelToken, verifyRuntimeModelToken } from "./runtime-token";
 import { handleProviderResponses } from "./provider-proxy";
 
 describe("provider proxy", () => {
   it("allows a runtime to switch to another granted model from the same provider", async () => {
-    const db = new DatabaseSync(":memory:");
-    migrateGatewayDatabase(db);
-    db.prepare(
+    const db = await freshMysqlTestDatabase();
+    await migrateMysqlGatewayDatabase(db);
+    await db.execute(
       "INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')",
-    ).run();
+    );
     const store = createProviderStore(db);
-    const provider = store.create({
+    const provider = await store.create({
       id: "p1",
       name: "Provider",
       baseUrl: "https://upstream.test/v1",
@@ -21,7 +21,7 @@ describe("provider proxy", () => {
       apiKey: "secret-key",
     });
     for (const modelId of ["m1", "m2"]) {
-      store.upsertModel(provider.id, {
+      await store.upsertModel(provider.id, {
         modelId,
         displayName: modelId.toUpperCase(),
         capabilities: {
@@ -32,7 +32,7 @@ describe("provider proxy", () => {
           maxContextTokens: null,
         },
       });
-      store.grant({ userId: 1, providerId: provider.id, modelId });
+      await store.grant({ userId: 1, providerId: provider.id, modelId });
     }
     const token = issueRuntimeModelToken(
       { userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" },
@@ -62,7 +62,7 @@ describe("provider proxy", () => {
             output: [],
           });
         },
-        runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+        runtimeStore: { getByUserId: async () => ({ status: "ready" }) },
       },
     );
 
@@ -71,36 +71,7 @@ describe("provider proxy", () => {
   });
 
   it("translates a Chat Completions upstream into Responses JSON", async () => {
-    const db = new DatabaseSync(":memory:");
-    migrateGatewayDatabase(db);
-    db.prepare(
-      "INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')",
-    ).run();
-    const store = createProviderStore(db);
-    const provider = store.create({
-      id: "p1",
-      name: "Provider",
-      baseUrl: "https://upstream.test/v1",
-      wireApi: "chat_completions",
-      apiKey: "secret-key",
-    });
-    store.upsertModel(provider.id, {
-      modelId: "m1",
-      displayName: "Model",
-      capabilities: {
-        tools: true,
-        streamingTools: true,
-        vision: false,
-        reasoning: false,
-        maxContextTokens: null,
-      },
-    });
-    store.grant({ userId: 1, providerId: provider.id, modelId: "m1" });
-    expect(store.listForUser(1)).toMatchObject([{ providerId: "p1", modelId: "m1" }]);
-    const token = issueRuntimeModelToken(
-      { userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" },
-      "test-secret",
-    );
+    const { store, token } = memoryProviderFixture("chat_completions");
     let seen: RequestInit | undefined;
     const response = await handleProviderResponses(
       new Request("http://gateway/api/internal/providers/p1/v1/responses", {
@@ -136,7 +107,7 @@ describe("provider proxy", () => {
             { status: 200, headers: { "content-type": "application/json" } },
           );
         },
-        runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+        runtimeStore: { getByUserId: async () => ({ status: "ready" }) },
       },
     );
     expect(await response.json()).toMatchObject({
@@ -148,20 +119,20 @@ describe("provider proxy", () => {
   });
 
   it("rejects a revoked model grant before contacting upstream", async () => {
-    const db = new DatabaseSync(":memory:");
-    migrateGatewayDatabase(db);
-    db.prepare(
+    const db = await freshMysqlTestDatabase();
+    await migrateMysqlGatewayDatabase(db);
+    await db.execute(
       "INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')",
-    ).run();
+    );
     const store = createProviderStore(db);
-    const provider = store.create({
+    const provider = await store.create({
       id: "p1",
       name: "Provider",
       baseUrl: "https://upstream.test/v1",
       wireApi: "responses",
       apiKey: "secret-key",
     });
-    store.upsertModel(provider.id, {
+    await store.upsertModel(provider.id, {
       modelId: "m1",
       displayName: "Model",
       capabilities: {
@@ -196,7 +167,7 @@ describe("provider proxy", () => {
           jti: "j",
           exp: Date.now() + 10_000,
         }),
-        runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+        runtimeStore: { getByUserId: async () => ({ status: "ready" }) },
       },
     );
     expect(response.status).toBe(403);
@@ -211,7 +182,7 @@ describe("provider proxy", () => {
       }),
       "p1",
       {
-        store: { listForUser: () => [], getWithSecret: () => null },
+        store: { listForUser: async () => [], getWithSecret: async () => null },
         verifyToken: () => ({
           userId: 1,
           runtimeId: "r1",
@@ -220,10 +191,114 @@ describe("provider proxy", () => {
           jti: "j",
           exp: Date.now() + 10_000,
         }),
-        runtimeStore: { getByUserId: () => null },
+        runtimeStore: { getByUserId: async () => null },
       },
     );
     expect(response.status).toBe(401);
+  });
+
+  it("awaits runtime readiness, model authorization, and the provider secret before fetch", async () => {
+    const runtime = deferred<{ status: string } | null>();
+    const models =
+      deferred<Awaited<ReturnType<ReturnType<typeof createProviderStore>["listForUser"]>>>();
+    const provider =
+      deferred<Awaited<ReturnType<ReturnType<typeof createProviderStore>["getWithSecret"]>>>();
+    const calls: string[] = [];
+    const responsePromise = handleProviderResponses(
+      new Request("http://gateway", {
+        method: "POST",
+        headers: { authorization: "Bearer token" },
+        body: JSON.stringify({ model: "m1" }),
+      }),
+      "p1",
+      {
+        runtimeStore: {
+          getByUserId: async () => {
+            calls.push("runtime");
+            return await runtime.promise;
+          },
+        },
+        store: {
+          listForUser: async () => {
+            calls.push("models");
+            return await models.promise;
+          },
+          getWithSecret: async () => {
+            calls.push("secret");
+            return await provider.promise;
+          },
+        },
+        verifyToken: () => ({
+          userId: 1,
+          runtimeId: "r1",
+          providerId: "p1",
+          modelId: "m1",
+          jti: "j",
+          exp: Date.now() + 10_000,
+        }),
+        fetch: async () => {
+          calls.push("fetch");
+          return Response.json({
+            id: "response-1",
+            object: "response",
+            model: "m1",
+            status: "completed",
+            output: [],
+          });
+        },
+      },
+    );
+
+    await nextTask();
+    expect(calls).toEqual(["runtime"]);
+    runtime.resolve({ status: "ready" });
+    await nextTask();
+    expect(calls).toEqual(["runtime", "models"]);
+    models.resolve([
+      {
+        providerId: "p1",
+        modelId: "m1",
+        displayName: "Model",
+        enabled: true,
+        capabilities: {
+          tools: false,
+          streamingTools: false,
+          vision: false,
+          reasoning: false,
+          maxContextTokens: null,
+        },
+        provider: {
+          id: "p1",
+          name: "Provider",
+          baseUrl: "https://upstream.test/v1",
+          wireApi: "responses",
+          enabled: true,
+          hasApiKey: true,
+          requestTimeoutMs: 30_000,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+    await nextTask();
+    expect(calls).toEqual(["runtime", "models", "secret"]);
+    provider.resolve({
+      id: "p1",
+      name: "Provider",
+      baseUrl: "https://upstream.test/v1",
+      wireApi: "responses",
+      apiKey: "secret-key",
+      encryptedApiKey: "encrypted",
+      enabled: true,
+      requestTimeoutMs: 30_000,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await expect(responsePromise).resolves.toMatchObject({ status: 200 });
+    expect(calls).toEqual(["runtime", "models", "secret", "fetch"]);
   });
 
   it.each([
@@ -240,7 +315,7 @@ describe("provider proxy", () => {
   ] as const)(
     "maps upstream HTTP %s to an actionable provider failure",
     async (upstreamStatus, upstreamBody, expectedStatus, expectedCode) => {
-      const { store, token } = providerFixture("responses");
+      const { store, token } = memoryProviderFixture("responses");
       const response = await handleProviderResponses(
         new Request("http://gateway", {
           method: "POST",
@@ -263,7 +338,7 @@ describe("provider proxy", () => {
             jti: "j",
             exp: Date.now() + 10_000,
           }),
-          runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+          runtimeStore: { getByUserId: async () => ({ status: "ready" }) },
         },
       );
 
@@ -278,35 +353,7 @@ describe("provider proxy", () => {
   );
 
   it("keeps SSE frames split across upstream chunks", async () => {
-    const db = new DatabaseSync(":memory:");
-    migrateGatewayDatabase(db);
-    db.prepare(
-      "INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')",
-    ).run();
-    const store = createProviderStore(db);
-    const provider = store.create({
-      id: "p1",
-      name: "Provider",
-      baseUrl: "https://upstream.test/v1",
-      wireApi: "chat_completions",
-      apiKey: "secret-key",
-    });
-    store.upsertModel(provider.id, {
-      modelId: "m1",
-      displayName: "Model",
-      capabilities: {
-        tools: true,
-        streamingTools: true,
-        vision: false,
-        reasoning: false,
-        maxContextTokens: null,
-      },
-    });
-    store.grant({ userId: 1, providerId: provider.id, modelId: "m1" });
-    const token = issueRuntimeModelToken(
-      { userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" },
-      "test-secret",
-    );
+    const { store, token } = memoryProviderFixture("chat_completions");
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -326,7 +373,7 @@ describe("provider proxy", () => {
       "p1",
       {
         store,
-        runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+        runtimeStore: { getByUserId: async () => ({ status: "ready" }) },
         fetch: async () =>
           new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
         verifyToken: () => ({
@@ -345,7 +392,7 @@ describe("provider proxy", () => {
   });
 
   it("rejects the next stream read when a provider stays idle after a chunk", async () => {
-    const { store, token } = providerFixture("responses");
+    const { store, token } = memoryProviderFixture("responses");
     const encoder = new TextEncoder();
     let cancelled = false;
     const upstreamBody = new ReadableStream<Uint8Array>({
@@ -375,7 +422,7 @@ describe("provider proxy", () => {
           jti: "j",
           exp: Date.now() + 10_000,
         }),
-        runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+        runtimeStore: { getByUserId: async () => ({ status: "ready" }) },
       },
     );
 
@@ -387,7 +434,7 @@ describe("provider proxy", () => {
   }, 250);
 
   it("preserves the idle-timeout error when upstream cancellation rejects", async () => {
-    const { store, token } = providerFixture("responses");
+    const { store, token } = memoryProviderFixture("responses");
     const cancelFailure = new Error("upstream cancel failed");
     const unhandled: unknown[] = [];
     const onUnhandled = (reason: unknown) => unhandled.push(reason);
@@ -418,7 +465,7 @@ describe("provider proxy", () => {
             jti: "j",
             exp: Date.now() + 10_000,
           }),
-          runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+          runtimeStore: { getByUserId: async () => ({ status: "ready" }) },
         },
       );
 
@@ -432,7 +479,7 @@ describe("provider proxy", () => {
   }, 250);
 
   it("absorbs an upstream cancellation rejection when a translated stream is cancelled", async () => {
-    const { store, token } = providerFixture("chat_completions");
+    const { store, token } = memoryProviderFixture("chat_completions");
     const cancelFailure = new Error("translated upstream cancel failed");
     const unhandled: unknown[] = [];
     const onUnhandled = (reason: unknown) => unhandled.push(reason);
@@ -463,7 +510,7 @@ describe("provider proxy", () => {
             jti: "j",
             exp: Date.now() + 10_000,
           }),
-          runtimeStore: { getByUserId: () => ({ status: "ready" }) },
+          runtimeStore: { getByUserId: async () => ({ status: "ready" }) },
         },
       );
 
@@ -480,32 +527,57 @@ function nextTask() {
   return new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-function providerFixture(wireApi: "responses" | "chat_completions") {
-  const db = new DatabaseSync(":memory:");
-  migrateGatewayDatabase(db);
-  db.prepare(
-    "INSERT INTO users (username, password_hash, role) VALUES ('u', 'hash', 'user')",
-  ).run();
-  const store = createProviderStore(db);
-  const provider = store.create({
-    id: "p1",
-    name: "Provider",
-    baseUrl: "https://upstream.test/v1",
-    wireApi,
-    apiKey: "secret-key",
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
   });
-  store.upsertModel(provider.id, {
-    modelId: "m1",
-    displayName: "Model",
-    capabilities: {
-      tools: false,
-      streamingTools: false,
-      vision: false,
-      reasoning: false,
-      maxContextTokens: null,
-    },
-  });
-  store.grant({ userId: 1, providerId: provider.id, modelId: "m1" });
+  return { promise, resolve };
+}
+
+function memoryProviderFixture(wireApi: "responses" | "chat_completions") {
+  const store = {
+    listForUser: async () => [
+      {
+        providerId: "p1",
+        modelId: "m1",
+        displayName: "Model",
+        enabled: true,
+        capabilities: {
+          tools: false,
+          streamingTools: false,
+          vision: false,
+          reasoning: false,
+          maxContextTokens: null,
+        },
+        provider: {
+          id: "p1",
+          name: "Provider",
+          baseUrl: "https://upstream.test/v1",
+          wireApi,
+          enabled: true,
+          hasApiKey: true,
+          requestTimeoutMs: 30_000,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+    getWithSecret: async () => ({
+      id: "p1",
+      name: "Provider",
+      baseUrl: "https://upstream.test/v1",
+      wireApi,
+      apiKey: "secret-key",
+      encryptedApiKey: "encrypted",
+      enabled: true,
+      requestTimeoutMs: 30_000,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }),
+  } satisfies Pick<ProviderStore, "listForUser" | "getWithSecret">;
   return {
     store,
     token: issueRuntimeModelToken(

@@ -12,14 +12,17 @@ import { restartRuntimeForEvent } from "../../../api/admin/runtimes/[userId]/res
 describe("runtime routes", () => {
   it("derives status and start ownership only from the authenticated user", async () => {
     const service = {
-      getStatus: vi.fn(() => ({ userId: 7, status: "ready" })),
+      getStatus: vi.fn(async () => ({ userId: 7, status: "ready" })),
       start: vi.fn(async () => ({ userId: 7, status: "ready" })),
       restart: vi.fn(async () => ({ userId: 7, status: "ready" })),
     };
     const event = eventFor({ id: 7, username: "user", role: "user" });
     event.context.body = { userId: 99, containerId: "caller-container", endpoint: "ws://caller" };
 
-    expect(runtimeStatusForEvent(event, service)).toEqual({ userId: 7, status: "ready" });
+    await expect(runtimeStatusForEvent(event, service)).resolves.toEqual({
+      userId: 7,
+      status: "ready",
+    });
     await expect(startRuntimeForEvent(event, service)).resolves.toEqual({
       userId: 7,
       status: "ready",
@@ -43,7 +46,7 @@ describe("runtime routes", () => {
     await expect(listRuntimesForEvent(ordinaryEvent, service)).rejects.toEqual(
       expect.objectContaining({ statusCode: 403 }),
     );
-    expect(() => restartRuntimeForEvent(ordinaryEvent, service)).toThrow(
+    await expect(restartRuntimeForEvent(ordinaryEvent, service)).rejects.toEqual(
       expect.objectContaining({ statusCode: 403 }),
     );
 

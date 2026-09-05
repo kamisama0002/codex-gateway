@@ -20,7 +20,7 @@ import { threadBroker } from "../runtime/broker";
 import { auditStore } from "../audit/audit-store";
 import { userStore } from "../auth/users";
 import { runtimeStore } from "./runtime-store";
-import { providerStore } from "../providers/provider-store";
+import { providerStore, type ProviderStore } from "../providers/provider-store";
 import { issueRuntimeModelToken } from "../providers/runtime-token";
 import { transitionRuntime, type RuntimeEvent } from "./runtime-state";
 import {
@@ -47,14 +47,14 @@ interface RuntimeManagerPort {
 }
 
 interface RuntimeStorePort {
-  getByUserId(userId: number): UserAgentRuntimeRecord | null;
-  list(): UserAgentRuntimeRecord[];
-  upsert(record: UserAgentRuntimeRecord): UserAgentRuntimeRecord;
-  deleteForUser(userId: number): boolean;
+  getByUserId(userId: number): Promise<UserAgentRuntimeRecord | null>;
+  list(): Promise<UserAgentRuntimeRecord[]>;
+  upsert(record: UserAgentRuntimeRecord): Promise<UserAgentRuntimeRecord>;
+  deleteForUser(userId: number): Promise<boolean>;
 }
 
 interface AuditStorePort {
-  record(input: AuditEventInput): unknown;
+  record(input: AuditEventInput): Promise<unknown>;
 }
 
 interface RuntimeCompatibilitySnapshot {
@@ -67,6 +67,7 @@ interface ManagedRuntimeServiceOptions {
   manager: RuntimeManagerPort;
   store: RuntimeStorePort;
   audit: AuditStorePort;
+  providerStore?: Pick<ProviderStore, "listForUser">;
   identitySecret: string;
   imageAlias: string;
   expectedRuntimeVersion: string;
@@ -122,14 +123,15 @@ export class ManagedRuntimeService {
     this.now = options.now ?? (() => new Date().toISOString());
   }
 
-  getStatus(userId: number): ManagedRuntimeStatus | null {
-    const runtime = this.options.store.getByUserId(positiveUserId(userId));
+  async getStatus(userId: number): Promise<ManagedRuntimeStatus | null> {
+    const runtime = await this.options.store.getByUserId(positiveUserId(userId));
     return runtime === null ? null : serializeManagedRuntimeStatus(runtime);
   }
 
   async listStatuses(): Promise<Array<ManagedRuntimeStatus & { username: string }>> {
+    const runtimes = await this.options.store.list();
     return await Promise.all(
-      this.options.store.list().map(async (runtime) => ({
+      runtimes.map(async (runtime) => ({
         ...serializeManagedRuntimeStatus(runtime),
         username: (await this.options.usernameFor?.(runtime.userId)) ?? `user-${runtime.userId}`,
       })),
@@ -169,7 +171,7 @@ export class ManagedRuntimeService {
     const targetUserId = positiveUserId(userId);
     const actor = positiveUserId(actorUserId);
     return this.lockFor(targetUserId).runExclusive(async () => {
-      const runtime = this.requiredRuntime(targetUserId);
+      const runtime = await this.requiredRuntime(targetUserId);
       const identity = this.identity(targetUserId);
       let result: RuntimeLifecycleResult;
       try {
@@ -179,16 +181,23 @@ export class ManagedRuntimeService {
         requiredImageVersion(result);
       } catch (error) {
         const code = safeErrorCode(error);
-        const degraded = this.persist(runtime, "degraded", { lastError: code });
-        this.auditFailure("runtime.stop", actor, targetUserId, degraded, identity.runtimeId, code);
+        const degraded = await this.persist(runtime, "degraded", { lastError: code });
+        await this.auditFailure(
+          "runtime.stop",
+          actor,
+          targetUserId,
+          degraded,
+          identity.runtimeId,
+          code,
+        );
         throw new ManagedRuntimeServiceError(code);
       }
-      const stopped = this.persist(runtime, "degraded", {
+      const stopped = await this.persist(runtime, "degraded", {
         containerId: result.containerId,
         imageVersion: requiredImageVersion(result),
         lastError: "runtime_stopped",
       });
-      this.auditSuccess("runtime.stop", actor, targetUserId, stopped, identity.runtimeId);
+      await this.auditSuccess("runtime.stop", actor, targetUserId, stopped, identity.runtimeId);
       return serializeManagedRuntimeStatus(stopped);
     });
   }
@@ -197,9 +206,9 @@ export class ManagedRuntimeService {
     const targetUserId = positiveUserId(userId);
     const actor = positiveUserId(actorUserId);
     return this.lockFor(targetUserId).runExclusive(async () => {
-      let runtime = this.requiredRuntime(targetUserId);
+      let runtime = await this.requiredRuntime(targetUserId);
       const identity = this.identity(targetUserId);
-      runtime = this.persistTransition(runtime, "restart");
+      runtime = await this.persistTransition(runtime, "restart");
       let endpoint: ManagedRuntimeEndpoint;
       let restarted: RuntimeLifecycleResult;
       try {
@@ -207,7 +216,7 @@ export class ManagedRuntimeService {
         const removed = await this.options.manager.remove(identity.runtimeId);
         this.assertRuntimeResult(identity.runtimeId, removed, "absent");
         const provisioned = await this.options.manager.provision(
-          this.provisionRequest(targetUserId, identity),
+          await this.provisionRequest(targetUserId, identity),
         );
         this.assertRuntimeResult(identity.runtimeId, provisioned);
         requiredImageVersion(provisioned);
@@ -216,8 +225,10 @@ export class ManagedRuntimeService {
         requiredImageVersion(restarted);
       } catch (error) {
         const code = safeErrorCode(error);
-        const degraded = this.persistTransition(runtime, "restartFailed", { lastError: code });
-        this.auditFailure(
+        const degraded = await this.persistTransition(runtime, "restartFailed", {
+          lastError: code,
+        });
+        await this.auditFailure(
           "runtime.restart",
           actor,
           targetUserId,
@@ -227,12 +238,12 @@ export class ManagedRuntimeService {
         );
         throw new ManagedRuntimeServiceError(code);
       }
-      runtime = this.persistTransition(runtime, "start", {
+      runtime = await this.persistTransition(runtime, "start", {
         containerId: restarted.containerId,
         imageVersion: requiredImageVersion(restarted),
         lastError: null,
       });
-      this.auditSuccess("runtime.restart", actor, targetUserId, runtime, identity.runtimeId);
+      await this.auditSuccess("runtime.restart", actor, targetUserId, runtime, identity.runtimeId);
       return serializeManagedRuntimeStatus(
         await this.finishCompatibility(runtime, endpoint, actor, identity.runtimeId),
       );
@@ -243,7 +254,7 @@ export class ManagedRuntimeService {
     const targetUserId = positiveUserId(userId);
     const actor = positiveUserId(actorUserId);
     return this.lockFor(targetUserId).runExclusive(async () => {
-      const runtime = this.options.store.getByUserId(targetUserId);
+      const runtime = await this.options.store.getByUserId(targetUserId);
       const identity = this.identity(targetUserId);
       let result: RuntimeLifecycleResult;
       try {
@@ -252,9 +263,9 @@ export class ManagedRuntimeService {
         this.assertRuntimeResult(identity.runtimeId, result, "absent");
       } catch (error) {
         const code = safeErrorCode(error);
-        const basis = runtime ?? this.createRuntime(targetUserId, "degraded");
-        const degraded = this.persist(basis, "degraded", { lastError: code });
-        this.auditFailure(
+        const basis = runtime ?? (await this.createRuntime(targetUserId, "degraded"));
+        const degraded = await this.persist(basis, "degraded", { lastError: code });
+        await this.auditFailure(
           "runtime.remove",
           actor,
           targetUserId,
@@ -265,13 +276,13 @@ export class ManagedRuntimeService {
         throw new ManagedRuntimeServiceError(code);
       }
       if (runtime !== null && runtime.status !== "absent") {
-        this.persistTransition(runtime, "remove", {
+        await this.persistTransition(runtime, "remove", {
           containerId: null,
           lastError: null,
         });
       }
-      this.options.store.deleteForUser(targetUserId);
-      this.auditSuccess(
+      await this.options.store.deleteForUser(targetUserId);
+      await this.auditSuccess(
         "runtime.remove",
         actor,
         targetUserId,
@@ -285,7 +296,7 @@ export class ManagedRuntimeService {
 
   async resolveManagedHost(userId: number): Promise<HostRecord> {
     const targetUserId = positiveUserId(userId);
-    const runtime = this.requiredRuntime(targetUserId);
+    const runtime = await this.requiredRuntime(targetUserId);
     if (runtime.status !== "ready") throw new ManagedRuntimeServiceError("runtime_not_ready");
     const identity = this.identity(targetUserId);
     let result: RuntimeLifecycleResult;
@@ -300,44 +311,54 @@ export class ManagedRuntimeService {
 
   private async startLocked(userId: number, actorUserId: number): Promise<ManagedRuntimeStatus> {
     const identity = this.identity(userId);
-    const existing = this.options.store.getByUserId(userId);
+    const existing = await this.options.store.getByUserId(userId);
     if (existing?.status === "ready") {
       try {
         const inspected = await this.options.manager.inspect(identity.runtimeId);
         this.runningEndpoint(identity.runtimeId, inspected);
         return serializeManagedRuntimeStatus(existing);
       } catch {
-        this.persist(existing, "degraded", { lastError: "runtime_not_ready" });
+        await this.persist(existing, "degraded", { lastError: "runtime_not_ready" });
       }
     }
 
-    let runtime = this.options.store.getByUserId(userId);
+    let runtime = await this.options.store.getByUserId(userId);
     if (runtime === null) {
-      runtime = this.createRuntime(userId, "provisioning");
+      runtime = await this.createRuntime(userId, "provisioning");
     } else if (
       runtime.status === "absent" ||
       runtime.status === "degraded" ||
       runtime.status === "incompatible"
     ) {
-      runtime = this.persistTransition(runtime, "provision", { lastError: null });
+      runtime = await this.persistTransition(runtime, "provision", { lastError: null });
     } else if (runtime.status !== "provisioning") {
-      runtime = this.persist(runtime, "provisioning", { lastError: null });
+      runtime = await this.persist(runtime, "provisioning", { lastError: null });
     }
 
     let provisioned: RuntimeLifecycleResult;
     try {
-      provisioned = await this.options.manager.provision(this.provisionRequest(userId, identity));
+      provisioned = await this.options.manager.provision(
+        await this.provisionRequest(userId, identity),
+      );
       this.assertRuntimeResult(identity.runtimeId, provisioned);
-      runtime = this.persist(runtime, "provisioning", {
+      runtime = await this.persist(runtime, "provisioning", {
         containerId: provisioned.containerId,
         imageVersion: requiredImageVersion(provisioned),
         lastError: null,
       });
-      this.auditSuccess("runtime.provision", actorUserId, userId, runtime, identity.runtimeId);
+      await this.auditSuccess(
+        "runtime.provision",
+        actorUserId,
+        userId,
+        runtime,
+        identity.runtimeId,
+      );
     } catch (error) {
       const code = safeErrorCode(error);
-      const degraded = this.persistTransition(runtime, "provisionFailed", { lastError: code });
-      this.auditFailure(
+      const degraded = await this.persistTransition(runtime, "provisionFailed", {
+        lastError: code,
+      });
+      await this.auditFailure(
         "runtime.provision",
         actorUserId,
         userId,
@@ -356,16 +377,23 @@ export class ManagedRuntimeService {
       requiredImageVersion(started);
     } catch (error) {
       const code = safeErrorCode(error);
-      const degraded = this.persist(runtime, "degraded", { lastError: code });
-      this.auditFailure("runtime.start", actorUserId, userId, degraded, identity.runtimeId, code);
+      const degraded = await this.persist(runtime, "degraded", { lastError: code });
+      await this.auditFailure(
+        "runtime.start",
+        actorUserId,
+        userId,
+        degraded,
+        identity.runtimeId,
+        code,
+      );
       throw new ManagedRuntimeServiceError(code);
     }
-    runtime = this.persistTransition(runtime, "start", {
+    runtime = await this.persistTransition(runtime, "start", {
       containerId: started.containerId,
       imageVersion: requiredImageVersion(started),
       lastError: null,
     });
-    this.auditSuccess("runtime.start", actorUserId, userId, runtime, identity.runtimeId);
+    await this.auditSuccess("runtime.start", actorUserId, userId, runtime, identity.runtimeId);
     return serializeManagedRuntimeStatus(
       await this.finishCompatibility(runtime, endpoint, actorUserId, identity.runtimeId),
     );
@@ -386,8 +414,8 @@ export class ManagedRuntimeService {
       });
     } catch (error) {
       const code = safeErrorCode(error);
-      const degraded = this.persist(runtime, "degraded", { lastError: code });
-      this.auditFailure(
+      const degraded = await this.persist(runtime, "degraded", { lastError: code });
+      await this.auditFailure(
         "runtime.compatibility",
         actorUserId,
         runtime.userId,
@@ -399,12 +427,12 @@ export class ManagedRuntimeService {
     }
     if (snapshot.runtimeVersion !== this.options.expectedRuntimeVersion) {
       const code = "runtime_version_incompatible";
-      const incompatible = this.persistTransition(runtime, "schemaMismatch", {
+      const incompatible = await this.persistTransition(runtime, "schemaMismatch", {
         runtimeVersion: snapshot.runtimeVersion,
         schemaHash: snapshot.schemaHash,
         lastError: code,
       });
-      this.auditFailure(
+      await this.auditFailure(
         "runtime.compatibility",
         actorUserId,
         runtime.userId,
@@ -414,17 +442,20 @@ export class ManagedRuntimeService {
       );
       throw new ManagedRuntimeServiceError(code);
     }
-    const syncing = this.persistTransition(runtime, "schemaOk", {
+    const syncing = await this.persistTransition(runtime, "schemaOk", {
       runtimeVersion: snapshot.runtimeVersion,
       schemaHash: snapshot.schemaHash,
       lastError: null,
     });
-    return this.persistTransition(syncing, "capabilitiesOk");
+    return await this.persistTransition(syncing, "capabilitiesOk");
   }
 
-  private createRuntime(userId: number, status: RuntimeStatus): UserAgentRuntimeRecord {
+  private async createRuntime(
+    userId: number,
+    status: RuntimeStatus,
+  ): Promise<UserAgentRuntimeRecord> {
     const timestamp = this.now();
-    return this.options.store.upsert({
+    return await this.options.store.upsert({
       userId,
       hostId: MANAGED_RUNTIME_HOST_ID,
       runtimeType: "codex-app-server",
@@ -439,20 +470,20 @@ export class ManagedRuntimeService {
     });
   }
 
-  private persistTransition(
+  private async persistTransition(
     runtime: UserAgentRuntimeRecord,
     event: RuntimeEvent,
     changes: Partial<UserAgentRuntimeRecord> = {},
-  ) {
-    return this.persist(runtime, transitionRuntime(runtime.status, event), changes);
+  ): Promise<UserAgentRuntimeRecord> {
+    return await this.persist(runtime, transitionRuntime(runtime.status, event), changes);
   }
 
-  private persist(
+  private async persist(
     runtime: UserAgentRuntimeRecord,
     status: RuntimeStatus,
     changes: Partial<UserAgentRuntimeRecord> = {},
-  ) {
-    return this.options.store.upsert({
+  ): Promise<UserAgentRuntimeRecord> {
+    return await this.options.store.upsert({
       ...runtime,
       ...changes,
       userId: runtime.userId,
@@ -463,8 +494,8 @@ export class ManagedRuntimeService {
     });
   }
 
-  private requiredRuntime(userId: number): UserAgentRuntimeRecord {
-    const runtime = this.options.store.getByUserId(userId);
+  private async requiredRuntime(userId: number): Promise<UserAgentRuntimeRecord> {
+    const runtime = await this.options.store.getByUserId(userId);
     if (runtime === null) throw new ManagedRuntimeServiceError("runtime_not_found");
     return runtime;
   }
@@ -476,17 +507,21 @@ export class ManagedRuntimeService {
     return { userHash, runtimeId: `codex_${userHash.slice(0, 32)}` };
   }
 
-  private provisionRequest(
+  private async provisionRequest(
     userId: number,
     identity: { userHash: string; runtimeId: string },
-  ): ProvisionRuntimeRequest {
+  ): Promise<ProvisionRuntimeRequest> {
     const request: ProvisionRuntimeRequest = {
       runtimeId: identity.runtimeId,
       userHash: identity.userHash,
       runtimeType: "codex-app-server",
       imageAlias: this.options.imageAlias,
     };
-    const providerConfig = providerConfigForUser(userId, identity.runtimeId);
+    const providerConfig = await providerConfigForUser(
+      userId,
+      identity.runtimeId,
+      this.options.providerStore ?? providerStore,
+    );
     if (providerConfig !== null) request.providerConfig = providerConfig;
     return request;
   }
@@ -509,15 +544,15 @@ export class ManagedRuntimeService {
     }
   }
 
-  private auditSuccess(
+  private async auditSuccess(
     action: string,
     actorUserId: number,
     userId: number,
     runtime: UserAgentRuntimeRecord | null,
     runtimeId: string,
     status?: RuntimeStatus,
-  ) {
-    this.options.audit.record({
+  ): Promise<void> {
+    await this.options.audit.record({
       actorUserId,
       userId,
       action,
@@ -526,22 +561,26 @@ export class ManagedRuntimeService {
     });
   }
 
-  private auditFailure(
+  private async auditFailure(
     action: string,
     actorUserId: number,
     userId: number,
     runtime: UserAgentRuntimeRecord | null,
     runtimeId: string,
     errorCode: string,
-  ) {
-    this.options.audit.record({
-      actorUserId,
-      userId,
-      action,
-      outcome: "failure",
-      errorCode,
-      metadata: auditMetadata(userId, runtime, runtimeId),
-    });
+  ): Promise<void> {
+    try {
+      await this.options.audit.record({
+        actorUserId,
+        userId,
+        action,
+        outcome: "failure",
+        errorCode,
+        metadata: auditMetadata(userId, runtime, runtimeId),
+      });
+    } catch {
+      console.error("[gateway-runtime] failed to record audit event", { action, errorCode });
+    }
   }
 
   private lockFor(userId: number) {
@@ -634,8 +673,12 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
-function providerConfigForUser(userId: number, runtimeId: string) {
-  const model = providerStore.listForUser(userId)[0];
+async function providerConfigForUser(
+  userId: number,
+  runtimeId: string,
+  store: Pick<ProviderStore, "listForUser">,
+) {
+  const model = (await store.listForUser(userId))[0];
   if (model === undefined) return null;
   const proxyBase =
     process.env.RUNTIME_PROVIDER_PROXY_BASE_URL ??

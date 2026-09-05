@@ -3,15 +3,15 @@ import { requireAdminUser } from "../../../utils/gateway/auth/context";
 import { defineGatewayEventHandler } from "../../../utils/gateway/http/errors";
 import { providerStore } from "../../../utils/gateway/providers/provider-store";
 
-export function listProvidersForEvent(
-  event: H3Event,
-  store = providerStore,
-) {
+export async function listProvidersForEvent(event: H3Event, store = providerStore) {
   requireAdminUser(event);
-  return store.listPublic().map((provider) => ({
-    ...provider,
-    models: store.listModels(provider.id),
-  }));
+  const providers = await store.listPublic();
+  return await Promise.all(
+    providers.map(async (provider) => ({
+      ...provider,
+      models: await store.listModels(provider.id),
+    })),
+  );
 }
 
-export default defineGatewayEventHandler((event) => listProvidersForEvent(event));
+export default defineGatewayEventHandler(async (event) => await listProvidersForEvent(event));
