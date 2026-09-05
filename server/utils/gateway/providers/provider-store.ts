@@ -16,7 +16,7 @@ import {
   providerNameSchema,
   upstreamWireApiSchema,
 } from "../http/validation/providers";
-import type { GatewayDb } from "../storage/contracts";
+import type { GatewayDb, SqlValue } from "../storage/contracts";
 import { decryptJson, encryptJson } from "../storage/crypto";
 import { gatewayMysqlDatabase } from "../storage/mysql-database";
 
@@ -95,41 +95,40 @@ export function createProviderStore(db: GatewayDb): ProviderStore {
 
     async update(id, input) {
       const normalizedId = providerIdSchema.parse(id);
+      const assignments: string[] = [];
+      const params: SqlValue[] = [];
+      if (input.name !== undefined) {
+        assignments.push("name = ?");
+        params.push(providerNameSchema.parse(input.name));
+      }
+      if (input.baseUrl !== undefined) {
+        assignments.push("base_url = ?");
+        params.push(providerBaseUrlSchema.parse(input.baseUrl).replace(/\/$/, ""));
+      }
+      if (input.wireApi !== undefined) {
+        assignments.push("wire_api = ?");
+        params.push(upstreamWireApiSchema.parse(input.wireApi));
+      }
+      if (input.apiKey !== undefined && input.apiKey.trim() !== "") {
+        assignments.push("encrypted_api_key = ?");
+        params.push(encryptJson({ apiKey: input.apiKey.trim() }));
+      }
+      if (input.enabled !== undefined) {
+        assignments.push("enabled = ?");
+        params.push(input.enabled);
+      }
+      if (input.requestTimeoutMs !== undefined) {
+        assignments.push("request_timeout_ms = ?");
+        params.push(normalizeTimeout(input.requestTimeoutMs));
+      }
+      assignments.push("updated_at = ?");
+      params.push(new Date().toISOString(), normalizedId);
       return await db.transaction(async (tx) => {
-        const current = await requiredProvider(tx, normalizedId);
-        const name = input.name === undefined ? current.name : providerNameSchema.parse(input.name);
-        const baseUrl =
-          input.baseUrl === undefined
-            ? current.baseUrl
-            : providerBaseUrlSchema.parse(input.baseUrl).replace(/\/$/, "");
-        const wireApi =
-          input.wireApi === undefined
-            ? current.wireApi
-            : upstreamWireApiSchema.parse(input.wireApi);
-        const enabled = input.enabled === undefined ? current.enabled : input.enabled;
-        const requestTimeoutMs =
-          input.requestTimeoutMs === undefined
-            ? current.requestTimeoutMs
-            : normalizeTimeout(input.requestTimeoutMs);
-        const encryptedApiKey =
-          input.apiKey === undefined || input.apiKey.trim() === ""
-            ? current.encryptedApiKey
-            : encryptJson({ apiKey: input.apiKey.trim() });
         await tx.execute(
           `UPDATE model_providers
-           SET name = ?, base_url = ?, wire_api = ?, encrypted_api_key = ?, enabled = ?,
-               request_timeout_ms = ?, updated_at = ?
+           SET ${assignments.join(", ")}
            WHERE id = ?`,
-          [
-            name,
-            baseUrl,
-            wireApi,
-            encryptedApiKey,
-            enabled,
-            requestTimeoutMs,
-            new Date().toISOString(),
-            normalizedId,
-          ],
+          params,
         );
         return await requiredPublic(tx, normalizedId);
       });

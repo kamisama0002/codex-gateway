@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { freshMysqlTestDatabase } from "../../../../tests/mysql/helpers";
-import type { GatewayDb } from "../storage/contracts";
+import type { DbRow, GatewayDb } from "../storage/contracts";
 import { migrateMysqlGatewayDatabase } from "../storage/mysql-migrations";
 import { createProviderStore } from "./provider-store";
 
@@ -55,6 +55,25 @@ describe("providerStore", () => {
 
     expect(updated).toMatchObject({ name: "Qwen Cloud", requestTimeoutMs: 45_000 });
     expect((await store.getWithSecret(provider.id))?.apiKey).toBe("old-key");
+  });
+
+  it("preserves disjoint concurrent partial updates including an API key rotation", async () => {
+    const provider = await store.create({
+      id: "concurrent",
+      name: "Original",
+      baseUrl: "https://concurrent.test",
+      wireApi: "responses",
+      apiKey: "old-key",
+    });
+    const concurrentStore = createProviderStore(withProviderUpdateReadBarrier(db));
+
+    await Promise.all([
+      concurrentStore.update(provider.id, { name: "Renamed" }),
+      concurrentStore.update(provider.id, { apiKey: "rotated-key" }),
+    ]);
+
+    await expect(store.getPublic(provider.id)).resolves.toMatchObject({ name: "Renamed" });
+    expect((await store.getWithSecret(provider.id))?.apiKey).toBe("rotated-key");
   });
 
   it("upserts models and returns only globally enabled grants for the requesting user", async () => {
@@ -194,4 +213,47 @@ async function providerWithModel(
     capabilities: capabilities(false),
   });
   return provider;
+}
+
+function withProviderUpdateReadBarrier(db: GatewayDb): GatewayDb {
+  let snapshotReads = 0;
+  let releaseSnapshots!: () => void;
+  const snapshotsReady = new Promise<void>((resolve) => {
+    releaseSnapshots = resolve;
+  });
+
+  function wrap(target: GatewayDb, insideTransaction: boolean): GatewayDb {
+    let hasWritten = false;
+    return {
+      async one<T extends DbRow>(sql: string, params = []): Promise<T | null> {
+        const row = await target.one<T>(sql, params);
+        if (insideTransaction && !hasWritten && isProviderSnapshotRead(sql)) {
+          snapshotReads += 1;
+          if (snapshotReads === 2) releaseSnapshots();
+          await snapshotsReady;
+        }
+        return row;
+      },
+      many<T extends DbRow>(sql: string, params = []): Promise<T[]> {
+        return target.many<T>(sql, params);
+      },
+      async execute(sql, params = []) {
+        const result = await target.execute(sql, params);
+        hasWritten = true;
+        return result;
+      },
+      transaction<T>(work: (tx: GatewayDb) => Promise<T>): Promise<T> {
+        return target.transaction((tx) => work(wrap(tx, true)));
+      },
+      close(): Promise<void> {
+        return target.close();
+      },
+    };
+  }
+
+  return wrap(db, false);
+}
+
+function isProviderSnapshotRead(sql: string): boolean {
+  return /^\s*SELECT \* FROM model_providers WHERE id = \?\s*$/i.test(sql);
 }
