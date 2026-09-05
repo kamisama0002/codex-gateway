@@ -6,12 +6,21 @@ import { steerTurnFromRealtime } from "../turn-steer";
 import { sendRealtimePeerMessage, type RealtimePeer } from "../peer-state";
 import { threadBroker } from "../../runtime/broker";
 import { requireWorkspaceHost } from "../../runtime-manager/local-workspace";
+import { idFromUnknown, recordFromUnknown } from "~~/shared/utils/records";
+import { runtimeLog } from "../../runtime/runtime-log";
 
 export async function startTurn(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "turn.start" }>,
+  signal: AbortSignal,
 ) {
+  if (signal.aborted) return;
   const result = await startTurnFromRealtime(request);
+  if (signal.aborted) {
+    const turnId = idFromUnknown(recordFromUnknown(result?.turn)?.id);
+    if (turnId !== null) await interruptCancelledTurn(request, String(turnId));
+    return;
+  }
   sendRealtimePeerMessage(peer, {
     type: "turn.start.accepted",
     requestId: request.requestId,
@@ -24,8 +33,17 @@ export async function startTurn(
 export async function steerTurn(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "turn.steer" }>,
+  signal: AbortSignal,
 ) {
+  if (signal.aborted) return;
   const result = await steerTurnFromRealtime(request);
+  if (signal.aborted) {
+    await interruptCancelledTurn(
+      request,
+      String(idFromUnknown(result?.turnId) ?? request.expectedTurnId),
+    );
+    return;
+  }
   sendRealtimePeerMessage(peer, {
     type: "turn.steer.accepted",
     requestId: request.requestId,
@@ -33,6 +51,23 @@ export async function steerTurn(
     threadId: request.threadId,
     turnId: result?.turnId,
   });
+}
+
+async function interruptCancelledTurn(
+  request: { hostId: number; threadId: string },
+  turnId: string,
+) {
+  try {
+    const host = await requireWorkspaceHost(request.hostId);
+    await threadBroker.interruptTurn(host, request.threadId, turnId);
+  } catch (error) {
+    runtimeLog("cancelled turn cleanup failed", {
+      hostId: request.hostId,
+      threadId: request.threadId,
+      turnId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export async function interruptTurn(

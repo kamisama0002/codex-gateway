@@ -1,4 +1,10 @@
-import { findTurnForItem, sameItem, syntheticTurnIdForItem, turnId } from "./item-identity";
+import {
+  findTurnForItem,
+  itemClientId,
+  sameItem,
+  syntheticTurnIdForItem,
+  turnId,
+} from "./item-identity";
 import { mergeThreadItem } from "./item-merge";
 import { ensureHistoryThread } from "./shape";
 import type { ThreadHistoryItem, ThreadHistorySeed, ThreadHistoryState } from "./types";
@@ -130,4 +136,21 @@ export function insertSteerItemIntoActiveTurn(
   turns[turnIndex] = turn;
   nextHistory.thread.turns = [...turns];
   return nextHistory;
+}
+
+export function removeItemByClientId(
+  history: ThreadHistoryState,
+  clientUserMessageId: string,
+): ThreadHistoryState {
+  let changed = false;
+  const turns = history.thread.turns.flatMap((turn) => {
+    if (!Array.isArray(turn.items)) return [turn];
+    const items = turn.items.filter((item) => itemClientId(item) !== clientUserMessageId);
+    if (items.length === turn.items.length) return [turn];
+    changed = true;
+    if (items.length === 0 && turnId(turn).startsWith("client-")) return [];
+    return [{ ...turn, items }];
+  });
+  if (!changed) return history;
+  return { thread: { ...history.thread, turns } };
 }

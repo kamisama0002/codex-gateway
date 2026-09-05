@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RealtimeClientMessage } from "~~/shared/types";
 import { createRealtimeRequestBroker } from "./request-broker";
-import { RealtimeRequestError } from "./request-errors";
 
 describe("createRealtimeRequestBroker", () => {
   beforeEach(() => {
@@ -15,88 +14,153 @@ describe("createRealtimeRequestBroker", () => {
     vi.unstubAllGlobals();
   });
 
-  it("rejects an aborted request immediately, removes its listener, and ignores a late response", async () => {
-    const sent: RealtimeClientMessage[] = [];
-    const controller = new AbortController();
-    const removeEventListener = vi.spyOn(controller.signal, "removeEventListener");
-    let markSent: (() => void) | undefined;
-    const sentRequest = new Promise<void>((resolve) => {
-      markSent = resolve;
-    });
-    const broker = createRealtimeRequestBroker({
-      waitForReady: async () => {},
+  it("cancels one admitted server request and releases its browser resources", async () => {
+    const messages: RealtimeClientMessage[] = [];
+    const sent = deferred<void>();
+    const waitForReady = vi.fn(() => Promise.resolve());
+    const broker = createBroker({
+      waitForReady,
       send: (message) => {
-        sent.push(message);
-        markSent?.();
+        messages.push(message);
+        sent.resolve();
         return true;
       },
-      unavailableMessage: () => "unavailable",
-      timeoutMessage: () => "timed out",
-      requestContext: () => ({}),
     });
+    const controller = new AbortController();
+    const removeEventListener = vi.spyOn(controller.signal, "removeEventListener");
+    const pending = broker.request(closeBrowserMessage, {
+      timeoutMs: 50,
+      signal: controller.signal,
+    });
+    const settled = pending.catch((error: unknown) => error);
+    await sent.promise;
 
-    const request = broker.request(
-      (requestId) => ({ type: "browser.close", requestId, sessionId: "session-1" }),
-      { signal: controller.signal },
-    );
-    await sentRequest;
-    const listenerRemovalsBeforeAbort = removeEventListener.mock.calls.length;
+    expect(waitForReady).toHaveBeenCalledWith(15_000, controller.signal);
+    expect(messages).toHaveLength(1);
+    const sentRequest = messages[0];
+    if (sentRequest === undefined || !("requestId" in sentRequest)) {
+      throw new Error("Expected an admitted realtime request");
+    }
 
-    controller.abort();
+    controller.abort(new Error("Submission cancelled"));
 
-    await expect(request).rejects.toMatchObject({ reason: "aborted" });
+    expect(await settled).toMatchObject({ reason: "cancelled" });
+    expect(messages[1]).toEqual({
+      type: "request.cancel",
+      targetRequestId: sentRequest.requestId,
+    });
     expect(removeEventListener).toHaveBeenCalledWith("abort", expect.any(Function));
-    expect(removeEventListener).toHaveBeenCalledTimes(listenerRemovalsBeforeAbort + 1);
     expect(vi.getTimerCount()).toBe(0);
 
-    const outbound = sent[0];
-    expect(outbound).toMatchObject({ type: "browser.close" });
-    if (outbound === undefined || !("requestId" in outbound)) {
-      throw new Error("Expected a realtime request id");
-    }
-    expect(broker.rejectRequest(outbound.requestId, new Error("late rejection"))).toEqual({
-      delivered: true,
-      notify: false,
+    broker.resolveRequest({
+      type: "browser.closed",
+      requestId: sentRequest.requestId,
+      sessionId: "session-1",
     });
-    expect(broker.rejectRequest(outbound.requestId, new Error("duplicate late rejection"))).toEqual(
-      {
-        delivered: false,
-        notify: true,
-      },
-    );
-    await Promise.resolve();
-    await expect(request).rejects.toBeInstanceOf(RealtimeRequestError);
+    expect(await settled).toMatchObject({ reason: "cancelled" });
   });
 
-  it("removes the abort listener when the request times out", async () => {
-    const controller = new AbortController();
-    const removeEventListener = vi.spyOn(controller.signal, "removeEventListener");
-    let markSent: (() => void) | undefined;
-    const sentRequest = new Promise<void>((resolve) => {
-      markSent = resolve;
-    });
-    const broker = createRealtimeRequestBroker({
-      waitForReady: async () => {},
-      send: () => {
-        markSent?.();
+  it("does not admit a request cancelled while realtime readiness is pending", async () => {
+    const messages: RealtimeClientMessage[] = [];
+    const waitForReady = vi.fn(
+      (_timeoutMs: number, signal?: AbortSignal) =>
+        new Promise<void>((resolve, reject) => {
+          if (signal === undefined) {
+            resolve();
+            return;
+          }
+          signal.addEventListener(
+            "abort",
+            () =>
+              reject(
+                signal.reason instanceof Error
+                  ? signal.reason
+                  : new Error("Realtime readiness cancelled"),
+              ),
+            { once: true },
+          );
+        }),
+    );
+    const broker = createBroker({
+      waitForReady,
+      send: (message) => {
+        messages.push(message);
         return true;
       },
-      unavailableMessage: () => "unavailable",
-      timeoutMessage: () => "timed out",
-      requestContext: () => ({}),
     });
+    const controller = new AbortController();
+    const pending = broker.request(closeBrowserMessage, {
+      timeoutMs: 50,
+      signal: controller.signal,
+    });
+    const settled = pending.catch((error: unknown) => error);
 
-    const request = broker.request(
-      (requestId) => ({ type: "browser.close", requestId, sessionId: "session-1" }),
-      { signal: controller.signal, timeoutMs: 10 },
-    );
-    await sentRequest;
-    const listenerRemovalsBeforeTimeout = removeEventListener.mock.calls.length;
-    const rejected = expect(request).rejects.toMatchObject({ reason: "timeout" });
+    controller.abort(new Error("Submission cancelled"));
+
+    expect(await settled).toMatchObject({ reason: "cancelled" });
+    expect(waitForReady).toHaveBeenCalledWith(15_000, controller.signal);
+    expect(messages).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("cancels the admitted server request and removes its listener on timeout", async () => {
+    const messages: RealtimeClientMessage[] = [];
+    const sent = deferred<void>();
+    const broker = createBroker({
+      waitForReady: () => Promise.resolve(),
+      send: (message) => {
+        messages.push(message);
+        sent.resolve();
+        return true;
+      },
+    });
+    const controller = new AbortController();
+    const removeEventListener = vi.spyOn(controller.signal, "removeEventListener");
+    const pending = broker.request(closeBrowserMessage, {
+      timeoutMs: 10,
+      signal: controller.signal,
+    });
+    const settled = pending.catch((error: unknown) => error);
+    await sent.promise;
 
     await vi.advanceTimersByTimeAsync(10);
 
-    await rejected;
-    expect(removeEventListener).toHaveBeenCalledTimes(listenerRemovalsBeforeTimeout + 1);
+    expect(await settled).toMatchObject({ reason: "timeout" });
+    const sentRequest = messages[0];
+    if (sentRequest === undefined || !("requestId" in sentRequest)) {
+      throw new Error("Expected an admitted realtime request");
+    }
+    expect(messages[1]).toEqual({
+      type: "request.cancel",
+      targetRequestId: sentRequest.requestId,
+    });
+    expect(removeEventListener).toHaveBeenCalledWith("abort", expect.any(Function));
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+function closeBrowserMessage(requestId: string) {
+  return { type: "browser.close" as const, requestId, sessionId: "session-1" };
+}
+
+function createBroker(input: {
+  waitForReady: (timeoutMs: number, signal?: AbortSignal) => Promise<void>;
+  send: Parameters<typeof createRealtimeRequestBroker>[0]["send"];
+}) {
+  return createRealtimeRequestBroker({
+    ...input,
+    unavailableMessage: () => "Unavailable",
+    timeoutMessage: () => "Timed out",
+    requestContext: () => ({}),
+  });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}

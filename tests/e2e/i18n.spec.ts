@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { z } from "zod";
 import { authenticatedFetch, openApp } from "./helpers/app";
+import { installRealtimeSocketProbe } from "./helpers/realtime-socket-probe";
 
 test("requires bearer auth for protected HTTP APIs", async ({ page }) => {
   await openApp(page);
@@ -71,6 +72,7 @@ test("can revoke the current session from appearance settings", async ({ page })
   await page.getByRole("button", { name: "退出登录" }).click();
 
   await expect(page.getByRole("heading", { name: "登录 Codex Gateway" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
   const revokedStatus = await page.evaluate(async (authorization) => {
     const response = await fetch("/api/config/export", {
       headers: { authorization: `Bearer ${authorization}` },
@@ -93,6 +95,28 @@ test("synchronizes logout state across same-origin tabs", async ({ page }) => {
 
   await expect(secondPage.getByRole("heading", { name: "登录 Codex Gateway" })).toBeVisible();
   await expect(secondPage.getByTestId("desktop-layout")).toBeHidden();
+});
+
+test("returns to login when the realtime session is revoked", async ({ page }) => {
+  await installRealtimeSocketProbe(page);
+  await openApp(page, { interceptRealtime: false });
+  const routeBeforeExpiry = page.url();
+
+  const revoked = await page.evaluate(async () => {
+    const token = localStorage.getItem("codex-gateway-auth-token");
+    if (token === null || token === "") throw new Error("Missing E2E auth token");
+    const response = await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    return response.ok;
+  });
+
+  expect(revoked).toBe(true);
+  await expect(page.getByRole("heading", { name: "登录 Codex Gateway" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText("登录状态已失效，请重新登录。");
+  expect(page.url()).toBe(routeBeforeExpiry);
+  expect(await page.evaluate(() => localStorage.getItem("codex-gateway-auth-token"))).toBeNull();
 });
 
 test("config JSON editor shows current config by default and scrolls", async ({ page }) => {

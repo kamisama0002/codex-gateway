@@ -26,8 +26,10 @@ export function realtimeRequestOptionsForHost(hostId: number, signal?: AbortSign
   const timeoutMs = isManagedRuntimeHostId(hostId)
     ? MANAGED_RUNTIME_BROWSER_REQUEST_TIMEOUT_MS
     : undefined;
-  if (timeoutMs === undefined && signal === undefined) return undefined;
-  return { timeoutMs, signal };
+  if (timeoutMs !== undefined && signal !== undefined) return { timeoutMs, signal };
+  if (timeoutMs !== undefined) return { timeoutMs };
+  if (signal !== undefined) return { signal };
+  return undefined;
 }
 
 export function requestActivateThreadSnapshot(input: {
@@ -54,7 +56,8 @@ export function requestActivateThreadSnapshot(input: {
 
 export function requestStartThread(
   options: ComposerTurnOptions,
-  context?: { projectId?: number | null; signal?: AbortSignal },
+  context?: { projectId?: number | null },
+  signal?: AbortSignal,
 ) {
   const gateway = useGatewayCatalogStore();
   const navigation = useGatewayNavigationStore();
@@ -78,8 +81,9 @@ export function requestStartThread(
       approvalPolicy: options.approvalPolicy ?? undefined,
     }),
     expectThreadStarted,
-    realtimeRequestOptionsForHost(hostId, context?.signal),
+    realtimeRequestOptionsForHost(hostId, signal),
     // Managed runtime RPCs have a bounded backend deadline, so the browser waits just beyond it.
-    // SSH hosts omit this override and retain the broker's 31-minute upgrade/reconnect allowance.
+    // SSH hosts retain the broker's long upgrade/reconnect allowance while still accepting the
+    // submission cancellation signal.
   );
 }

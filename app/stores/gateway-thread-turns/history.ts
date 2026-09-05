@@ -1,6 +1,7 @@
 import {
   insertSteerItemIntoActiveTurn,
   mergeItemIntoLatestTurn,
+  removeItemByClientId,
 } from "~~/shared/thread-history/items";
 import { mergeThreadTurns } from "~~/shared/thread-history/turns";
 import type {
@@ -105,4 +106,24 @@ export function historyForThread(hostId: number, threadId: string) {
     return views.history;
   }
   return views.threadViews[pinnedKey(hostId, threadId)]?.history ?? null;
+}
+
+export function removeOptimisticUserMessage(
+  hostId: number,
+  threadId: string,
+  clientUserMessageId: string,
+) {
+  const navigation = useGatewayNavigationStore();
+  const views = useGatewayThreadViewStore();
+  if (navigation.selectedHostId === hostId && navigation.selectedThreadId === threadId) {
+    if (views.history === null) return;
+    setSelectedThreadHistory(removeItemByClientId(views.history, clientUserMessageId));
+    cacheSelectedThreadView();
+    return;
+  }
+  const view = views.threadViews[pinnedKey(hostId, threadId)];
+  if (view?.history === null || view?.history === undefined) return;
+  patchThreadView(hostId, threadId, {
+    history: removeItemByClientId(view.history, clientUserMessageId),
+  });
 }

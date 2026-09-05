@@ -10,6 +10,8 @@ import { subscribeTerminalEvents } from "./terminal";
 import { subscribeBrowserPreviewEvents } from "./browser-preview";
 import { sendRealtimePeerMessage, stateFor, type RealtimePeer } from "../peer-state";
 import { threadRuntimeStatusHub } from "../../runtime/thread-runtime-status-hub";
+import { RealtimeAuthenticationRequiredError } from "../message-dispatcher";
+import { REALTIME_AUTHENTICATION_CLOSE_CODE } from "~~/shared/runtime/realtime/close-codes";
 
 export function authenticatePeer(
   peer: RealtimePeer,
@@ -22,7 +24,7 @@ export function authenticatePeer(
   const token = request.token;
   const user = userStore.authenticateToken(token);
   if (user === null) {
-    throw new Error("Missing or invalid bearer token");
+    throw new RealtimeAuthenticationRequiredError();
   }
   if (current.authTimer !== undefined) {
     clearTimeout(current.authTimer);
@@ -37,7 +39,7 @@ export function authenticatePeer(
     fileWatchUnsubscribers: new Map(),
     browserOwnerId: connectionId,
     sessionRevocationUnsubscribe: sessionRevocationEvents.subscribe(hashToken(token), () => {
-      peer.close(1008, "Session revoked");
+      peer.close(REALTIME_AUTHENTICATION_CLOSE_CODE, "Session revoked");
     }),
     notificationUnsubscribe: notificationRealtimeEvents.subscribe(user.id, (notification) => {
       sendRealtimePeerMessage(peer, { type: "notification.published", notification });

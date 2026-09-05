@@ -11,6 +11,7 @@ import {
   type RealtimeThreadSubscriptionState,
 } from "./thread-subscriptions";
 import { realtimeRequestContext } from "./request-context";
+import { useAuthStore } from "@/stores/auth";
 
 type RealtimeConnection = ReturnType<typeof createRealtimeConnection>;
 type RealtimeRequestBroker = ReturnType<typeof createRealtimeRequestBroker>;
@@ -44,6 +45,7 @@ export const useGatewayRealtimeStore = defineStore("gateway-realtime", (): Gatew
     disconnectedMessage: () => t("app.realtimeDisconnected"),
     onMessage: receiveServerMessage,
     onDisconnected: (error) => rejectPendingRequests(error),
+    onAuthenticationExpired: () => useAuthStore().expireSession(),
   });
   const requestBroker = createRealtimeRequestBroker({
     waitForReady: connection.waitForReady,

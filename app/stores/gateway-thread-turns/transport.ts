@@ -17,6 +17,7 @@ export function requestTurnStart(input: {
   clientUserMessageId: string;
   cwd: string | null;
   options: ComposerTurnOptions;
+  signal?: AbortSignal;
 }) {
   return useGatewayRealtimeStore().request(
     (requestId) => ({
@@ -37,7 +38,7 @@ export function requestTurnStart(input: {
       references: input.options.references ?? [],
     }),
     expectTurnStartAccepted,
-    realtimeRequestOptionsForHost(input.hostId),
+    realtimeRequestOptionsForHost(input.hostId, input.signal),
   );
 }
 
@@ -71,6 +72,7 @@ export function requestTurnSteer(input: {
   text: string;
   clientUserMessageId: string;
   options: ComposerTurnOptions;
+  signal?: AbortSignal;
 }) {
   return useGatewayRealtimeStore().request(
     (requestId) => ({
@@ -86,6 +88,7 @@ export function requestTurnSteer(input: {
       references: input.options.references ?? [],
     }),
     expectTurnSteerAccepted,
+    { signal: input.signal },
   );
 }
 

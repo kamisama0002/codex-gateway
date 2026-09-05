@@ -34,13 +34,14 @@ export async function runTurnRequestWithAutoRetry<T>(
   t: Translate,
   request: SubmittedTurnRequestInput,
   execute: () => Promise<T>,
+  controller?: AbortController,
 ) {
   const store = useGatewayThreadTurnsStore();
-  store.rememberRequest(request);
+  store.rememberRequest(request, controller);
   try {
     return await execute();
   } catch (error) {
-    return handleImmediateOverloadRetry(t, request, error, execute);
+    return handleImmediateOverloadRetry(t, request, error, execute, controller?.signal);
   }
 }
 
@@ -109,6 +110,7 @@ async function handleImmediateOverloadRetry<T>(
   request: SubmittedTurnRequestInput,
   error: unknown,
   execute: () => Promise<T>,
+  signal?: AbortSignal,
 ) {
   if (!isServerOverloadedRequestError(error)) {
     clearPendingTurnRequest(request.hostId, request.threadId);
@@ -117,7 +119,7 @@ async function handleImmediateOverloadRetry<T>(
   for (let attempt = 1; attempt <= MAX_SERVER_OVERLOADED_RETRIES; attempt += 1) {
     updateRetryAttempt(request, attempt, Date.now() + delayForRetry(attempt));
     setThreadRetryError(t, request, attempt);
-    await waitForRetry(attempt);
+    await waitForRetry(attempt, signal);
     updateRetryAttempt(request, attempt);
     try {
       const result = await execute();
@@ -179,6 +181,7 @@ async function executeStoredTurnRequest(t: Translate, request: SubmittedTurnRequ
       clientUserMessageId: createClientUserMessageId("turn"),
       cwd: request.cwd,
       options: request.options,
+      signal: useGatewayThreadTurnsStore().requestSignal(request.hostId, request.threadId),
     });
     return;
   }
@@ -197,6 +200,7 @@ async function executeStoredTurnRequest(t: Translate, request: SubmittedTurnRequ
     text: request.text,
     clientUserMessageId: createClientUserMessageId("steer"),
     options: request.options,
+    signal: useGatewayThreadTurnsStore().requestSignal(request.hostId, request.threadId),
   });
 }
 

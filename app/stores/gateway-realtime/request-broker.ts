@@ -1,6 +1,6 @@
 import type { RealtimeClientMessage, RealtimeServerMessage } from "~~/shared/types";
 import { createUuid } from "@/lib/uuid";
-import { isRealtimeRequestAbortError, RealtimeRequestError } from "./request-errors";
+import { RealtimeRequestError } from "./request-errors";
 
 type RealtimeRequestMessage = Extract<RealtimeClientMessage, { requestId: string }>;
 type RealtimeResponseMessage = Extract<RealtimeServerMessage, { requestId: string }>;
@@ -13,6 +13,7 @@ interface PendingRealtimeRequest {
   errorMode: RealtimeRequestErrorMode;
   signal?: AbortSignal;
   abortListener?: () => void;
+  sent: boolean;
 }
 
 export type RealtimeRequestErrorMode = "return" | "notify";
@@ -40,11 +41,9 @@ const REALTIME_READY_TIMEOUT_MS = 15_000;
 // SSH reconnect and a remote Codex upgrade can precede app-server RPC work.
 // Keep the browser deadline beyond the backend's 30-minute operation cap.
 const REALTIME_REQUEST_TIMEOUT_MS = 31 * 60_000;
-const MAX_INTENTIONALLY_ABORTED_REQUEST_IDS = 256;
 
 export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOptions) {
   const pendingRequests = new Map<string, PendingRealtimeRequest>();
-  const intentionallyAbortedRequestIds = new Set<string>();
 
   function request(
     buildMessage: (requestId: string) => RealtimeRequestMessage,
@@ -60,22 +59,23 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
     parseOrOptions?: ((message: RealtimeResponseMessage) => T) | RealtimeRequestOptions,
     configuredOptions?: RealtimeRequestOptions,
   ): Promise<RealtimeResponseMessage | T> {
+    const requestId = `gateway-ws-${createUuid()}`;
+    const requestMessage = buildMessage(requestId);
     const parse = typeof parseOrOptions === "function" ? parseOrOptions : undefined;
     const requestOptions =
       typeof parseOrOptions === "function" ? configuredOptions : parseOrOptions;
-    await waitForReady(requestOptions?.signal);
-    const requestId = `gateway-ws-${createUuid()}`;
-    const requestMessage = buildMessage(requestId);
-    if (requestOptions?.signal?.aborted === true) {
-      throw abortedRequestError(requestMessage);
-    }
     const timeoutMs = requestOptions?.timeoutMs ?? REALTIME_REQUEST_TIMEOUT_MS;
     const errorMode = requestOptions?.errorMode ?? "return";
+    const signal = requestOptions?.signal;
+    await waitForReady(signal, requestMessage);
 
     const response = await new Promise<RealtimeResponseMessage>((resolve, reject) => {
       const timer = window.setTimeout(() => {
-        rejectRequest(
-          requestId,
+        const pending = pendingRequests.get(requestId);
+        if (pending === undefined) return;
+        cancelServerRequest(pending);
+        settlePending(requestId, pending);
+        pending.reject(
           new RealtimeRequestError(options.timeoutMessage(), requestMessage, "timeout", {
             requestId,
             timeoutMs,
@@ -84,25 +84,26 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
         );
       }, timeoutMs);
 
-      pendingRequests.set(requestId, {
+      const pending: PendingRealtimeRequest = {
         resolve,
         reject,
         timer,
         request: requestMessage,
         errorMode,
-        signal: requestOptions?.signal,
-      });
-      if (requestOptions?.signal !== undefined) {
-        const abortListener = () => {
-          rememberIntentionalAbort(requestId);
-          rejectRequest(requestId, abortedRequestError(requestMessage));
+        signal,
+        sent: false,
+      };
+      if (signal !== undefined) {
+        pending.abortListener = () => {
+          cancelServerRequest(pending);
+          rejectRequest(requestId, cancelledError(signal, requestMessage));
         };
-        pendingRequests.get(requestId)!.abortListener = abortListener;
-        requestOptions.signal.addEventListener("abort", abortListener, { once: true });
-        if (requestOptions.signal.aborted) {
-          abortListener();
-          return;
-        }
+        signal.addEventListener("abort", pending.abortListener, { once: true });
+      }
+      pendingRequests.set(requestId, pending);
+      if (signal?.aborted === true) {
+        pending.abortListener?.();
+        return;
       }
       if (!options.send(requestMessage)) {
         rejectRequest(
@@ -112,65 +113,26 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
             ...options.requestContext(requestMessage),
           }),
         );
+        return;
       }
+      pending.sent = true;
     });
     return parse === undefined ? response : parse(response);
   }
 
   function resolveRequest(message: RealtimeResponseMessage) {
     const pending = pendingRequests.get(message.requestId);
-    if (!pending) {
-      intentionallyAbortedRequestIds.delete(message.requestId);
-      return;
-    }
-    clearPendingRequest(message.requestId, pending);
+    if (!pending) return;
+    settlePending(message.requestId, pending);
     pending.resolve(message);
   }
 
   function rejectRequest(requestId: string, error: Error) {
     const pending = pendingRequests.get(requestId);
-    if (!pending) {
-      if (intentionallyAbortedRequestIds.delete(requestId)) {
-        return { delivered: true, notify: false };
-      }
-      return { delivered: false, notify: true };
-    }
-    clearPendingRequest(requestId, pending);
+    if (!pending) return { delivered: false, notify: true };
+    settlePending(requestId, pending);
     pending.reject(error);
-    return {
-      delivered: true,
-      notify: pending.errorMode === "notify" && !isRealtimeRequestAbortError(error),
-    };
-  }
-
-  function clearPendingRequest(requestId: string, pending: PendingRealtimeRequest) {
-    window.clearTimeout(pending.timer);
-    if (pending.signal !== undefined && pending.abortListener !== undefined) {
-      pending.signal.removeEventListener("abort", pending.abortListener);
-    }
-    pendingRequests.delete(requestId);
-  }
-
-  async function waitForReady(signal?: AbortSignal) {
-    try {
-      await options.waitForReady(REALTIME_READY_TIMEOUT_MS, signal);
-    } catch (error: unknown) {
-      if (signal?.aborted === true) throw abortedRequestError(undefined);
-      throw error;
-    }
-  }
-
-  function abortedRequestError(request: RealtimeRequestMessage | undefined) {
-    return new RealtimeRequestError("Realtime request aborted", request, "aborted", {
-      ...(request === undefined ? {} : options.requestContext(request)),
-    });
-  }
-
-  function rememberIntentionalAbort(requestId: string) {
-    intentionallyAbortedRequestIds.add(requestId);
-    if (intentionallyAbortedRequestIds.size <= MAX_INTENTIONALLY_ABORTED_REQUEST_IDS) return;
-    const oldestRequestId = intentionallyAbortedRequestIds.values().next().value;
-    if (oldestRequestId !== undefined) intentionallyAbortedRequestIds.delete(oldestRequestId);
+    return { delivered: true, notify: pending.errorMode === "notify" };
   }
 
   function rejectAllRequests(error: Error) {
@@ -185,5 +147,38 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
     }
   }
 
+  async function waitForReady(signal: AbortSignal | undefined, request: RealtimeRequestMessage) {
+    try {
+      await options.waitForReady(REALTIME_READY_TIMEOUT_MS, signal);
+    } catch (error: unknown) {
+      if (signal?.aborted === true) throw cancelledError(signal, request);
+      throw error;
+    }
+    if (signal?.aborted === true) throw cancelledError(signal, request);
+  }
+
+  function settlePending(requestId: string, pending: PendingRealtimeRequest) {
+    window.clearTimeout(pending.timer);
+    pendingRequests.delete(requestId);
+    if (pending.signal !== undefined && pending.abortListener !== undefined) {
+      pending.signal.removeEventListener("abort", pending.abortListener);
+    }
+  }
+
+  function cancelServerRequest(pending: PendingRealtimeRequest) {
+    if (!pending.sent) return;
+    options.send({
+      type: "request.cancel",
+      targetRequestId: pending.request.requestId,
+    });
+  }
+
   return { request, resolveRequest, rejectRequest, rejectAllRequests };
+}
+
+function cancelledError(signal: AbortSignal, request: RealtimeRequestMessage) {
+  const message = signal.reason instanceof Error ? signal.reason.message : "Request cancelled";
+  return new RealtimeRequestError(message, request, "cancelled", {
+    requestId: request.requestId,
+  });
 }

@@ -23,6 +23,19 @@ export interface UploadResult {
   files: UploadedFileRecord[];
 }
 
+export type WorkspaceUploadResult =
+  | { status: "conflict"; conflicts: string[] }
+  | {
+      status: "uploaded";
+      files: Array<{
+        name: string;
+        relativePath: string;
+        path: string;
+        mimeType: string | null;
+        size: number;
+      }>;
+    };
+
 export interface ProjectFileSearchResult {
   files: Array<{
     type: "file";

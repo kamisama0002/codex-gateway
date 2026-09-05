@@ -34,8 +34,9 @@ describe("managed runtime request deadlines", () => {
 
   it("uses 130000 ms for managed thread start, activation, and turn start", async () => {
     testState.navigation.selectedHostId = MANAGED_RUNTIME_HOST_ID;
+    const controller = new AbortController();
 
-    await requestStartThread({}, { projectId: 7 });
+    await requestStartThread({}, { projectId: 7 }, controller.signal);
     await requestActivateThreadSnapshot({
       hostId: MANAGED_RUNTIME_HOST_ID,
       projectId: 7,
@@ -49,19 +50,22 @@ describe("managed runtime request deadlines", () => {
       clientUserMessageId: "client-message-1",
       cwd: "/workspace/project",
       options: {},
+      signal: controller.signal,
     });
 
     const requestOptions: unknown[] = [];
     for (const call of testState.request.mock.calls) requestOptions.push(call[2]);
     expect(requestOptions).toEqual([
+      { timeoutMs: 130_000, signal: controller.signal },
       { timeoutMs: 130_000 },
-      { timeoutMs: 130_000 },
-      { timeoutMs: 130_000 },
+      { timeoutMs: 130_000, signal: controller.signal },
     ]);
   });
 
   it("leaves the broker deadline unchanged for SSH requests", async () => {
-    await requestStartThread({}, { projectId: 7 });
+    const controller = new AbortController();
+
+    await requestStartThread({}, { projectId: 7 }, controller.signal);
     await requestActivateThreadSnapshot({ hostId: 23, projectId: 7, threadId: "thread-1" });
     await requestTurnStart({
       hostId: 23,
@@ -71,10 +75,15 @@ describe("managed runtime request deadlines", () => {
       clientUserMessageId: "client-message-1",
       cwd: "/workspace/project",
       options: {},
+      signal: controller.signal,
     });
 
     const requestOptions: unknown[] = [];
     for (const call of testState.request.mock.calls) requestOptions.push(call[2]);
-    expect(requestOptions).toEqual([undefined, undefined, undefined]);
+    expect(requestOptions).toEqual([
+      { signal: controller.signal },
+      undefined,
+      { signal: controller.signal },
+    ]);
   });
 });
