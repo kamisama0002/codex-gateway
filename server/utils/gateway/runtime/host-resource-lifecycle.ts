@@ -1,4 +1,5 @@
 import { browserPreviewManager } from "../browser-preview/browser-preview-manager";
+import ensureError from "ensure-error";
 import { gatewayEventStore } from "../state/gateway-events";
 import { subAgentThreadStore } from "../state/sub-agent-threads";
 import { threadMetadataStore } from "../state/thread-metadata";
@@ -21,8 +22,7 @@ export const hostResourceLifecycle = {
     if (remoteIdentityFingerprint(previous) !== remoteIdentityFingerprint(next)) {
       threadProjectDiscovery.invalidateHost(userId, previous.id);
       clearThreadRuntime(userId, previous.id);
-      await tmuxMonitorService.removeHost(userId, previous.id);
-      hostMetricsManager.removeHost(userId, previous.id);
+      await removeHostMonitoring(userId, previous.id);
     }
   },
 
@@ -33,10 +33,21 @@ export const hostResourceLifecycle = {
     threadProjectDiscovery.invalidateHost(userId, hostId);
     clearThreadRuntime(userId, hostId);
     closeEphemeralResources(userId, hostId);
-    await tmuxMonitorService.removeHost(userId, hostId);
-    hostMetricsManager.removeHost(userId, hostId);
+    await removeHostMonitoring(userId, hostId);
   },
 };
+
+async function removeHostMonitoring(userId: number, hostId: number): Promise<void> {
+  const monitorRemoval = tmuxMonitorService.removeHost(userId, hostId);
+  let metricsError: unknown;
+  try {
+    hostMetricsManager.removeHost(userId, hostId);
+  } catch (error) {
+    metricsError = error;
+  }
+  await monitorRemoval;
+  if (metricsError !== undefined) throw ensureError(metricsError);
+}
 
 function closeEphemeralResources(userId: number, hostId: number) {
   pendingServerRequests.deleteHost(userId, hostId);

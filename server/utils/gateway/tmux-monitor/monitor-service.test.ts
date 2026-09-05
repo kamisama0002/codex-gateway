@@ -71,6 +71,49 @@ describe("TmuxMonitorService", () => {
       completionReason: "returnedToShell",
     });
   });
+
+  it("does not let a deferred stale poll restart a permanently completed run", async () => {
+    const monitor = await repository.create(1, 10, pane(), null, "permanent");
+    let releaseStale!: (sessions: TmuxSessionSnapshot[]) => void;
+    const staleScan = new Promise<TmuxSessionSnapshot[]>((resolve) => {
+      releaseStale = resolve;
+    });
+    const scan = vi
+      .fn<() => Promise<TmuxSessionSnapshot[]>>()
+      .mockReturnValueOnce(staleScan)
+      .mockResolvedValueOnce([]);
+    const service = new TmuxMonitorService(repository, {
+      scan,
+      capturePane: vi.fn(async () => ({
+        output: "",
+        capturedAt: "2026-09-05T00:00:00.000Z",
+      })),
+    });
+
+    const stalePoll = service.checkHost(1, host(), [monitor]);
+    await vi.waitFor(() => expect(scan).toHaveBeenCalledOnce());
+    await service.checkHost(1, host(), [monitor]);
+    releaseStale([
+      session(
+        pane({
+          sessionId: "$stale",
+          sessionCreated: 1_700_000_300,
+          paneId: "%stale",
+          panePid: 555,
+          currentCommand: "stale-run",
+        }),
+      ),
+    ]);
+    await stalePoll;
+
+    await expect(repository.getOwned(1, monitor.id)).resolves.toMatchObject({
+      sessionId: "$1",
+      paneId: "%1",
+      panePid: 111,
+      runStartedAt: null,
+    });
+    expect((await repository.listForUser(1)).history).toHaveLength(1);
+  });
 });
 
 function scannerReturning(sessions: TmuxSessionSnapshot[] | Error) {

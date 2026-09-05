@@ -132,7 +132,10 @@ export class TmuxMonitorRepository {
       `UPDATE tmux_monitors SET session_name = ?, session_id = ?, session_created = ?,
         window_index = ?, window_name = ?, pane_index = ?, pane_id = ?, pane_pid = ?,
         last_command = ?, last_checked_at = ?, last_error = NULL,
-        last_error_at = NULL WHERE id = ? AND status = 'active'`,
+        last_error_at = NULL
+       WHERE id = ? AND user_id = ? AND status = 'active' AND mode = ?
+         AND run_started_at <=> ? AND last_checked_at <=> ?
+         AND session_id = ? AND session_created = ? AND pane_id = ? AND pane_pid = ?`,
       [
         pane.sessionName,
         pane.sessionId,
@@ -145,6 +148,14 @@ export class TmuxMonitorRepository {
         pane.currentCommand,
         now,
         monitor.id,
+        monitor.userId,
+        monitor.mode,
+        monitor.runStartedAt,
+        monitor.lastCheckedAt,
+        monitor.sessionId,
+        monitor.sessionCreated,
+        monitor.paneId,
+        monitor.panePid,
       ],
     );
   }
@@ -163,7 +174,9 @@ export class TmuxMonitorRepository {
       `UPDATE tmux_monitors SET session_id = ?, session_created = ?, window_name = ?,
         pane_id = ?, pane_pid = ?, initial_command = ?, last_command = ?, run_started_at = ?,
         last_checked_at = ?, last_error = NULL, last_error_at = NULL
-       WHERE id = ? AND status = 'active' AND mode = 'permanent' AND run_started_at IS NULL`,
+       WHERE id = ? AND user_id = ? AND status = 'active' AND mode = 'permanent'
+         AND run_started_at IS NULL AND run_started_at <=> ? AND last_checked_at <=> ?
+         AND session_id = ? AND session_created = ? AND pane_id = ? AND pane_pid = ?`,
       [
         pane.sessionId,
         pane.sessionCreated,
@@ -175,6 +188,13 @@ export class TmuxMonitorRepository {
         now,
         now,
         monitor.id,
+        monitor.userId,
+        monitor.runStartedAt,
+        monitor.lastCheckedAt,
+        monitor.sessionId,
+        monitor.sessionCreated,
+        monitor.paneId,
+        monitor.panePid,
       ],
     );
   }
@@ -199,7 +219,8 @@ export class TmuxMonitorRepository {
         `UPDATE tmux_monitors SET status = 'completed', completion_reason = ?,
           session_name = ?, window_index = ?, window_name = ?, pane_index = ?,
           last_command = ?, last_checked_at = ?, completed_at = ?, last_error = NULL,
-          last_error_at = NULL WHERE id = ? AND user_id = ? AND status = 'active'`,
+          last_error_at = NULL
+         WHERE id = ? AND user_id = ? AND status = 'active' AND mode = 'once'`,
         [
           reason,
           pane?.sessionName ?? monitor.sessionName,
@@ -291,7 +312,7 @@ export class TmuxMonitorRepository {
   ): Promise<StoredTmuxMonitor | null> {
     const now = new Date().toISOString();
     return await this.database().transaction(async (tx) => {
-      await tx.execute(
+      const result = await tx.execute(
         `UPDATE tmux_monitors SET mode = 'permanent', session_name = ?, session_id = ?,
           session_created = ?, window_index = ?, window_name = ?, pane_index = ?, pane_id = ?,
           pane_pid = ?, initial_command = ?, last_command = ?, run_started_at = ?, last_checked_at = ?,
@@ -314,7 +335,12 @@ export class TmuxMonitorRepository {
           monitor.userId,
         ],
       );
-      return await findOwned(tx, monitor.userId, monitor.id);
+      if (result.affectedRows !== 1) return null;
+      const promoted = await findOwned(tx, monitor.userId, monitor.id);
+      if (promoted?.status !== "active" || promoted.mode !== "permanent") {
+        throw new Error("Tmux monitor promotion was not persisted");
+      }
+      return promoted;
     });
   }
 

@@ -129,7 +129,10 @@ export class TmuxMonitorService {
     if (monitor.mode === "permanent") return monitor;
     const sessions = await this.scanner.scan(host);
     const pane = logicalPaneFor(monitor, sessions);
-    return await this.repository.promote(monitor, pane ?? null);
+    const promoted = await this.repository.promote(monitor, pane ?? null);
+    if (!promoted)
+      throw createError({ statusCode: 404, statusMessage: "Active monitor not found" });
+    return promoted;
   }
 
   async checkHost(userId: number, host: HostWithSecret, monitors?: StoredTmuxMonitor[]) {

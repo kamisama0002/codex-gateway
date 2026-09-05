@@ -147,6 +147,113 @@ describe("TmuxMonitorRepository", () => {
       notificationSentAt: null,
     });
   });
+
+  it("allows only one concurrent once completion or promotion transition to win", async () => {
+    const monitor = await repository.create(1, 10, pane(), null, "once");
+
+    const [completed, promoted] = await Promise.all([
+      repository.complete(monitor, "returnedToShell", pane({ running: false })),
+      repository.promote(monitor, pane()),
+    ]);
+
+    expect([completed, promoted].filter((result) => result !== null)).toHaveLength(1);
+    const persisted = await repository.getOwned(1, monitor.id);
+    expect(
+      persisted?.status === "completed" ||
+        (persisted?.status === "active" && persisted.mode === "permanent"),
+    ).toBe(true);
+  });
+
+  it("rejects stale completion and promotion attempts after another state transition", async () => {
+    const promoted = await repository.create(1, 10, pane(), null, "once");
+    await repository.promote(promoted, pane());
+    await expect(
+      repository.complete(promoted, "returnedToShell", pane({ running: false })),
+    ).resolves.toBeNull();
+    await expect(repository.getOwned(1, promoted.id)).resolves.toMatchObject({
+      status: "active",
+      mode: "permanent",
+    });
+
+    const cancelled = await repository.create(
+      1,
+      10,
+      pane({ paneIndex: 1, paneId: "%2" }),
+      null,
+      "once",
+    );
+    await repository.cancel(1, cancelled.id);
+    await expect(
+      repository.promote(cancelled, pane({ paneIndex: 1, paneId: "%2" })),
+    ).resolves.toBeNull();
+
+    const completed = await repository.create(
+      1,
+      10,
+      pane({ paneIndex: 2, paneId: "%3" }),
+      null,
+      "once",
+    );
+    await repository.complete(completed, "paneExited", null);
+    await expect(
+      repository.promote(completed, pane({ paneIndex: 2, paneId: "%3" })),
+    ).resolves.toBeNull();
+  });
+
+  it("makes stale permanent check and start writes no-ops after pane identity advances", async () => {
+    const original = await repository.create(1, 10, pane(), null, "permanent");
+    const replacement = pane({
+      sessionId: "$2",
+      sessionCreated: 1_700_000_100,
+      paneId: "%2",
+      panePid: 222,
+      currentCommand: "node",
+    });
+    await repository.completePermanentRun(original, "paneReplaced", replacement);
+    const waiting = (await repository.getOwned(1, original.id))!;
+    await repository.startPermanentRun(waiting, replacement);
+
+    await repository.recordChecked(original, pane({ currentCommand: "stale-command" }));
+
+    const current = await repository.getOwned(1, original.id);
+    expect(current).toMatchObject({
+      sessionId: "$2",
+      paneId: "%2",
+      panePid: 222,
+      lastCommand: "node",
+    });
+    expect(typeof current?.runStartedAt).toBe("string");
+
+    const idle = await repository.create(
+      1,
+      10,
+      pane({ paneIndex: 1, paneId: "%idle-old", running: false }),
+      null,
+      "permanent",
+    );
+    const newerIdle = pane({
+      sessionId: "$idle-new",
+      sessionCreated: 1_700_000_200,
+      paneIndex: 1,
+      paneId: "%idle-new",
+      panePid: 444,
+      currentCommand: "bash",
+      running: false,
+    });
+    await repository.recordChecked(idle, newerIdle);
+    await repository.startPermanentRun(
+      idle,
+      pane({ paneIndex: 1, paneId: "%idle-old", currentCommand: "stale-run" }),
+    );
+
+    await expect(repository.getOwned(1, idle.id)).resolves.toMatchObject({
+      sessionId: "$idle-new",
+      paneId: "%idle-new",
+      panePid: 444,
+      lastCommand: "bash",
+      runStartedAt: null,
+    });
+  });
 });
 
 function pane(overrides: Partial<TmuxPaneSnapshot> = {}): TmuxPaneSnapshot {

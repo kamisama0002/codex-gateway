@@ -29,7 +29,12 @@ export class PermanentTmuxMonitorChecker {
     const replaced = pane.sessionId !== monitor.sessionId || pane.paneId !== monitor.paneId;
     if (replaced) {
       const completed = await this.repository.completePermanentRun(monitor, "paneReplaced", pane);
-      if (pane.running === true) await this.repository.startPermanentRun(monitor, pane);
+      if (completed !== null && pane.running === true) {
+        const current = await this.repository.getOwned(monitor.userId, monitor.id);
+        if (current?.status === "active" && current.runStartedAt === null) {
+          await this.repository.startPermanentRun(current, pane);
+        }
+      }
       return completed;
     }
     if (pane.running === false) {
