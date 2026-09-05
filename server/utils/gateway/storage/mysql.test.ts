@@ -6,6 +6,7 @@ import {
   verifyMysqlGatewayDatabase,
 } from "./mysql-database";
 import { createMysqlGatewayDb } from "./mysql";
+import { closeGatewayDatabase, gatewayDatabase, verifyGatewayDatabase } from "./database";
 
 const mysqlPoolFactory = vi.hoisted(() => ({ calls: 0 }));
 
@@ -66,6 +67,26 @@ describe("MySQL gateway database", () => {
       await closeMysqlGatewayDatabase();
       await expect(closeMysqlGatewayDatabase()).resolves.toBeUndefined();
     } finally {
+      if (originalDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = originalDatabaseUrl;
+      }
+    }
+  });
+
+  it("serves MySQL through the final Gateway database entry point", async () => {
+    const originalDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = process.env.MYSQL_TEST_DATABASE_URL;
+    try {
+      await verifyGatewayDatabase();
+      await expect(gatewayDatabase().one("SELECT 1 AS ready")).resolves.toEqual({
+        ready: 1,
+      });
+      await closeGatewayDatabase();
+      await expect(closeGatewayDatabase()).resolves.toBeUndefined();
+    } finally {
+      await closeGatewayDatabase();
       if (originalDatabaseUrl === undefined) {
         delete process.env.DATABASE_URL;
       } else {

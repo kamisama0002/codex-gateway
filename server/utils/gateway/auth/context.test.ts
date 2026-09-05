@@ -28,6 +28,20 @@ describe("authentication context", () => {
     expect(event.context.auth).toEqual({ user, token: "async-token" });
   });
 
+  it("fails closed with database_unavailable when token storage rejects", async () => {
+    vi.spyOn(userStore, "authenticateToken").mockRejectedValue(
+      Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" }),
+    );
+    const event = eventFor(null, "Bearer stored-token");
+
+    await expect(authenticateEvent(event)).rejects.toMatchObject({
+      statusCode: 503,
+      statusMessage: "database_unavailable",
+      data: { code: "database_unavailable" },
+    });
+    expect(event.context.auth).toBeUndefined();
+  });
+
   it("returns no optional user for a missing bearer token without querying storage", async () => {
     const authenticate = vi.spyOn(userStore, "authenticateToken");
 

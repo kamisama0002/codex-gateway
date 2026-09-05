@@ -1,11 +1,6 @@
 import type { HostRecord } from "~~/shared/types";
 import { userStore } from "../auth/users";
 import {
-  gatewayDatabaseExists,
-  gatewayDatabaseReady,
-  onGatewayDatabaseReady,
-} from "../storage/database";
-import {
   applyGatewayConfigToMemoryState,
   currentGatewayUserId,
   currentGatewayMemoryState,
@@ -25,7 +20,6 @@ import { threadBroker } from "./broker";
 class HostRuntimeSupervisor {
   private readonly slots = new Map<string, HostRuntimeSlot>();
   private unsubscribeSessionClosed: (() => void) | null = null;
-  private unsubscribeDatabaseReady: (() => void) | null = null;
   private bootstrappedStoredUsers = false;
   private started = false;
 
@@ -37,20 +31,12 @@ class HostRuntimeSupervisor {
     this.unsubscribeSessionClosed = hostSessionEvents.onClosed((event) =>
       this.handleSessionClosed(event),
     );
-    this.unsubscribeDatabaseReady = onGatewayDatabaseReady(() => {
-      void this.bootstrapStoredUsers();
-    });
-    if (gatewayDatabaseExists() || gatewayDatabaseReady()) {
-      void this.bootstrapStoredUsers();
-    }
   }
 
   stop() {
     this.started = false;
     this.unsubscribeSessionClosed?.();
-    this.unsubscribeDatabaseReady?.();
     this.unsubscribeSessionClosed = null;
-    this.unsubscribeDatabaseReady = null;
     this.bootstrappedStoredUsers = false;
     for (const slot of Array.from(this.slots.values())) {
       this.removeSlot(this.slotKey(slot.userId, slot.hostId), slot);

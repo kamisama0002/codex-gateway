@@ -1,5 +1,5 @@
 import type { GatewayDb } from "../storage/contracts";
-import { gatewayMysqlDatabase } from "../storage/mysql-database";
+import { gatewayDatabase } from "../storage/database";
 
 const LAST_SEEN_WRITE_INTERVAL_MS = 5 * 60_000;
 const MAX_TRACKED_SESSIONS = 10_000;
@@ -16,7 +16,7 @@ export class SessionActivityTracker {
   private readonly inFlight = new Map<string, Promise<void>>();
 
   constructor(
-    private readonly database: DatabaseProvider = gatewayMysqlDatabase,
+    private readonly database: DatabaseProvider = gatewayDatabase,
     private readonly maxTrackedSessions = MAX_TRACKED_SESSIONS,
   ) {}
 

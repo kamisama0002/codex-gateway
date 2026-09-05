@@ -7,7 +7,7 @@ import type {
 } from "~~/shared/types";
 import { z } from "zod";
 import type { GatewayDb } from "../storage/contracts";
-import { gatewayMysqlDatabase } from "../storage/mysql-database";
+import { gatewayDatabase } from "../storage/database";
 import type { StoredTmuxMonitor, TmuxMonitorHostGroup } from "./types";
 
 const HISTORY_LIMIT = 100;
@@ -26,7 +26,7 @@ type DatabaseProvider = () => GatewayDb;
 export class TmuxMonitorRepository {
   private readonly database: DatabaseProvider;
 
-  constructor(database: GatewayDb | DatabaseProvider = gatewayMysqlDatabase) {
+  constructor(database: GatewayDb | DatabaseProvider = gatewayDatabase) {
     this.database = typeof database === "function" ? database : () => database;
   }
 

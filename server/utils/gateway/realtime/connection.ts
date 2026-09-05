@@ -12,6 +12,7 @@ import { recordFromUnknown } from "~~/shared/utils/records";
 import { REALTIME_AUTHENTICATION_CLOSE_CODE } from "~~/shared/runtime/realtime/close-codes";
 import { runPeerScoped, sendRealtimePeerMessage, stateFor, type RealtimePeer } from "./peer-state";
 import { clearOwnedSubscriptions, clearSubscriptions } from "./subscription-map";
+import { DATABASE_UNAVAILABLE_CODE } from "../storage/database";
 
 export function openRealtimePeer(peer: RealtimePeer) {
   const state = stateFor(peer);
@@ -132,6 +133,9 @@ function realtimeRequestHostName(peer: RealtimePeer, request: RealtimeClientMess
 }
 
 function realtimeErrorCode(error: unknown) {
+  if (recordFromUnknown(error)?.code === DATABASE_UNAVAILABLE_CODE) {
+    return DATABASE_UNAVAILABLE_CODE;
+  }
   if (isStaleThreadCursorErrorLike(error)) {
     return STALE_THREAD_CURSOR_ERROR_CODE;
   }

@@ -3,7 +3,7 @@ import type { GatewayConfig } from "~~/shared/types";
 import { defaultGatewayConfig } from "../../../../shared/config";
 import type { DataOpsSessionContext } from "./dataops-claims";
 import type { GatewayDb } from "../storage/contracts";
-import { gatewayMysqlDatabase } from "../storage/mysql-database";
+import { gatewayDatabase } from "../storage/database";
 import { parseGatewayConfig } from "../http/validation/config";
 import {
   decryptJson,
@@ -224,7 +224,7 @@ export const userStore: UserStore = {
 };
 
 function productionUserStore(): UserStore {
-  return createUserStore(gatewayMysqlDatabase(), {}, sessionActivityTracker);
+  return createUserStore(gatewayDatabase(), {}, sessionActivityTracker);
 }
 
 function authenticatedUser(user: StoredUser): AuthenticatedUser {

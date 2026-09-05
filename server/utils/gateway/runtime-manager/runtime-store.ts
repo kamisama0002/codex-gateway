@@ -4,7 +4,7 @@ import {
 } from "@codex-gateway/agent-runtime-contracts";
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import type { GatewayDb } from "../storage/contracts";
-import { gatewayMysqlDatabase } from "../storage/mysql-database";
+import { gatewayDatabase } from "../storage/database";
 
 export function createRuntimeStore(db: GatewayDb) {
   return {
@@ -70,16 +70,16 @@ export function createRuntimeStore(db: GatewayDb) {
 
 export const runtimeStore = {
   getByUserId(userId: number) {
-    return createRuntimeStore(gatewayMysqlDatabase()).getByUserId(userId);
+    return createRuntimeStore(gatewayDatabase()).getByUserId(userId);
   },
   list() {
-    return createRuntimeStore(gatewayMysqlDatabase()).list();
+    return createRuntimeStore(gatewayDatabase()).list();
   },
   upsert(input: UserAgentRuntimeRecord) {
-    return createRuntimeStore(gatewayMysqlDatabase()).upsert(input);
+    return createRuntimeStore(gatewayDatabase()).upsert(input);
   },
   deleteForUser(userId: number) {
-    return createRuntimeStore(gatewayMysqlDatabase()).deleteForUser(userId);
+    return createRuntimeStore(gatewayDatabase()).deleteForUser(userId);
   },
 };
 

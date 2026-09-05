@@ -18,7 +18,7 @@ import {
 } from "../http/validation/providers";
 import type { GatewayDb, SqlValue } from "../storage/contracts";
 import { decryptJson, encryptJson } from "../storage/crypto";
-import { gatewayMysqlDatabase } from "../storage/mysql-database";
+import { gatewayDatabase } from "../storage/database";
 
 export interface ProviderCreateInput {
   id?: string;
@@ -271,37 +271,37 @@ export function createProviderStore(db: GatewayDb): ProviderStore {
 
 export const providerStore: ProviderStore = {
   create(input) {
-    return createProviderStore(gatewayMysqlDatabase()).create(input);
+    return createProviderStore(gatewayDatabase()).create(input);
   },
   update(id, input) {
-    return createProviderStore(gatewayMysqlDatabase()).update(id, input);
+    return createProviderStore(gatewayDatabase()).update(id, input);
   },
   listPublic() {
-    return createProviderStore(gatewayMysqlDatabase()).listPublic();
+    return createProviderStore(gatewayDatabase()).listPublic();
   },
   getPublic(id) {
-    return createProviderStore(gatewayMysqlDatabase()).getPublic(id);
+    return createProviderStore(gatewayDatabase()).getPublic(id);
   },
   getWithSecret(id) {
-    return createProviderStore(gatewayMysqlDatabase()).getWithSecret(id);
+    return createProviderStore(gatewayDatabase()).getWithSecret(id);
   },
   delete(id) {
-    return createProviderStore(gatewayMysqlDatabase()).delete(id);
+    return createProviderStore(gatewayDatabase()).delete(id);
   },
   upsertModel(providerId, input) {
-    return createProviderStore(gatewayMysqlDatabase()).upsertModel(providerId, input);
+    return createProviderStore(gatewayDatabase()).upsertModel(providerId, input);
   },
   listModels(providerId) {
-    return createProviderStore(gatewayMysqlDatabase()).listModels(providerId);
+    return createProviderStore(gatewayDatabase()).listModels(providerId);
   },
   grant(input) {
-    return createProviderStore(gatewayMysqlDatabase()).grant(input);
+    return createProviderStore(gatewayDatabase()).grant(input);
   },
   revoke(input) {
-    return createProviderStore(gatewayMysqlDatabase()).revoke(input);
+    return createProviderStore(gatewayDatabase()).revoke(input);
   },
   listForUser(userId) {
-    return createProviderStore(gatewayMysqlDatabase()).listForUser(userId);
+    return createProviderStore(gatewayDatabase()).listForUser(userId);
   },
 };
 

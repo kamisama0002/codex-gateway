@@ -2,6 +2,7 @@ import { createError, getHeader, type H3Event } from "h3";
 import type { AuthenticatedUser } from "./users";
 import { userStore } from "./users";
 import { trimmedOrFallback } from "~~/shared/utils/strings";
+import { databaseUnavailableError } from "../storage/database";
 
 export function tokenFromEvent(event: H3Event) {
   const authorization = trimmedOrFallback(getHeader(event, "authorization"), "");
@@ -14,7 +15,7 @@ export function tokenFromEvent(event: H3Event) {
 
 export async function authenticateEvent(event: H3Event) {
   const token = tokenFromEvent(event);
-  const user = await userStore.authenticateToken(token);
+  const user = await authenticateToken(token);
   if (user === null) {
     throw createError({
       statusCode: 401,
@@ -31,11 +32,19 @@ export async function optionalAuthenticatedUser(event: H3Event) {
   if (token === "") {
     return null;
   }
-  const user = await userStore.authenticateToken(token);
+  const user = await authenticateToken(token);
   if (user !== null) {
     event.context.auth = { user, token };
   }
   return user;
+}
+
+async function authenticateToken(token: string) {
+  try {
+    return await userStore.authenticateToken(token);
+  } catch (error) {
+    throw databaseUnavailableError(error);
+  }
 }
 
 export function requireAuthenticatedUser(event: H3Event): AuthenticatedUser {

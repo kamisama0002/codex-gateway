@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { DbRow, GatewayDb } from "../storage/contracts";
-import { gatewayMysqlDatabase } from "../storage/mysql-database";
+import { gatewayDatabase } from "../storage/database";
 import { hashToken } from "../storage/crypto";
 import type { DataOpsClaims, DataOpsSessionContext } from "./dataops-claims";
 import { SessionRepository } from "./session-repository";
@@ -42,7 +42,7 @@ export function createExternalIdentityStore(
 
 export const externalIdentityStore: Pick<ExternalIdentityStore, "loginDataOps"> = {
   loginDataOps(claims) {
-    return createExternalIdentityStore(gatewayMysqlDatabase()).loginDataOps(claims);
+    return createExternalIdentityStore(gatewayDatabase()).loginDataOps(claims);
   },
 };
 

@@ -5,7 +5,7 @@ import type {
   AuditMetadataValue,
 } from "~~/shared/types/audit";
 import type { GatewayDb } from "../storage/contracts";
-import { gatewayMysqlDatabase } from "../storage/mysql-database";
+import { gatewayDatabase } from "../storage/database";
 
 const SENSITIVE_METADATA_KEY = /token|secret|password|authorization|prompt|input|output|content/i;
 const ALLOWED_METADATA_KEYS = new Set([
@@ -76,13 +76,13 @@ export function createAuditStore(db: GatewayDb) {
 export const auditStore = {
   record(input: AuditEventInput): Promise<AuditEventRecord> {
     const validated = validateAuditInput(input);
-    return recordValidated(gatewayMysqlDatabase(), validated);
+    return recordValidated(gatewayDatabase(), validated);
   },
   listForAdmin() {
-    return createAuditStore(gatewayMysqlDatabase()).listForAdmin();
+    return createAuditStore(gatewayDatabase()).listForAdmin();
   },
   listForUser(userId: number) {
-    return createAuditStore(gatewayMysqlDatabase()).listForUser(userId);
+    return createAuditStore(gatewayDatabase()).listForUser(userId);
   },
 };
 
