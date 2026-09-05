@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { CheckIcon, Loader2Icon, PlusIcon, SendIcon, SquareIcon } from "@lucide/vue";
+import { nextTick, ref, watch } from "vue";
 import type {
   ApprovalPolicy,
   ModelRecord,
@@ -12,7 +13,7 @@ import ApprovalPolicyPicker from "@/components/chat/composer/ApprovalPolicyPicke
 import ContextUsageMeter from "@/components/chat/composer/ContextUsageMeter.vue";
 import ModelEffortPicker from "@/components/chat/composer/ModelEffortPicker.vue";
 
-defineProps<{
+const props = defineProps<{
   uploadingAttachments: boolean;
   selectedThreadId: string | null;
   selectedApprovalMode: ApprovalPolicy | "custom";
@@ -43,6 +44,19 @@ const emit = defineEmits<{
   selectEffort: [effort: ReasoningEffort];
   updateSelectedApprovalMode: [mode: ApprovalPolicy | "custom"];
 }>();
+
+const primaryActionButton = ref<{ $el: unknown } | null>(null);
+
+watch(
+  () => props.creatingFirstThread,
+  async (creating) => {
+    if (!creating) return;
+    await nextTick();
+    if (!props.creatingFirstThread) return;
+    const element = primaryActionButton.value?.$el;
+    if (element instanceof HTMLButtonElement && !element.disabled) element.focus();
+  },
+);
 </script>
 
 <template>
@@ -87,6 +101,7 @@ const emit = defineEmits<{
         />
       </div>
       <Button
+        ref="primaryActionButton"
         data-testid="send-turn-button"
         class="size-[2.125rem] shrink-0 -translate-y-0.5 rounded-full bg-primary p-0 text-white hover:bg-primary-active disabled:opacity-40"
         :aria-label="sendButtonLabel"

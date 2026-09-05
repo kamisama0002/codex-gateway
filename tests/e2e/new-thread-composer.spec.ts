@@ -115,7 +115,7 @@ test("cancels pending first-thread creation without clearing the draft or starti
     const modelChoice = await modelSelect.innerText();
     await composer.fill(marker);
     const messageOffset = await realtimeClientMessageCount(page);
-    await sendButton.click();
+    await composer.press("Enter");
 
     const threadStart = z
       .object({ type: z.literal("thread.start"), requestId: z.string() })
@@ -156,6 +156,7 @@ test("cancels pending first-thread creation without clearing the draft or starti
     await expect(removeAttachment).toBeDisabled();
     await expect(approvalSelect).toBeDisabled();
     await expect(modelSelect).toBeDisabled();
+    await expect(sendButton).toBeFocused();
     await composer.evaluate((element) => {
       const clipboard = new DataTransfer();
       clipboard.items.add(new File(["late"], "late-paste.png", { type: "image/png" }));
@@ -164,7 +165,7 @@ test("cancels pending first-thread creation without clearing the draft or starti
       );
     });
     await expect(page.getByRole("button", { name: "移除附件" })).toHaveCount(1);
-    await sendButton.click();
+    await sendButton.press("Enter");
     await expect(composer).toHaveAttribute("data-value", marker);
     await expect(composer).toHaveAttribute("contenteditable", "true");
     await expect(uploadInput).toBeEnabled();
