@@ -4,7 +4,7 @@
 
 ## 1. 基准与判定口径
 
-- Gateway 代码基准：`00bb652`。
+- Gateway 代码基准：本文档所在提交。
 - Gateway 声明支持的 Codex 版本：`0.151.0`，定义于 `server/utils/gateway/infra/codex/codex-version.ts`。
 - App Server 协议源码基准：`third_party/openai-codex` 提交 `78c290807ce710180111df227df3b7a4fe845452`。
 - 协议定义来源：`third_party/openai-codex/codex-rs/app-server-protocol/src/protocol/common.rs`。
@@ -22,11 +22,11 @@
 
 | 协议方向 | 接口总数 | 已显式适配 | 缺少 |
 |---|---:|---:|---:|
-| Client → App Server 请求 | 157 | 25 | 132 |
+| Client → App Server 请求 | 157 | 31 | 126 |
 | App Server → Client 反向请求 | 9 | 9 | 0 |
-| App Server → Client 通知 | 80 | 60 | 20 |
+| App Server → Client 通知 | 80 | 61 | 19 |
 | Client → App Server 通知 | 1 | 1 | 0 |
-| **合计** | **247** | **95** | **152** |
+| **合计** | **247** | **102** | **145** |
 
 客户端请求覆盖率不能直接用来衡量产品完成度。`thread/start`、`turn/start` 和事件流承载了主要 Agent 执行链路，而很多未适配方法属于插件市场、实时语音、远程控制、系统账号或开发终端等独立能力。
 
@@ -48,12 +48,12 @@
 | 12 | `thread/goal/set` | 已显式适配 |
 | 13 | `thread/goal/get` | 已显式适配 |
 | 14 | `thread/goal/clear` | 已显式适配 |
-| 15 | `thread/queue/add` | 缺少（未显式适配） |
-| 16 | `thread/queue/list` | 缺少（未显式适配） |
-| 17 | `thread/queue/update` | 缺少（未显式适配） |
-| 18 | `thread/queue/delete` | 缺少（未显式适配） |
-| 19 | `thread/queue/reorder` | 缺少（未显式适配） |
-| 20 | `thread/queue/start` | 缺少（未显式适配） |
+| 15 | `thread/queue/add` | 已显式适配 |
+| 16 | `thread/queue/list` | 已显式适配 |
+| 17 | `thread/queue/update` | 已显式适配 |
+| 18 | `thread/queue/delete` | 已显式适配 |
+| 19 | `thread/queue/reorder` | 已显式适配 |
+| 20 | `thread/queue/start` | 已显式适配 |
 | 21 | `thread/metadata/update` | 缺少（未显式适配） |
 | 22 | `thread/section/move` | 缺少（未显式适配） |
 | 23 | `thread/settings/update` | 已显式适配 |
@@ -224,7 +224,7 @@
 | 10 | `thread/name/updated` | 已显式适配 |
 | 11 | `thread/goal/updated` | 已显式适配 |
 | 12 | `thread/goal/cleared` | 已显式适配 |
-| 13 | `thread/queue/changed` | 缺少（未显式适配） |
+| 13 | `thread/queue/changed` | 已显式适配 |
 | 14 | `project/changed` | 缺少（未显式适配） |
 | 15 | `thread/project/updated` | 缺少（未显式适配） |
 | 16 | `thread/environment/connected` | 缺少（未显式适配） |

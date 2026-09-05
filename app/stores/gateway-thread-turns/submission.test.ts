@@ -1,10 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+interface RuntimeFixture {
+  status: "completed" | "running";
+  canSteer: boolean;
+  canInterrupt: boolean;
+  activeTurnId: string | null;
+}
+
 const harness = vi.hoisted(() => ({
   errors: [] as string[],
   trace: [] as string[],
   receivedSignal: undefined as AbortSignal | undefined,
   acceptImmediately: false,
+  runtime: {
+    status: "completed",
+    canSteer: false,
+    canInterrupt: false,
+    activeTurnId: null,
+  } as RuntimeFixture,
+  queueMessage: vi.fn(),
+  requestTurnSteer: vi.fn(),
 }));
 
 vi.mock("@/stores/gateway-catalog", () => ({
@@ -30,14 +45,13 @@ vi.mock("@/stores/gateway-navigation", () => ({
 }));
 vi.mock("@/stores/gateway-thread-runtime", () => ({
   useGatewayThreadRuntimeStore: () => ({
-    threadRuntimeProjection: () => ({
-      status: "completed",
-      canSteer: false,
-      activeTurnId: null,
-    }),
+    threadRuntimeProjection: () => harness.runtime,
     setThreadStatus: (_hostId: number, _threadId: string, status: string) =>
       harness.trace.push(`status:${status}`),
   }),
+}));
+vi.mock("@/stores/gateway-thread-queue", () => ({
+  useGatewayThreadQueueStore: () => ({ queueMessage: harness.queueMessage }),
 }));
 vi.mock("@/stores/gateway-thread-view", () => ({
   useGatewayThreadViewStore: () => ({ loading: false }),
@@ -50,7 +64,7 @@ vi.mock("@/stores/gateway-thread-turns", () => ({
 }));
 vi.mock("@/stores/gateway/thread-open/view-state", () => ({ requestScrollToLatest: vi.fn() }));
 vi.mock("@/stores/gateway/thread-turns/turn-content", () => ({
-  createClientUserMessageId: () => "message-1",
+  createClientUserMessageId: (kind: string) => (kind === "queue" ? "queue-1" : "message-1"),
   optimisticUserContent: () => [{ type: "text", text: "Run the report" }],
 }));
 vi.mock("./history", () => ({
@@ -64,7 +78,7 @@ vi.mock("./retry", () => ({
     execute(),
 }));
 vi.mock("./transport", () => ({
-  requestTurnSteer: vi.fn(),
+  requestTurnSteer: harness.requestTurnSteer,
   requestTurnStart: (input: { signal?: AbortSignal }) => {
     harness.receivedSignal = input.signal;
     if (input.signal === undefined) return Promise.reject(new Error("Missing submission signal"));
@@ -99,6 +113,14 @@ describe("turn submission cancellation", () => {
     harness.trace.length = 0;
     harness.receivedSignal = undefined;
     harness.acceptImmediately = false;
+    harness.runtime = {
+      status: "completed",
+      canSteer: false,
+      canInterrupt: false,
+      activeTurnId: null,
+    };
+    harness.queueMessage.mockReset().mockResolvedValue({ id: "queue-1" });
+    harness.requestTurnSteer.mockReset();
   });
 
   it("withdraws the optimistic message and restores status without showing an error", async () => {
@@ -128,5 +150,50 @@ describe("turn submission cancellation", () => {
 
     expect(accepted).toBe(true);
     expect(harness.trace).toEqual(["status:running", "insert:message-1", "admitted"]);
+  });
+
+  it("queues a default submission while the current turn is active", async () => {
+    harness.runtime = {
+      status: "running",
+      canSteer: true,
+      canInterrupt: true,
+      activeTurnId: "turn-active",
+    };
+
+    const accepted = await sendTurn((key) => key, "Run the report");
+
+    expect(accepted).toBe(true);
+    expect(harness.queueMessage).toHaveBeenCalledWith(
+      1,
+      "thread-1",
+      expect.objectContaining({
+        clientUserMessageId: "queue-1",
+        input: [{ type: "text", text: "Run the report", text_elements: [] }],
+      }),
+      expect.any(AbortSignal),
+    );
+    expect(harness.requestTurnSteer).not.toHaveBeenCalled();
+    expect(harness.trace).toEqual([]);
+  });
+
+  it("steers only when active delivery is explicitly accelerated", async () => {
+    harness.runtime = {
+      status: "running",
+      canSteer: true,
+      canInterrupt: true,
+      activeTurnId: "turn-active",
+    };
+    harness.requestTurnSteer.mockResolvedValue({
+      type: "turn.steer.accepted",
+      turnId: "turn-active",
+    });
+
+    const accepted = await sendTurn((key) => key, "Correct the scope", {}, new AbortController(), {
+      delivery: "steer",
+    });
+
+    expect(accepted).toBe(true);
+    expect(harness.requestTurnSteer).toHaveBeenCalledOnce();
+    expect(harness.queueMessage).not.toHaveBeenCalled();
   });
 });

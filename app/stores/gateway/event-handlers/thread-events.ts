@@ -64,4 +64,13 @@ export const threadEventHandlers: GatewayEventHandlerRegistry = {
       });
     }
   },
+  "thread/queue/changed": (event, params) => {
+    const threadId = threadIdFromParams(params);
+    if (threadId !== null) {
+      gatewayDomainEvents.emit("thread-queue-invalidated", {
+        hostId: event.hostId,
+        threadId,
+      });
+    }
+  },
 };

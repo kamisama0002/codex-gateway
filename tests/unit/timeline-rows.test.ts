@@ -4,6 +4,7 @@ import {
   intermediateProcessSummary,
   type ThreadTimelineTurnState,
 } from "../../app/components/thread/timeline-rows";
+import { buildThreadTurnSections } from "../../app/components/thread/thread-turn-sections";
 import type { ThreadTimelineItem, ThreadTimelineTurn } from "../../shared/types";
 
 describe("intermediate process summary", () => {
@@ -60,6 +61,47 @@ describe("intermediate process summary", () => {
     });
 
     expect(rows.some((row) => row.type === "intermediateHeader")).toBe(true);
+  });
+});
+
+describe("reasoning visibility", () => {
+  it("omits blank reasoning from timeline rows and intermediate counts", () => {
+    const turn = reasoningTurn(["  "], ["\n"]);
+    const sections = buildThreadTurnSections(turn, { planModeActive: false });
+    const rows = buildThreadTimelineRows({
+      threadId: "thread-1",
+      turns: [
+        {
+          turn,
+          sections,
+          intermediateOpen: true,
+          intermediateLoading: false,
+        },
+      ],
+      agentActionsAvailable: true,
+    });
+
+    expect(sections.items).toEqual([turn.items[0], turn.items[2]]);
+    expect(sections.intermediateItems).toEqual([]);
+    expect(rows.some((row) => row.type === "intermediateHeader")).toBe(false);
+  });
+
+  it("reveals the same reasoning item when its first visible text arrives", () => {
+    const turn = reasoningTurn([], []);
+    const reasoning = turn.items[1];
+    if (reasoning?.type !== "reasoning") throw new Error("Reasoning fixture is missing");
+
+    expect(buildThreadTurnSections(turn, { planModeActive: false }).intermediateItems).toEqual([]);
+
+    reasoning.summary = ["正在检查营业额口径"];
+    const sections = buildThreadTurnSections(turn, { planModeActive: false });
+
+    expect(sections.intermediateItems).toEqual([reasoning]);
+    expect(intermediateProcessSummary(sections.intermediateItems)).toEqual({
+      toolCallCount: 0,
+      messageCount: 1,
+      subagentCount: 0,
+    });
   });
 });
 
@@ -156,5 +198,34 @@ function turnState(input: {
     },
     intermediateOpen: false,
     intermediateLoading: false,
+  };
+}
+
+function reasoningTurn(summary: unknown[], content: unknown[]): ThreadTimelineTurn {
+  return {
+    id: "turn-reasoning",
+    status: "completed",
+    itemsView: "full",
+    items: [
+      {
+        id: "user-reasoning",
+        type: "userMessage",
+        content: [{ type: "text", text: "分析营业额" }],
+      },
+      {
+        id: "reasoning-blank",
+        type: "reasoning",
+        status: "completed",
+        summary,
+        content,
+      },
+      {
+        id: "agent-reasoning",
+        type: "agentMessage",
+        phase: "final_answer",
+        status: "completed",
+        text: "分析完成",
+      },
+    ],
   };
 }

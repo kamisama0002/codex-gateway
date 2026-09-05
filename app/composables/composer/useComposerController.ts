@@ -3,6 +3,7 @@ import { storeToRefs } from "pinia";
 import { useAttachmentUpload } from "./useAttachmentUpload";
 import { useComposerDraft } from "./useComposerDraft";
 import { useComposerGoalControls } from "./useComposerGoalControls";
+import { useComposerQueue } from "./useComposerQueue";
 import { useComposerSlashActions } from "./useComposerSlashActions";
 import { useComposerTurnSubmit } from "./useComposerTurnSubmit";
 import { useThreadSettingsControls } from "./useThreadSettingsControls";
@@ -66,6 +67,12 @@ export function useComposerController() {
       : null,
   );
   const isThreadRunning = computed(() => selectedRuntime.value?.canInterrupt === true);
+  const composerQueue = useComposerQueue({
+    selectedHostId,
+    selectedThreadId,
+    threadRunning: isThreadRunning,
+    activeTurnId: computed(() => selectedRuntime.value?.activeTurnId ?? null),
+  });
   const hasComposerTarget = computed(
     () => selectedThreadId.value !== null || selectedProjectId.value !== null,
   );
@@ -127,7 +134,9 @@ export function useComposerController() {
   const sendButtonLabel = computed(() => {
     if (submit.submittingNewThread.value) return t("app.cancelThreadCreation");
     if (submissionPending.value) return t("app.cancelSend");
-    if (submit.hasComposerInput.value) return t("app.send");
+    if (submit.hasComposerInput.value) {
+      return isThreadRunning.value ? t("app.queueMessage") : t("app.send");
+    }
     if (isThreadRunning.value) return t("app.interruptTurn");
     if (selectedThreadStatus.value === "completed") return t("app.completed");
     if (selectedThreadStatus.value === "failed") return t("app.failed");
@@ -150,12 +159,12 @@ export function useComposerController() {
     onSelect: slashActions.runSlashCommand,
   });
 
-  async function submitComposer() {
+  async function submitComposer(delivery: "default" | "steer" = "default") {
     if (await slashActions.executeInlineSlashCommand()) {
       slashCommandsState.dismiss();
       return;
     }
-    await submit.submitTurn();
+    await submit.submitTurn(delivery);
   }
 
   function handleComposerKeydown(event: KeyboardEvent) {
@@ -172,7 +181,7 @@ export function useComposerController() {
     if (!canSendTurn.value) {
       return;
     }
-    void submitComposer();
+    void submitComposer(event.metaKey || event.ctrlKey ? "steer" : "default");
   }
 
   function handlePrimaryAction() {
@@ -261,6 +270,13 @@ export function useComposerController() {
     uploadingAttachments: attachmentUpload.uploadingAttachments,
     uploadingWorkspace: workspaceUpload.uploadingWorkspace,
     pendingWorkspaceUploadConflict: workspaceUpload.pendingConflict,
+    queuedMessages: composerQueue.items,
+    loadingQueuedMessages: composerQueue.loading,
+    queueActionPendingId: composerQueue.actionPendingId,
+    editQueuedMessage: composerQueue.edit,
+    deleteQueuedMessage: composerQueue.remove,
+    moveQueuedMessage: composerQueue.move,
+    sendQueuedMessageNow: composerQueue.sendNow,
     handleAttachmentChange,
     handleWorkspaceSelection,
     confirmWorkspaceOverwrite,

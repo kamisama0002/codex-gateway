@@ -67,7 +67,7 @@ export function useComposerTurnSubmit(input: {
     await threadView.startThread(input.selectedTurnOptions());
   }
 
-  async function submitTurn() {
+  async function submitTurn(delivery: "default" | "steer" = "default") {
     if (submissionPending.value) return;
     const text = input.turnText.value.trim();
     if (!text && !input.attachedFiles.value.length) return;
@@ -118,7 +118,7 @@ export function useComposerTurnSubmit(input: {
         composer.dismissLatestSelectedPlanPrompt();
       }
       input.clearDraft();
-      const accepted = await threadTurns.sendTurn(message, sendOptions, controller);
+      const accepted = await threadTurns.sendTurn(message, sendOptions, controller, { delivery });
       if (!accepted) rememberFailedDraft(draftSnapshot);
     } finally {
       if (startingNewThread) submittingNewThread.value = false;

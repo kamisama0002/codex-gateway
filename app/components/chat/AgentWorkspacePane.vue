@@ -9,7 +9,6 @@ import ActiveSubAgentsBar from "@/components/thread/subagent/ActiveSubAgentsBar.
 import MisalignmentRecoveryCard from "@/components/thread/MisalignmentRecoveryCard.vue";
 import GatewayPet from "@/components/pet/GatewayPet.vue";
 import McpRuntimeStatusBar from "@/components/thread/McpRuntimeStatusBar.vue";
-import ThreadRuntimeNotice from "@/components/thread/ThreadRuntimeNotice.vue";
 import RealtimeConnectionIndicator from "@/components/sidebar/RealtimeConnectionIndicator.vue";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { useChatWorkspaceState } from "./chat-workspace-state";
@@ -19,7 +18,6 @@ const {
   openingThread,
   selectedThreadId,
   selectedThreadStatus,
-  selectedThreadPhase,
   selectedProjectId,
   selectedHostId,
   currentThread,
@@ -111,14 +109,6 @@ const showThreadLoading = computed(
       </ChatPanelScrollArea>
 
       <MisalignmentRecoveryCard v-if="selectedThreadId" />
-      <ThreadRuntimeNotice
-        v-if="selectedThreadId"
-        :host-id="selectedHostId"
-        :project-id="selectedProjectId"
-        :thread-id="selectedThreadId"
-        :phase="selectedThreadPhase"
-        :error="runtimeError"
-      />
       <ChatComposer v-if="selectedThreadId && historyTurns.length > 0" placement="docked" />
     </div>
     <GatewayPet />

@@ -3,6 +3,7 @@ import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayFileWorkspaceStore } from "@/stores/file-workspace";
 import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
+import { useGatewayThreadQueueStore } from "@/stores/gateway-thread-queue";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayConfigStore } from "@/stores/gateway-config";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
@@ -47,6 +48,9 @@ export function registerThreadProjectionSubscribers() {
       event.threadId,
       event.tokenUsage,
     );
+  });
+  gatewayDomainEvents.on("thread-queue-invalidated", ({ hostId, threadId }) => {
+    void useGatewayThreadQueueStore().loadQueue(hostId, threadId, { force: true });
   });
 }
 

@@ -1,6 +1,7 @@
 import { isThreadActiveStatus } from "~~/shared/thread-runtime-status";
 import type { ThreadTimelineItem, ThreadTimelineTurn } from "~~/shared/types";
 import { isThreadPlanItem } from "@/utils/thread-plan";
+import { threadItemText } from "@/utils/thread-items";
 import { recordFromUnknown } from "~~/shared/utils/records";
 
 export interface ThreadTurnSections {
@@ -18,7 +19,9 @@ export function buildThreadTurnSections(
   turn: ThreadTimelineTurn,
   options: { planModeActive: boolean },
 ): ThreadTurnSections {
-  const items = Array.isArray(turn.items) ? turn.items : [];
+  const items = (Array.isArray(turn.items) ? turn.items : []).filter(
+    (item) => item.type !== "reasoning" || threadItemText(item).trim() !== "",
+  );
   const finalAgentIndex = findFinalAgentIndex(items, turn.status, options.planModeActive);
   const hasFinalAnswer = finalAgentIndex >= 0;
   const firstIntermediateIndex = firstIntermediateItemIndex(items);

@@ -26,6 +26,8 @@ export type {
   ThreadGoalStatus,
   ThreadGoalTimelineItem,
   ThreadOpenResult,
+  QueuedSubmission,
+  ThreadQueuePage,
   ThreadRuntimeStatus,
   ThreadRuntimePhase,
   ThreadRuntimeStatusUpdate,
