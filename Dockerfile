@@ -44,6 +44,12 @@ RUN pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild ../../script
     --format=esm \
     --target=node24 \
     --outfile=/app/.runtime-scripts/create-user.mjs
+RUN pnpm --filter @codex-gateway/agent-runtime-manager exec esbuild ../../scripts/database/migrate.mjs \
+    --bundle \
+    --platform=node \
+    --format=esm \
+    --target=node24 \
+    --outfile=/app/.runtime-scripts/migrate.mjs
 
 FROM node:${NODE_VERSION} AS runner
 ARG DEBIAN_MIRROR=
@@ -59,6 +65,7 @@ WORKDIR /app
 COPY --from=build /app/.output ./.output
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/.runtime-scripts/create-user.mjs ./scripts/create-user.mjs
+COPY --from=build /app/.runtime-scripts/migrate.mjs ./scripts/database/migrate.mjs
 EXPOSE 3000
 ENTRYPOINT ["/usr/bin/tini", "--"]
 # The 1 GiB container also hosts SSH/TLS/native buffers. Keep V8 old-space bounded to leave room
