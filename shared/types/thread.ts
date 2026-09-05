@@ -88,6 +88,17 @@ export interface ThreadItemsPageResult {
   backwardsCursor: string | null;
 }
 
+export interface QueuedSubmission {
+  id: string;
+  input: Array<Record<string, unknown>>;
+  clientUserMessageId: string;
+}
+
+export interface ThreadQueuePage {
+  data: QueuedSubmission[];
+  nextCursor: string | null;
+}
+
 export type ApprovalPolicy = "untrusted" | "on-request" | "never";
 export type ReasoningEffort = string;
 

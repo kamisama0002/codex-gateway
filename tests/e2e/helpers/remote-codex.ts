@@ -300,8 +300,9 @@ export async function selectSidebarThread(page: Page, threadId: string) {
 }
 
 export async function sendSteerText(page: Page, marker: string) {
-  await page.getByPlaceholder("输入后续修改要求").fill(`追加要求：${marker}`);
-  await page.getByTestId("send-turn-button").click();
+  const composer = page.getByPlaceholder("输入后续修改要求");
+  await composer.fill(`追加要求：${marker}`);
+  await composer.press("Control+Enter");
 }
 
 export async function sendImageTurnThroughGateway(

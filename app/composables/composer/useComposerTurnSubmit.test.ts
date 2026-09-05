@@ -118,6 +118,7 @@ describe("composer submission lifetime", () => {
         references: [{ type: "file", path: "src/main.ts", name: "main.ts" }],
       },
       expect.any(AbortController),
+      { delivery: "default" },
     );
     expect(fixture.clearDraft).toHaveBeenCalledOnce();
     expect(fixture.turnText.value).toBe("");
@@ -136,6 +137,22 @@ describe("composer submission lifetime", () => {
     await fixture.submit.submitTurn();
 
     expect(fixture.turnText.value).toBe("营业额分析");
+    fixture.scope.stop();
+  });
+
+  it("passes an explicit steer only for the accelerated submission gesture", async () => {
+    harness.selectedThreadId = "thread-1";
+    harness.sendTurn.mockResolvedValue(true);
+    const fixture = createFixture("修正范围");
+
+    await fixture.submit.submitTurn("steer");
+
+    expect(harness.sendTurn).toHaveBeenCalledWith(
+      "修正范围",
+      expect.any(Object),
+      expect.any(AbortController),
+      { delivery: "steer" },
+    );
     fixture.scope.stop();
   });
 

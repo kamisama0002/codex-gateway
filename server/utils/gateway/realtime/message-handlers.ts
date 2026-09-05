@@ -7,6 +7,15 @@ import {
   unsubscribeThread,
 } from "./handlers/thread-events";
 import { clearThreadGoal, getThreadGoal, setThreadGoal } from "./handlers/thread-goals";
+import {
+  addThreadQueue,
+  deleteThreadQueue,
+  listThreadQueue,
+  reorderThreadQueue,
+  startThreadQueue,
+  steerThreadQueue,
+  updateThreadQueue,
+} from "./handlers/thread-queue";
 import { loadThreadItems, loadThreadTurns } from "./handlers/thread-turn-pages";
 import {
   closeTerminal,
@@ -61,6 +70,13 @@ export const realtimeMessageDispatcher = new RealtimeMessageDispatcher({
   "thread.goal.set": setThreadGoal,
   "thread.goal.get": getThreadGoal,
   "thread.goal.clear": clearThreadGoal,
+  "thread.queue.list": listThreadQueue,
+  "thread.queue.add": addThreadQueue,
+  "thread.queue.update": updateThreadQueue,
+  "thread.queue.delete": deleteThreadQueue,
+  "thread.queue.reorder": reorderThreadQueue,
+  "thread.queue.start": startThreadQueue,
+  "thread.queue.steer": steerThreadQueue,
   "turn.start": startTurn,
   "turn.steer": steerTurn,
   "turn.interrupt": interruptTurn,

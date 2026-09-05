@@ -7,6 +7,7 @@ import type {
   ThreadGoal,
   ThreadHistoryItem,
   ThreadHistoryTurn,
+  QueuedSubmission,
   ThreadSettingsState,
 } from "../types";
 
@@ -382,6 +383,68 @@ export function parseThreadGoalGetResponse(value: unknown) {
 
 export function parseThreadGoalClearResponse(value: unknown) {
   return z.object({ cleared: z.boolean() }).loose().parse(value);
+}
+
+const queueImageDetailSchema = z.enum(["low", "high", "auto", "original"]);
+
+export const queuedUserInputSchema = z.discriminatedUnion("type", [
+  z
+    .object({ type: z.literal("text"), text: z.string(), text_elements: z.array(z.unknown()) })
+    .strict(),
+  z
+    .object({
+      type: z.literal("image"),
+      url: z.string().min(1),
+      detail: queueImageDetailSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("localImage"),
+      path: z.string().min(1),
+      detail: queueImageDetailSchema.optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal("audio"), url: z.string().min(1) }).strict(),
+  z.object({ type: z.literal("localAudio"), path: z.string().min(1) }).strict(),
+  z.object({ type: z.literal("skill"), name: z.string().min(1), path: z.string().min(1) }).strict(),
+  z
+    .object({ type: z.literal("mention"), name: z.string().min(1), path: z.string().min(1) })
+    .strict(),
+]);
+
+export const queuedSubmissionSchema: z.ZodType<QueuedSubmission> = z
+  .object({
+    id: z.string().min(1),
+    input: z.array(queuedUserInputSchema).min(1),
+    clientUserMessageId: z.string().min(1),
+  })
+  .strict();
+
+export function parseThreadQueueAddResponse(value: unknown) {
+  return z.object({ queuedSubmission: queuedSubmissionSchema }).strict().parse(value);
+}
+
+export function parseThreadQueueListResponse(value: unknown) {
+  return z
+    .object({
+      data: z.array(queuedSubmissionSchema),
+      nextCursor: z.string().nullable(),
+    })
+    .strict()
+    .parse(value);
+}
+
+export function parseThreadQueueUpdateResponse(value: unknown) {
+  return z.object({ queuedSubmission: queuedSubmissionSchema }).strict().parse(value);
+}
+
+export function parseThreadQueueDeleteResponse(value: unknown) {
+  return z.object({ deleted: z.boolean() }).strict().parse(value);
+}
+
+export function parseThreadQueueStartResponse(value: unknown) {
+  return z.object({ turn: threadTurnSchema }).strict().parse(value);
 }
 
 export function parseTurnStartResponse(value: unknown) {

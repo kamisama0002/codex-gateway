@@ -34,6 +34,7 @@ const {
   handlePrimaryAction,
   hasComposerInput,
   interruptingTurn,
+  isThreadRunning,
   labelEffortOption,
   loadingModels,
   modelOptionValue,
@@ -70,6 +71,13 @@ const {
   confirmWorkspaceOverwrite,
   cancelWorkspaceUploadConflict,
   handleFileReferenceLimit,
+  queuedMessages,
+  loadingQueuedMessages,
+  queueActionPendingId,
+  editQueuedMessage,
+  deleteQueuedMessage,
+  moveQueuedMessage,
+  sendQueuedMessageNow,
 } = useComposerController();
 </script>
 
@@ -90,6 +98,10 @@ const {
     :composer-input-enabled="composerInputEnabled"
     :uploading-attachments="uploadingAttachments"
     :uploading-workspace="uploadingWorkspace"
+    :queued-messages="queuedMessages"
+    :loading-queued-messages="loadingQueuedMessages"
+    :queue-action-pending-id="queueActionPendingId"
+    :thread-running="isThreadRunning"
     :selected-thread-id="selectedThreadId"
     :selected-host-id="selectedHostId"
     :selected-project-id="selectedProjectId"
@@ -122,6 +134,10 @@ const {
     @select-slash-command="runSlashCommand"
     @attachment-change="handleAttachmentChange"
     @workspace-selection="handleWorkspaceSelection"
+    @edit-queued-message="editQueuedMessage"
+    @delete-queued-message="deleteQueuedMessage"
+    @move-queued-message="moveQueuedMessage"
+    @send-queued-message-now="sendQueuedMessageNow"
     @paste="handlePaste"
     @remove-attachment="removeAttachment"
     @keydown="handleComposerKeydown"

@@ -12,6 +12,6 @@ export function optimisticUserContent(text: string, options: ComposerTurnOptions
   );
 }
 
-export function createClientUserMessageId(kind: "steer" | "turn") {
+export function createClientUserMessageId(kind: "queue" | "steer" | "turn") {
   return `${kind}-${createUuid()}`;
 }

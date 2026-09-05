@@ -7,6 +7,7 @@ import type {
   ThreadGoal,
   ThreadRuntimeStatus,
   ThreadTokenUsageState,
+  QueuedSubmission,
 } from "~~/shared/types";
 import type { ComposerAttachment } from "@/composables/composer/useComposerDraft";
 import type { ComposerFileReference } from "@/stores/gateway/types";
@@ -17,6 +18,7 @@ import ComposerModeStrip from "@/components/chat/composer/ComposerModeStrip.vue"
 import ComposerToolbar from "@/components/chat/composer/ComposerToolbar.vue";
 import SlashCommandMenu from "@/components/chat/composer/SlashCommandMenu.vue";
 import ComposerEditor from "@/components/chat/composer/ComposerEditor.vue";
+import ComposerQueueDock from "@/components/chat/composer/ComposerQueueDock.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -35,6 +37,10 @@ const props = withDefaults(
     composerInputEnabled: boolean;
     uploadingAttachments: boolean;
     uploadingWorkspace: boolean;
+    queuedMessages: QueuedSubmission[];
+    loadingQueuedMessages: boolean;
+    queueActionPendingId: string | null;
+    threadRunning: boolean;
     selectedThreadId: string | null;
     selectedHostId: number | null;
     selectedProjectId: number | null;
@@ -76,6 +82,10 @@ const emit = defineEmits<{
   selectSlashCommand: [command: SlashMenuItem];
   attachmentChange: [event: Event];
   workspaceSelection: [event: Event, selection: "files" | "folder"];
+  editQueuedMessage: [id: string, text: string];
+  deleteQueuedMessage: [id: string];
+  moveQueuedMessage: [id: string, direction: "up" | "down"];
+  sendQueuedMessageNow: [id: string];
   paste: [event: ClipboardEvent];
   removeAttachment: [id: string];
   keydown: [event: KeyboardEvent];
@@ -113,6 +123,14 @@ function updateModelValue(value: string, sourceScopeKey: string) {
 function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: string) {
   if (sourceScopeKey === composerScopeKey()) emit("update:fileReferences", value);
 }
+
+function forwardQueueEdit(id: string, text: string) {
+  emit("editQueuedMessage", id, text);
+}
+
+function forwardQueueMove(id: string, direction: "up" | "down") {
+  emit("moveQueuedMessage", id, direction);
+}
 </script>
 
 <template>
@@ -137,6 +155,17 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
         @stop-goal="emit('stopGoal')"
         @resume-goal="emit('resumeGoal')"
         @clear-goal="emit('clearGoal')"
+      />
+      <ComposerQueueDock
+        :items="queuedMessages"
+        :loading="loadingQueuedMessages"
+        :running="threadRunning"
+        :pending-id="queueActionPendingId"
+        :host-id="selectedHostId"
+        @edit="forwardQueueEdit"
+        @remove="emit('deleteQueuedMessage', $event)"
+        @move="forwardQueueMove"
+        @send-now="emit('sendQueuedMessageNow', $event)"
       />
       <div
         class="relative flex flex-col gap-3 rounded-[1.375rem] border border-hairline bg-surface px-3 pb-2.5 pt-2.5 shadow-[0_0.25rem_1rem_rgba(15,17,21,0.06)]"

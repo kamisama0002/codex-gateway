@@ -1,9 +1,10 @@
-import type { ComposerTurnOptions } from "~~/shared/types";
+import type { ComposerTurnOptions, QueuedSubmission } from "~~/shared/types";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
+import { useGatewayThreadQueueStore } from "@/stores/gateway-thread-queue";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { errorMessageLabels, messageFromError } from "@/stores/gateway/thread-utils/identity";
@@ -28,6 +29,7 @@ export async function sendTurn(
   text: string,
   options: ComposerTurnOptions = {},
   controller = new AbortController(),
+  behavior: { delivery?: "default" | "steer" } = {},
 ) {
   const sessionIsCurrent = captureSessionEpoch();
   const catalog = useGatewayCatalogStore();
@@ -35,6 +37,7 @@ export async function sendTurn(
   const composer = useGatewayComposerStore();
   const navigation = useGatewayNavigationStore();
   const runtimeStore = useGatewayThreadRuntimeStore();
+  const queue = useGatewayThreadQueueStore();
   const turns = useGatewayThreadTurnsStore();
   const views = useGatewayThreadViewStore();
   const hostId = navigation.selectedHostId;
@@ -45,9 +48,35 @@ export async function sendTurn(
 
   const runtime = runtimeStore.threadRuntimeProjection(hostId, threadId);
   const previousStatus = runtime.status;
-  const steerTurnId = runtime.canSteer ? runtime.activeTurnId : null;
+  const steerTurnId =
+    behavior.delivery === "steer" && runtime.canSteer ? runtime.activeTurnId : null;
   const shouldSteerActiveTurn = steerTurnId !== null;
-  const clientUserMessageId = createClientUserMessageId(shouldSteerActiveTurn ? "steer" : "turn");
+  const shouldQueueActiveTurn = runtime.status === "running" && !shouldSteerActiveTurn;
+  const clientUserMessageId = createClientUserMessageId(
+    shouldQueueActiveTurn ? "queue" : shouldSteerActiveTurn ? "steer" : "turn",
+  );
+  if (shouldQueueActiveTurn) {
+    gateway.clearError({ hostId, threadId });
+    try {
+      await queue.queueMessage(
+        hostId,
+        threadId,
+        {
+          clientUserMessageId,
+          input: queuedInput(text, options),
+        },
+        controller.signal,
+      );
+      return sessionIsCurrent();
+    } catch (error: unknown) {
+      if (!sessionIsCurrent() || controller.signal.aborted) return false;
+      gateway.setError(messageFromError(error, t("app.sendMessageFailed"), errorMessageLabels(t)), {
+        hostId,
+        threadId,
+      });
+      return false;
+    }
+  }
   if (!shouldSteerActiveTurn) {
     runtimeStore.setThreadStatus(hostId, threadId, "running", { phase: "submitting" });
   }
@@ -152,6 +181,19 @@ export async function sendTurn(
   } finally {
     if (sessionIsCurrent()) views.loading = false;
   }
+}
+
+function queuedInput(text: string, options: ComposerTurnOptions): QueuedSubmission["input"] {
+  const input: QueuedSubmission["input"] = [];
+  if (text.trim() !== "") input.push({ type: "text", text, text_elements: [] });
+  for (const image of options.images ?? []) {
+    if (image.url !== undefined && image.url !== "") {
+      input.push({ type: "image", url: image.url, detail: image.detail });
+    } else if (image.path !== undefined && image.path !== "") {
+      input.push({ type: "localImage", path: image.path, detail: image.detail });
+    }
+  }
+  return input;
 }
 
 export async function retryLastTurn(t: Translate) {

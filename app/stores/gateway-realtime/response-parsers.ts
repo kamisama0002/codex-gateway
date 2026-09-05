@@ -86,6 +86,55 @@ export function expectTurnSteerAccepted(message: RealtimeResponseMessage) {
   return message;
 }
 
+export function expectThreadQueueSnapshot(message: RealtimeResponseMessage) {
+  if (message.type !== "thread.queue.snapshot") {
+    unexpectedResponse("thread.queue.snapshot", message.type);
+  }
+  return message;
+}
+
+export function expectThreadQueueAdded(message: RealtimeResponseMessage) {
+  if (message.type !== "thread.queue.added") {
+    unexpectedResponse("thread.queue.added", message.type);
+  }
+  return message;
+}
+
+export function expectThreadQueueUpdated(message: RealtimeResponseMessage) {
+  if (message.type !== "thread.queue.updated") {
+    unexpectedResponse("thread.queue.updated", message.type);
+  }
+  return message;
+}
+
+export function expectThreadQueueDeleted(message: RealtimeResponseMessage) {
+  if (message.type !== "thread.queue.deleted") {
+    unexpectedResponse("thread.queue.deleted", message.type);
+  }
+  return message;
+}
+
+export function expectThreadQueueReordered(message: RealtimeResponseMessage) {
+  if (message.type !== "thread.queue.reordered") {
+    unexpectedResponse("thread.queue.reordered", message.type);
+  }
+  return message;
+}
+
+export function expectThreadQueueStarted(message: RealtimeResponseMessage) {
+  if (message.type !== "thread.queue.started") {
+    unexpectedResponse("thread.queue.started", message.type);
+  }
+  return message;
+}
+
+export function expectThreadQueueSteered(message: RealtimeResponseMessage) {
+  if (message.type !== "thread.queue.steered") {
+    unexpectedResponse("thread.queue.steered", message.type);
+  }
+  return message;
+}
+
 export function expectTurnInterruptAccepted(message: RealtimeResponseMessage) {
   if (message.type !== "turn.interrupt.accepted") {
     unexpectedResponse("turn.interrupt.accepted", message.type);
