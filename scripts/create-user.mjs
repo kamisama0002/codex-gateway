@@ -34,11 +34,13 @@ async function main() {
         ).role;
       }
     } else {
-      await users.updatePassword(existing.id, hashPassword(password), now);
       role = explicitRole ?? existing.role;
-      if (explicitRole !== null) {
-        await users.updateRole(existing.id, explicitRole, now);
-      }
+      await users.updateCredentials({
+        userId: existing.id,
+        passwordHash: hashPassword(password),
+        role: explicitRole,
+        now,
+      });
     }
 
     console.log(`User ${username} is ready with role ${role}`);

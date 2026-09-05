@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createConnection } from "mysql2/promise";
 import { describe, expect, it } from "vitest";
 import { freshMysqlTestDatabase } from "../../../../tests/mysql/helpers";
 import { verifyPassword } from "../storage/crypto";
@@ -33,19 +34,42 @@ describe("create-user", () => {
     ]);
   }, 15_000);
 
-  it("updates a password without changing an implicit role", async () => {
+  it("reactivates an existing user while updating a password and preserving an implicit role", async () => {
     const database = await migratedDatabase();
 
     expect(runCreateUser(database.url, "admin-user", "password-1").status).toBe(0);
+    await database.db.execute("UPDATE users SET is_active = 0 WHERE username = ?", ["admin-user"]);
     expect(runCreateUser(database.url, "admin-user", "password-2").status).toBe(0);
 
-    const user = await database.db.one<{ password_hash: string; role: string }>(
-      "SELECT password_hash, role FROM users WHERE username = ?",
+    const user = await database.db.one<{ is_active: number; password_hash: string; role: string }>(
+      "SELECT is_active, password_hash, role FROM users WHERE username = ?",
       ["admin-user"],
     );
     expect(user).not.toBeNull();
+    expect(user?.is_active).toBe(1);
     expect(user?.role).toBe("admin");
     expect(verifyPassword("password-2", user?.password_hash ?? "")).toBe(true);
+  });
+
+  it("does not partially update credentials when an explicit role change fails", async () => {
+    const database = await migratedDatabase();
+
+    expect(runCreateUser(database.url, "atomic-user", "password-1").status).toBe(0);
+    await database.db.execute("UPDATE users SET is_active = 0 WHERE username = ?", ["atomic-user"]);
+    await installAtomicRoleFailureTrigger(database.url);
+
+    const result = runCreateUser(database.url, "atomic-user", "password-2", "--role", "user");
+
+    expect(result.status).toBe(1);
+    const user = await database.db.one<{ is_active: number; password_hash: string; role: string }>(
+      "SELECT is_active, password_hash, role FROM users WHERE username = ?",
+      ["atomic-user"],
+    );
+    expect(user).not.toBeNull();
+    expect(user?.is_active).toBe(0);
+    expect(user?.role).toBe("admin");
+    expect(verifyPassword("password-1", user?.password_hash ?? "")).toBe(true);
+    expect(verifyPassword("password-2", user?.password_hash ?? "")).toBe(false);
   });
 
   it("changes a role only when --role is explicit", async () => {
@@ -108,4 +132,24 @@ function runCreateUser(databaseUrl: string, ...args: string[]) {
     env: { ...process.env, DATABASE_URL: databaseUrl },
   });
   return result;
+}
+
+async function installAtomicRoleFailureTrigger(databaseUrl: string) {
+  const adminUrl = new URL(process.env.MYSQL_TEST_ADMIN_DATABASE_URL ?? "");
+  adminUrl.pathname = new URL(databaseUrl).pathname;
+  const connection = await createConnection(adminUrl.toString());
+  try {
+    await connection.query(`
+      CREATE TRIGGER reject_atomic_user_role_change
+      BEFORE UPDATE ON users
+      FOR EACH ROW
+      SET NEW.username = IF(
+        NEW.role = 'user' AND OLD.role = 'admin',
+        NULL,
+        NEW.username
+      )
+    `);
+  } finally {
+    await connection.end();
+  }
 }

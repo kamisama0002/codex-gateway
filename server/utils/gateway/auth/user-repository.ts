@@ -25,6 +25,13 @@ interface CreateUserInput {
   now: string;
 }
 
+interface UpdateUserCredentialsInput {
+  userId: number;
+  passwordHash: string;
+  role: UserRole | null;
+  now: string;
+}
+
 export class UserRepository {
   private readonly db: GatewayDb;
 
@@ -96,10 +103,10 @@ export class UserRepository {
     ]);
   }
 
-  async updatePassword(userId: number, passwordHash: string, now: string): Promise<void> {
+  async updateCredentials(input: UpdateUserCredentialsInput): Promise<void> {
     await this.db.execute(
-      "UPDATE users SET password_hash = ?, is_active = 1, updated_at = ? WHERE id = ?",
-      [passwordHash, now, userId],
+      "UPDATE users SET password_hash = ?, is_active = 1, role = COALESCE(?, role), updated_at = ? WHERE id = ?",
+      [input.passwordHash, input.role, input.now, input.userId],
     );
   }
 }
