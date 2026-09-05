@@ -6,10 +6,17 @@ export interface DbWriteResult {
   insertId: number;
 }
 
+export interface GatewayTransactionOptions {
+  isolationLevel?: "serializable";
+}
+
 export interface GatewayDb {
   one<T extends DbRow>(sql: string, params?: readonly SqlValue[]): Promise<T | null>;
   many<T extends DbRow>(sql: string, params?: readonly SqlValue[]): Promise<T[]>;
   execute(sql: string, params?: readonly SqlValue[]): Promise<DbWriteResult>;
-  transaction<T>(work: (tx: GatewayDb) => Promise<T>): Promise<T>;
+  transaction<T>(
+    work: (tx: GatewayDb) => Promise<T>,
+    options?: GatewayTransactionOptions,
+  ): Promise<T>;
   close(): Promise<void>;
 }

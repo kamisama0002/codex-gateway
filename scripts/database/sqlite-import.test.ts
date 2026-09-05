@@ -4,11 +4,12 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { createConnection } from "mysql2/promise";
+import { createConnection, type Connection, type RowDataPacket } from "mysql2/promise";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { freshMysqlTestDatabase } from "../../tests/mysql/helpers";
 import { buildGatewayV8Sqlite } from "../../tests/fixtures/build-gateway-v8-sqlite.mjs";
 import type { GatewayDb } from "../../server/utils/gateway/storage/contracts";
+import { encryptJson } from "../../server/utils/gateway/storage/crypto";
 import { migrateMysqlGatewayDatabase } from "../../server/utils/gateway/storage/mysql-migrations";
 
 const FIXTURE_SECRET = "task-8-fixture-encryption-secret";
@@ -164,6 +165,89 @@ describe("SQLite v8 to MySQL import", () => {
       { id: 7, username: "existing-target-user" },
     ]);
     await expectBusinessCounts(db, 1);
+  });
+
+  it("serializes a disjoint writer until after the verified import commits", async () => {
+    const sourcePath = createFixture();
+    const db = await migratedDatabase();
+    const databaseUrl = await testDatabaseUrl(db);
+    const gate = pauseAfterTargetEmpty(db);
+    const writer = await createConnection(databaseUrl);
+    const observer = await createConnection(process.env.MYSQL_TEST_ADMIN_DATABASE_URL ?? "");
+    const [connectionRows] = await writer.query<(RowDataPacket & { id: number })[]>(
+      "SELECT CONNECTION_ID() AS id",
+    );
+    const writerConnectionId = Number(connectionRows[0]?.id);
+    let writerSettled = false;
+    let writerPromise: Promise<WriterOutcome> | null = null;
+    const { importSqliteGatewayDatabase, verifySqliteGatewayImport } =
+      await import("./sqlite-import.ts");
+    const importPromise = importSqliteGatewayDatabase({
+      sourcePath,
+      target: gate.target,
+      dryRun: false,
+    });
+
+    try {
+      await gate.targetEmptyReached;
+      writerPromise = writer
+        .execute(
+          `
+            INSERT INTO model_providers (
+              id, name, base_url, wire_api, encrypted_api_key, enabled,
+              request_timeout_ms, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            "concurrent.writer",
+            "Concurrent writer",
+            "https://concurrent-writer.fixture.invalid/v1",
+            "responses",
+            encryptJson({ apiKey: "concurrent-writer-secret" }),
+            1,
+            30_000,
+            timestamp(7),
+            timestamp(7),
+          ],
+        )
+        .then(
+          (): WriterOutcome => ({ status: "committed" }),
+          (error: unknown): WriterOutcome => ({ status: "rejected", error }),
+        )
+        .finally(() => {
+          writerSettled = true;
+        });
+      const writerState = await waitForWriterState(
+        observer,
+        writerConnectionId,
+        () => writerSettled,
+      );
+      gate.releaseImport();
+      const report = await importPromise;
+      const writerOutcome = await writerPromise;
+      const finalReport = await verifySqliteGatewayImport({ sourcePath, target: db });
+
+      expect(writerState).toBe("blocked");
+      expect(writerOutcome.status).toBe("rejected");
+      if (writerOutcome.status !== "rejected") throw new Error("Concurrent writer did not reject");
+      expect(writerOutcome.error).toMatchObject({ code: "ER_LOCK_DEADLOCK", errno: 1213 });
+      expect(report.passed).toBe(true);
+      expect(finalReport.passed).toBe(true);
+      expect(report.tables.find((table) => table.table === "model_providers")).toMatchObject({
+        sourceCount: 2,
+        targetCount: 2,
+        passed: true,
+      });
+      expect(await db.many<{ id: string }>("SELECT id FROM model_providers ORDER BY id")).toEqual([
+        { id: "fixture.chat" },
+        { id: "fixture.responses" },
+      ]);
+    } finally {
+      gate.releaseImport();
+      await Promise.allSettled([importPromise, ...(writerPromise === null ? [] : [writerPromise])]);
+      await observer.end();
+      await writer.end();
+    }
   });
 
   it("rolls back every table when a duplicate source primary key reaches MySQL", async () => {
@@ -326,6 +410,90 @@ function runDatabaseCli(
       timeout: 20_000,
     },
   );
+}
+
+function pauseAfterTargetEmpty(target: GatewayDb) {
+  const targetEmptyReached = deferred();
+  const importRelease = deferred();
+  const checkedTables = new Set<string>();
+  let released = false;
+
+  const observeEmptyRead = async (sql: string): Promise<void> => {
+    if (checkedTables.size === BUSINESS_TABLES.length) return;
+    const normalizedSql = sql.replaceAll(/\s+/g, " ");
+    const table = BUSINESS_TABLES.find((candidate) => {
+      return (
+        normalizedSql.includes(`FROM ${candidate}`) &&
+        (normalizedSql.includes("COUNT(*) AS count") || normalizedSql.includes("FOR UPDATE"))
+      );
+    });
+    if (table === undefined || checkedTables.has(table)) return;
+    checkedTables.add(table);
+    if (checkedTables.size === BUSINESS_TABLES.length) {
+      targetEmptyReached.resolve();
+      await importRelease.promise;
+    }
+  };
+
+  const coordinatedTarget: GatewayDb = {
+    ...target,
+    transaction(work, options) {
+      return target.transaction(async (tx) => {
+        const coordinatedTransaction: GatewayDb = {
+          ...tx,
+          async one<T extends Record<string, unknown>>(sql: string, params = []) {
+            const row = await tx.one<T>(sql, params);
+            await observeEmptyRead(sql);
+            return row;
+          },
+          async many<T extends Record<string, unknown>>(sql: string, params = []) {
+            const rows = await tx.many<T>(sql, params);
+            await observeEmptyRead(sql);
+            return rows;
+          },
+        };
+        return await work(coordinatedTransaction);
+      }, options);
+    },
+  };
+
+  return {
+    target: coordinatedTarget,
+    targetEmptyReached: targetEmptyReached.promise,
+    releaseImport() {
+      if (released) return;
+      released = true;
+      importRelease.resolve();
+    },
+  };
+}
+
+type WriterOutcome = { status: "committed" } | { status: "rejected"; error: unknown };
+
+async function waitForWriterState(
+  observer: Connection,
+  connectionId: number,
+  writerSettled: () => boolean,
+): Promise<"blocked" | "committed"> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (writerSettled()) return "committed";
+    const [transactions] = await observer.query<(RowDataPacket & { state: string })[]>(
+      "SELECT trx_state AS state FROM information_schema.innodb_trx WHERE trx_mysql_thread_id = ?",
+      [connectionId],
+    );
+    if (transactions[0]?.state === "LOCK WAIT") return "blocked";
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("Timed out waiting for concurrent writer state");
+}
+
+function deferred() {
+  let resolvePromise: () => void = () => {};
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: resolvePromise };
 }
 
 function createFixture(): string {

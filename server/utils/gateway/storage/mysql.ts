@@ -1,8 +1,17 @@
 import { createPool, type Pool, type PoolConnection } from "mysql2/promise";
-import type { DbRow, DbWriteResult, GatewayDb, SqlValue } from "./contracts";
+import type {
+  DbRow,
+  DbWriteResult,
+  GatewayDb,
+  GatewayTransactionOptions,
+  SqlValue,
+} from "./contracts";
 
 type MysqlExecutor = Pool | PoolConnection;
-type TransactionRunner = <T>(work: (tx: GatewayDb) => Promise<T>) => Promise<T>;
+type TransactionRunner = <T>(
+  work: (tx: GatewayDb) => Promise<T>,
+  options?: GatewayTransactionOptions,
+) => Promise<T>;
 
 export function createMysqlGatewayDb(databaseUrl: string): GatewayDb {
   const options = mysqlOptions(databaseUrl);
@@ -16,10 +25,10 @@ function createPoolGatewayDb(pool: Pool): GatewayDb {
     async () => {
       await pool.end();
     },
-    async (work) => {
+    async (work, options) => {
       const connection = await pool.getConnection();
       try {
-        return await transactionWithConnection(connection, work);
+        return await transactionWithConnection(connection, work, options);
       } finally {
         connection.release();
       }
@@ -31,8 +40,8 @@ function createConnectionGatewayDb(connection: PoolConnection): GatewayDb {
   return createGatewayDb(
     connection,
     async () => {},
-    async (work) => {
-      return await transactionWithConnection(connection, work);
+    async (work, options) => {
+      return await transactionWithConnection(connection, work, options);
     },
   );
 }
@@ -65,9 +74,13 @@ function createGatewayDb(
 async function transactionWithConnection<T>(
   connection: PoolConnection,
   work: (tx: GatewayDb) => Promise<T>,
+  options?: GatewayTransactionOptions,
 ): Promise<T> {
   let transactionStarted = false;
   try {
+    if (options?.isolationLevel === "serializable") {
+      await connection.query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+    }
     await connection.beginTransaction();
     transactionStarted = true;
     const result = await work(createConnectionGatewayDb(connection));

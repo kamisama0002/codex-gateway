@@ -297,20 +297,23 @@ export async function importSqliteGatewayDatabase(
   let dryRunReport: SqliteImportVerificationReport | null = null;
 
   try {
-    return await options.target.transaction(async (target) => {
-      await assertTargetMigrated(target);
-      await assertTargetEmpty(target);
-      await insertSnapshot(target, snapshot);
-      const report = await verifySnapshot(target, snapshot);
-      if (!report.passed) {
-        throw new ImportVerificationError("SQLite import verification failed");
-      }
-      if (options.dryRun) {
-        dryRunReport = report;
-        throw dryRunRollback;
-      }
-      return report;
-    });
+    return await options.target.transaction(
+      async (target) => {
+        await assertTargetMigrated(target);
+        await assertTargetEmpty(target);
+        await insertSnapshot(target, snapshot);
+        const report = await verifySnapshot(target, snapshot);
+        if (!report.passed) {
+          throw new ImportVerificationError("SQLite import verification failed");
+        }
+        if (options.dryRun) {
+          dryRunReport = report;
+          throw dryRunRollback;
+        }
+        return report;
+      },
+      { isolationLevel: "serializable" },
+    );
   } catch (error) {
     if (error === dryRunRollback && dryRunReport !== null) return dryRunReport;
     if (
@@ -488,10 +491,10 @@ async function assertTargetMigrated(target: GatewayDb): Promise<void> {
 
 async function assertTargetEmpty(target: GatewayDb): Promise<void> {
   for (const spec of TABLE_SPECS) {
-    const row = await target.one<{ count: number | bigint }>(
-      `SELECT COUNT(*) AS count FROM ${spec.name}`,
+    const rows = await target.many(
+      `SELECT ${spec.primaryKey.join(", ")} FROM ${spec.name} FOR UPDATE`,
     );
-    if (integer(row?.count) !== 0) {
+    if (rows.length !== 0) {
       throw new TargetNotEmptyError("Target MySQL business tables must be empty");
     }
   }
