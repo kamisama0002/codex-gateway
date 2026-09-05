@@ -922,7 +922,7 @@ entry switch. State explicitly that database backup does not back up `/workspace
 Run:
 
 ```bash
-pnpm test:e2e -- auth.spec.ts dataops-integration.spec.ts managed-runtime-isolation.spec.ts
+pnpm test:e2e -- dataops-embed.spec.ts provider-settings.spec.ts managed-runtime-isolation.spec.ts
 ```
 
 Expected: password/DataOps login, provider authorization, managed runtime startup, thread history, and
