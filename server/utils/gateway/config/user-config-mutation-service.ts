@@ -46,7 +46,7 @@ export class UserConfigMutationService {
       nextConfig,
       nextRevision,
     );
-    this.reconcileCommittedConfig(
+    await this.reconcileCommittedConfig(
       userId,
       previousHosts,
       committedState.hosts,
@@ -92,31 +92,31 @@ export class UserConfigMutationService {
     });
   }
 
-  private reconcileCommittedConfig(
+  private async reconcileCommittedConfig(
     userId: number,
     previousHosts: StoredHostRecord[],
     nextHosts: StoredHostRecord[],
     previousPinnedThreads: unknown,
     nextPinnedThreads: unknown,
-  ) {
+  ): Promise<void> {
     const nextById = new Map(nextHosts.map((host) => [host.id, host]));
     for (const previous of previousHosts) {
       const next = nextById.get(previous.id);
-      attemptRuntimeReconciliation(userId, `host:${previous.id}:lifecycle`, () => {
-        if (!next) hostResourceLifecycle.deleted(userId, previous.id);
-        else hostResourceLifecycle.changed(userId, previous, next);
+      await attemptRuntimeReconciliation(userId, `host:${previous.id}:lifecycle`, async () => {
+        if (!next) await hostResourceLifecycle.deleted(userId, previous.id);
+        else await hostResourceLifecycle.changed(userId, previous, next);
       });
     }
     if (hostsChanged(previousHosts, nextHosts)) {
-      attemptRuntimeReconciliation(userId, "ssh-connections", () =>
+      await attemptRuntimeReconciliation(userId, "ssh-connections", () =>
         sshConnections.syncHosts(nextHosts),
       );
-      attemptRuntimeReconciliation(userId, "host-runtime-supervisor", () =>
+      await attemptRuntimeReconciliation(userId, "host-runtime-supervisor", () =>
         hostRuntimeSupervisor.syncCurrentUserConfig(),
       );
     }
     if (JSON.stringify(previousPinnedThreads) !== JSON.stringify(nextPinnedThreads)) {
-      attemptRuntimeReconciliation(userId, "pinned-thread-broadcast", () =>
+      await attemptRuntimeReconciliation(userId, "pinned-thread-broadcast", () =>
         pinnedThreadEvents.publish(userId),
       );
     }
@@ -134,9 +134,13 @@ function hostsChanged(previous: StoredHostRecord[], next: StoredHostRecord[]) {
 
 export const userConfigMutationService = new UserConfigMutationService();
 
-function attemptRuntimeReconciliation(userId: number, resource: string, reconcile: () => void) {
+async function attemptRuntimeReconciliation(
+  userId: number,
+  resource: string,
+  reconcile: () => void | Promise<void>,
+): Promise<void> {
   try {
-    reconcile();
+    await reconcile();
   } catch (error) {
     // Runtime resources are not transactional. Continue converging independent resources after a
     // failure instead of skipping SSH sync, supervision, or browser invalidation behind it.

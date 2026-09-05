@@ -15,31 +15,41 @@ import { resolveTmuxThreadBinding } from "./thread-binding";
 import { TmuxSessionStreamManager } from "./session-stream/manager";
 
 export class TmuxMonitorService {
-  private readonly repository = new TmuxMonitorRepository();
-  private readonly scanner = new RemoteTmuxScanner();
-  private readonly notifier = new TmuxMonitorNotifier(this.repository);
-  private readonly permanentChecker = new PermanentTmuxMonitorChecker(this.repository);
-  readonly sessionStream = new TmuxSessionStreamManager((host) => this.scan(host));
+  private readonly notifier: TmuxMonitorNotifier;
+  private readonly permanentChecker: PermanentTmuxMonitorChecker;
+  readonly sessionStream: TmuxSessionStreamManager;
 
-  list(userId: number): TmuxMonitorListResult {
-    return this.repository.listForUser(userId);
+  constructor(
+    private readonly repository = new TmuxMonitorRepository(),
+    private readonly scanner: Pick<
+      RemoteTmuxScanner,
+      "scan" | "capturePane"
+    > = new RemoteTmuxScanner(),
+  ) {
+    this.notifier = new TmuxMonitorNotifier(repository);
+    this.permanentChecker = new PermanentTmuxMonitorChecker(repository);
+    this.sessionStream = new TmuxSessionStreamManager((host) => this.scan(host));
   }
 
-  pollGroups() {
-    return this.repository.pollGroups();
+  async list(userId: number): Promise<TmuxMonitorListResult> {
+    return await this.repository.listForUser(userId);
   }
 
-  removeHost(userId: number, hostId: number) {
+  async pollGroups() {
+    return await this.repository.pollGroups();
+  }
+
+  async removeHost(userId: number, hostId: number): Promise<void> {
     this.sessionStream.removeHost(userId, hostId);
-    this.repository.deleteHost(userId, hostId);
+    await this.repository.deleteHost(userId, hostId);
   }
 
-  cancelForHost(userId: number, hostId: number, monitorId: number) {
-    const monitor = this.repository.getOwned(userId, monitorId);
+  async cancelForHost(userId: number, hostId: number, monitorId: number) {
+    const monitor = await this.repository.getOwned(userId, monitorId);
     if (!monitor || monitor.hostId !== hostId) {
       throw createError({ statusCode: 404, statusMessage: "Active monitor not found" });
     }
-    return this.cancel(userId, monitorId);
+    return await this.cancel(userId, monitorId);
   }
 
   scan(host: HostWithSecret): Promise<TmuxSessionSnapshot[]> {
@@ -87,7 +97,7 @@ export class TmuxMonitorService {
       });
     }
     try {
-      return this.repository.create(
+      return await this.repository.create(
         userId,
         host.id,
         pane,
@@ -95,9 +105,7 @@ export class TmuxMonitorService {
         target.mode,
       );
     } catch (error) {
-      if (
-        /UNIQUE constraint failed/i.test(error instanceof Error ? error.message : String(error))
-      ) {
+      if (isDuplicateEntry(error)) {
         throw createError({
           statusCode: 409,
           statusMessage: "This tmux pane is already monitored",
@@ -107,33 +115,33 @@ export class TmuxMonitorService {
     }
   }
 
-  cancel(userId: number, monitorId: number) {
-    const monitor = this.repository.cancel(userId, monitorId);
+  async cancel(userId: number, monitorId: number) {
+    const monitor = await this.repository.cancel(userId, monitorId);
     if (!monitor) throw createError({ statusCode: 404, statusMessage: "Active monitor not found" });
     return monitor;
   }
 
   async promote(userId: number, host: HostWithSecret, monitorId: number) {
-    const monitor = this.repository.getOwned(userId, monitorId);
+    const monitor = await this.repository.getOwned(userId, monitorId);
     if (!monitor || monitor.hostId !== host.id || monitor.status !== "active") {
       throw createError({ statusCode: 404, statusMessage: "Active monitor not found" });
     }
     if (monitor.mode === "permanent") return monitor;
     const sessions = await this.scanner.scan(host);
     const pane = logicalPaneFor(monitor, sessions);
-    return this.repository.promote(monitor, pane ?? null);
+    return await this.repository.promote(monitor, pane ?? null);
   }
 
   async checkHost(userId: number, host: HostWithSecret, monitors?: StoredTmuxMonitor[]) {
-    const active = monitors ?? this.repository.activeForHost(userId, host.id);
-    if (!active.length) return this.list(userId);
+    const active = monitors ?? (await this.repository.activeForHost(userId, host.id));
+    if (!active.length) return await this.list(userId);
 
     try {
       const sessions = await this.scanner.scan(host);
       const panes = sessions.flatMap((session) => session.panes);
       for (const monitor of active) {
         if (monitor.mode === "permanent") {
-          const completed = this.permanentChecker.check(monitor, sessions);
+          const completed = await this.permanentChecker.check(monitor, sessions);
           if (completed) await this.notifier.publishCompletion(host, completed);
           continue;
         }
@@ -143,22 +151,36 @@ export class TmuxMonitorService {
             (candidate) =>
               candidate.sessionId === monitor.sessionId && candidate.paneId === monitor.paneId,
           )!;
-          this.repository.recordChecked(monitor, pane);
+          await this.repository.recordChecked(monitor, pane);
           continue;
         }
-        const completed = this.repository.complete(monitor, completion.reason, completion.pane);
+        const completed = await this.repository.complete(
+          monitor,
+          completion.reason,
+          completion.pane,
+        );
         if (completed) await this.notifier.publishCompletion(host, completed);
       }
     } catch (error) {
-      this.repository.recordHostError(userId, host.id, error);
+      await this.repository.recordHostError(userId, host.id, error);
       throw error;
     }
-    return this.list(userId);
+    return await this.list(userId);
   }
 
   async deliverPendingNotifications(host: HostWithSecret, monitors: StoredTmuxMonitor[]) {
     for (const monitor of monitors) await this.notifier.publishCompletion(host, monitor);
   }
+}
+
+function isDuplicateEntry(error: unknown) {
+  return (
+    (typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "ER_DUP_ENTRY") ||
+    /UNIQUE constraint failed/i.test(error instanceof Error ? error.message : String(error))
+  );
 }
 
 function completionFor(

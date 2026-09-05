@@ -11,6 +11,8 @@ describe("SessionRepository", () => {
   let db: GatewayDb;
 
   beforeEach(async () => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
     db = await freshMysqlTestDatabase();
     await migrateMysqlGatewayDatabase(db);
   });
@@ -29,6 +31,31 @@ describe("SessionRepository", () => {
     await expect(
       db.one("SELECT token_hash FROM sessions WHERE token_hash = ?", [hashToken(session.token)]),
     ).resolves.toBeNull();
+  });
+
+  it("records successful authentication activity through the injected database", async () => {
+    let now = new Date("2026-09-05T00:00:00.000Z");
+    const store = createUserStore(db, {
+      token: () => "active-token",
+      now: () => now,
+    });
+    const user = await storedUser(db, "active-user");
+    const session = await store.createSessionForUser(user);
+    now = new Date("2026-09-05T01:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(store.authenticateToken(session.token)).resolves.toMatchObject({ id: user.id });
+
+    await vi.waitFor(async () => {
+      const row = await db.one<{ last_seen_at: string }>(
+        "SELECT last_seen_at FROM sessions WHERE token_hash = ?",
+        [hashToken(session.token)],
+      );
+      expect(row?.last_seen_at).toBe("2026-09-05T01:00:00.000Z");
+    });
+    expect(warning).not.toHaveBeenCalled();
   });
 
   it("revokes a logged-out session and notifies its realtime subscribers", async () => {

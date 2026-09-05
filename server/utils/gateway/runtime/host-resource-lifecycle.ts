@@ -15,25 +15,25 @@ import { hostMetricsManager } from "../infra/host-services";
 import { threadRuntimeStatusHub } from "./thread-runtime-status-hub";
 
 export const hostResourceLifecycle = {
-  changed(userId: number, previous: StoredHostRecord, next: StoredHostRecord) {
+  async changed(userId: number, previous: StoredHostRecord, next: StoredHostRecord): Promise<void> {
     if (hostRuntimeFingerprint(previous) === hostRuntimeFingerprint(next)) return;
     closeEphemeralResources(userId, previous.id);
     if (remoteIdentityFingerprint(previous) !== remoteIdentityFingerprint(next)) {
       threadProjectDiscovery.invalidateHost(userId, previous.id);
       clearThreadRuntime(userId, previous.id);
-      tmuxMonitorService.removeHost(userId, previous.id);
+      await tmuxMonitorService.removeHost(userId, previous.id);
       hostMetricsManager.removeHost(userId, previous.id);
     }
   },
 
-  deleted(userId: number, hostId: number) {
+  async deleted(userId: number, hostId: number): Promise<void> {
     // Config relations were removed inside UserConfigMutationService's draft transaction.
     // This hook is deliberately limited to ephemeral resources so it cannot create a
-    // memory/SQLite split after the durable commit has already succeeded.
+    // memory/MySQL split after the durable commit has already succeeded.
     threadProjectDiscovery.invalidateHost(userId, hostId);
     clearThreadRuntime(userId, hostId);
     closeEphemeralResources(userId, hostId);
-    tmuxMonitorService.removeHost(userId, hostId);
+    await tmuxMonitorService.removeHost(userId, hostId);
     hostMetricsManager.removeHost(userId, hostId);
   },
 };

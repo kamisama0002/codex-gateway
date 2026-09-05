@@ -1,34 +1,56 @@
-import { gatewayDatabase } from "../storage/database";
+import type { GatewayDb } from "../storage/contracts";
+import { gatewayMysqlDatabase } from "../storage/mysql-database";
 
 const LAST_SEEN_WRITE_INTERVAL_MS = 5 * 60_000;
 const MAX_TRACKED_SESSIONS = 10_000;
 
+type DatabaseProvider = () => GatewayDb;
+
 /**
- * Authentication still validates SQLite on every request. Only the ancillary last_seen_at write
+ * Authentication still validates MySQL on every request. Only the ancillary last_seen_at write
  * is coalesced so high-frequency file, terminal and realtime traffic does not create a write
  * transaction per request.
  */
 export class SessionActivityTracker {
   private readonly lastWrittenAt = new Map<string, number>();
+  private readonly inFlight = new Map<string, Promise<void>>();
 
-  touch(tokenHash: string) {
+  constructor(
+    private readonly database: DatabaseProvider = gatewayMysqlDatabase,
+    private readonly maxTrackedSessions = MAX_TRACKED_SESSIONS,
+  ) {}
+
+  touch(tokenHash: string): void {
     const now = Date.now();
     const previous = this.lastWrittenAt.get(tokenHash);
     if (previous !== undefined && now - previous < LAST_SEEN_WRITE_INTERVAL_MS) return;
+    if (this.inFlight.has(tokenHash)) return;
+    if (this.inFlight.size >= this.maxTrackedSessions) return;
 
+    const request = this.write(tokenHash, now);
+    const tracked = request.finally(() => {
+      if (this.inFlight.get(tokenHash) === tracked) this.inFlight.delete(tokenHash);
+    });
+    this.inFlight.set(tokenHash, tracked);
+  }
+
+  forget(tokenHash: string): void {
+    this.lastWrittenAt.delete(tokenHash);
+  }
+
+  private async write(tokenHash: string, now: number): Promise<void> {
     try {
-      const result = gatewayDatabase()
-        .prepare("UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?")
-        .run(new Date(now).toISOString(), tokenHash);
-      if (result.changes > 0) {
+      const result = await this.database().execute(
+        "UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?",
+        [new Date(now).toISOString(), tokenHash],
+      );
+      if (result.affectedRows > 0) {
         this.lastWrittenAt.set(tokenHash, now);
         this.prune(now);
       } else {
         this.lastWrittenAt.delete(tokenHash);
       }
     } catch (error) {
-      // last_seen_at is observability metadata, not an authentication decision. A failed write
-      // must not reject a session which already passed the authoritative user/expiry query.
       this.lastWrittenAt.delete(tokenHash);
       console.warn("[gateway-auth] failed to record session activity", {
         error: error instanceof Error ? error.message : String(error),
@@ -36,15 +58,11 @@ export class SessionActivityTracker {
     }
   }
 
-  forget(tokenHash: string) {
-    this.lastWrittenAt.delete(tokenHash);
-  }
-
-  private prune(now: number) {
-    if (this.lastWrittenAt.size <= MAX_TRACKED_SESSIONS) return;
+  private prune(now: number): void {
+    if (this.lastWrittenAt.size <= this.maxTrackedSessions) return;
     for (const [tokenHash, writtenAt] of this.lastWrittenAt) {
       if (now - writtenAt >= LAST_SEEN_WRITE_INTERVAL_MS) this.lastWrittenAt.delete(tokenHash);
-      if (this.lastWrittenAt.size <= MAX_TRACKED_SESSIONS) return;
+      if (this.lastWrittenAt.size <= this.maxTrackedSessions) return;
     }
     this.lastWrittenAt.delete(this.lastWrittenAt.keys().next().value!);
   }

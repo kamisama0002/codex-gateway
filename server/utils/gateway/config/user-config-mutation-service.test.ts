@@ -5,6 +5,7 @@ import { MANAGED_RUNTIME_HOST_ID } from "../../../../shared/runtime/managed-runt
 import { userStore } from "../auth/users";
 import { sshConnections } from "../infra/host-services";
 import { hostRuntimeSupervisor } from "../runtime/host-runtime-supervisor";
+import { tmuxMonitorService } from "../tmux-monitor/monitor-service";
 import {
   buildGatewayMemoryState,
   currentGatewayMemoryState,
@@ -97,7 +98,7 @@ describe("UserConfigMutationService", () => {
 
   it("preserves transient runtime state changed while config persistence is pending", async () => {
     let resolveSave!: (revision: number) => void;
-    vi.spyOn(userStore, "saveConfig").mockReturnValue(
+    const saveConfig = vi.spyOn(userStore, "saveConfig").mockReturnValue(
       new Promise<number>((resolve) => {
         resolveSave = resolve;
       }),
@@ -109,7 +110,7 @@ describe("UserConfigMutationService", () => {
       const committing = service.commit(504, () => {
         currentGatewayMemoryState().notifications.bark.group = "persisted config";
       });
-      await vi.waitFor(() => expect(userStore.saveConfig).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(saveConfig).toHaveBeenCalledOnce());
 
       const liveState = currentGatewayMemoryState();
       installTransientState(liveState);
@@ -128,6 +129,68 @@ describe("UserConfigMutationService", () => {
         "thread-during-save",
       ]);
     });
+  });
+
+  it("awaits persistent monitor deletion after committing a removed host", async () => {
+    vi.spyOn(userStore, "saveConfig").mockResolvedValue(2);
+    vi.spyOn(sshConnections, "syncHosts").mockImplementation(() => {});
+    vi.spyOn(hostRuntimeSupervisor, "syncCurrentUserConfig").mockResolvedValue(undefined);
+    let resolveRemoval!: () => void;
+    const removal = new Promise<void>((resolve) => {
+      resolveRemoval = resolve;
+    });
+    const removeHost = vi.spyOn(tmuxMonitorService, "removeHost").mockReturnValue(removal);
+    const service = new UserConfigMutationService();
+
+    await runWithGatewayUser(505, async () => {
+      installLoadedState(1);
+      currentGatewayMemoryState().hosts = [hostRecord()];
+      let completed = false;
+      const commit = service
+        .commit(505, () => {
+          currentGatewayMemoryState().hosts = [];
+        })
+        .then(() => {
+          completed = true;
+        });
+
+      await vi.waitFor(() => expect(removeHost).toHaveBeenCalledWith(505, 1));
+      expect(completed).toBe(false);
+      resolveRemoval();
+      await commit;
+      expect(completed).toBe(true);
+    });
+  });
+
+  it("continues independent reconciliation after monitor deletion fails", async () => {
+    vi.spyOn(userStore, "saveConfig").mockResolvedValue(2);
+    const monitorFailure = Promise.reject(new Error("monitor cleanup failed"));
+    void monitorFailure.catch(() => {});
+    vi.spyOn(tmuxMonitorService, "removeHost").mockReturnValue(monitorFailure);
+    const syncHosts = vi.spyOn(sshConnections, "syncHosts").mockImplementation(() => {});
+    const syncSupervisor = vi
+      .spyOn(hostRuntimeSupervisor, "syncCurrentUserConfig")
+      .mockResolvedValue(undefined);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const service = new UserConfigMutationService();
+
+    await runWithGatewayUser(506, async () => {
+      installLoadedState(1);
+      currentGatewayMemoryState().hosts = [hostRecord()];
+
+      await expect(
+        service.commit(506, () => {
+          currentGatewayMemoryState().hosts = [];
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    expect(logged).toHaveBeenCalledWith(
+      "[gateway] committed config runtime reconciliation failed",
+      expect.objectContaining({ userId: 506, resource: "host:1:lifecycle" }),
+    );
+    expect(syncHosts).toHaveBeenCalledWith([]);
+    expect(syncSupervisor).toHaveBeenCalledOnce();
   });
 });
 

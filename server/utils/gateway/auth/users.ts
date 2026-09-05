@@ -15,7 +15,7 @@ import {
 import { UserConfigRepository } from "../config/user-config-repository";
 import { SessionRepository, type SessionAuthenticationRow } from "./session-repository";
 import { sessionRevocationEvents } from "./session-events";
-import { sessionActivityTracker } from "./session-activity-tracker";
+import { SessionActivityTracker, sessionActivityTracker } from "./session-activity-tracker";
 import {
   databaseUserRole,
   normalizeUsername,
@@ -86,6 +86,7 @@ export async function issueSessionForUser(
 export function createUserStore(
   db: GatewayDb,
   sessionOptions: SessionIssueOptions = {},
+  activityTracker = new SessionActivityTracker(() => db),
 ): UserStore {
   const users = new UserRepository(db);
   const sessions = new SessionRepository(db);
@@ -134,13 +135,13 @@ export function createUserStore(
         await this.deleteToken(token);
         return null;
       }
-      sessionActivityTracker.touch(tokenHash);
+      activityTracker.touch(tokenHash);
       return authenticatedSessionUser(row);
     },
 
     async deleteToken(token) {
       const tokenHash = hashToken(token);
-      sessionActivityTracker.forget(tokenHash);
+      activityTracker.forget(tokenHash);
       if (await sessions.deleteByTokenHash(tokenHash)) {
         sessionRevocationEvents.emit(tokenHash);
       }
@@ -149,7 +150,7 @@ export function createUserStore(
     async deleteExpiredSessions(now = currentTime()) {
       const tokenHashes = await sessions.deleteExpired(now.toISOString());
       for (const tokenHash of tokenHashes) {
-        sessionActivityTracker.forget(tokenHash);
+        activityTracker.forget(tokenHash);
         sessionRevocationEvents.emit(tokenHash);
       }
       return tokenHashes.length;
@@ -223,7 +224,7 @@ export const userStore: UserStore = {
 };
 
 function productionUserStore(): UserStore {
-  return createUserStore(gatewayMysqlDatabase());
+  return createUserStore(gatewayMysqlDatabase(), {}, sessionActivityTracker);
 }
 
 function authenticatedUser(user: StoredUser): AuthenticatedUser {
