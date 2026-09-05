@@ -9,8 +9,12 @@ const userConfigLocks = new Map<number, Mutex>();
 export function defineGatewayConfigMutationHandler<T>(handler: (event: H3Event) => Promise<T> | T) {
   return defineGatewayEventHandler(async (event) => {
     const userId = event.context.auth!.user.id;
-    return await userConfigLock(userId).runExclusive(() => handler(event));
+    return await withUserConfigLock(userId, () => handler(event));
   });
+}
+
+export function withUserConfigLock<T>(userId: number, operation: () => Promise<T> | T): Promise<T> {
+  return userConfigLock(userId).runExclusive(operation);
 }
 
 export function defineGatewayAdvancedConfigMutationHandler<T>(

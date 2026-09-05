@@ -79,6 +79,49 @@ describe("defineGatewayEventHandler", () => {
     await expect(Promise.all([first, second])).resolves.toEqual([3, 3]);
   });
 
+  it("preserves transient state changed while initial config loading is pending", async () => {
+    let resolveLoad!: (value: {
+      config: ReturnType<typeof defaultGatewayConfig>;
+      revision: number;
+    }) => void;
+    vi.spyOn(userStore, "loadConfig").mockReturnValue(
+      new Promise((resolve) => {
+        resolveLoad = resolve;
+      }),
+    );
+    const handler = defineGatewayEventHandler(() => currentGatewayMemoryState().configRevision);
+
+    const loading = handler(gatewayEvent(704));
+    await vi.waitFor(() => expect(userStore.loadConfig).toHaveBeenCalledOnce());
+    runWithGatewayUser(704, () => {
+      const state = currentGatewayMemoryState();
+      state.events.push({
+        id: 91_001,
+        hostId: 1,
+        threadId: "thread-during-load",
+        method: "thread/status/changed",
+        payload: { method: "thread/status/changed", params: { status: "running" } },
+        createdAt: "2026-09-05T01:00:00.000Z",
+      });
+      state.nextEventId = 91_002;
+      state.deliveredNotificationKeys.push("notification-during-load");
+    });
+
+    const config = defaultGatewayConfig();
+    config.notifications.bark.group = "loaded config";
+    resolveLoad({ config, revision: 9 });
+    await expect(loading).resolves.toBe(9);
+    runWithGatewayUser(704, () => {
+      expect(currentGatewayMemoryState()).toMatchObject({
+        configRevision: 9,
+        nextEventId: 91_002,
+        deliveredNotificationKeys: ["notification-during-load"],
+      });
+      expect(currentGatewayMemoryState().events.map((event) => event.id)).toEqual([91_001]);
+      expect(currentGatewayMemoryState().notifications.bark.group).toBe("loaded config");
+    });
+  });
+
   it("leaves memory unloaded after config decryption fails and permits a retry", async () => {
     const loadConfig = vi
       .spyOn(userStore, "loadConfig")

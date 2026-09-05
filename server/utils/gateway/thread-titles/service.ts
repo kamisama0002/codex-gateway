@@ -12,6 +12,7 @@ import { threadSnapshotStore } from "../state/thread-snapshots";
 import { threadBroker } from "../runtime/broker";
 import { generateModelThreadTitle } from "./model-title";
 import { projectThreadTitle } from "./projection";
+import { withUserConfigLock } from "../http/config-mutation";
 
 export interface FirstPromptTitleCandidate {
   userId: number;
@@ -136,8 +137,10 @@ export const automaticThreadTitleService = new AutomaticThreadTitleService({
     });
   },
   async renameAndProject(candidate, title) {
-    await threadBroker.renameThread(candidate.host, candidate.threadId, title);
-    await projectThreadTitle(candidate.userId, candidate.host.id, candidate.threadId, title);
+    await withUserConfigLock(candidate.userId, async () => {
+      await threadBroker.renameThread(candidate.host, candidate.threadId, title);
+      await projectThreadTitle(candidate.userId, candidate.host.id, candidate.threadId, title);
+    });
   },
   runForUser: runWithGatewayUser,
   warn(input) {

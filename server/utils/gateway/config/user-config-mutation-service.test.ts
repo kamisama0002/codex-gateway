@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultGatewayConfig } from "../../../../shared/config";
+import type { AppServerThread } from "../../../../shared/types";
 import { MANAGED_RUNTIME_HOST_ID } from "../../../../shared/runtime/managed-runtime";
 import { userStore } from "../auth/users";
 import { sshConnections } from "../infra/host-services";
@@ -93,6 +94,41 @@ describe("UserConfigMutationService", () => {
     });
     expect(observations).toEqual(["save:4:4", "publish:5"]);
   });
+
+  it("preserves transient runtime state changed while config persistence is pending", async () => {
+    let resolveSave!: (revision: number) => void;
+    vi.spyOn(userStore, "saveConfig").mockReturnValue(
+      new Promise<number>((resolve) => {
+        resolveSave = resolve;
+      }),
+    );
+    const service = new UserConfigMutationService();
+
+    await runWithGatewayUser(504, async () => {
+      installLoadedState(12);
+      const committing = service.commit(504, () => {
+        currentGatewayMemoryState().notifications.bark.group = "persisted config";
+      });
+      await vi.waitFor(() => expect(userStore.saveConfig).toHaveBeenCalledOnce());
+
+      const liveState = currentGatewayMemoryState();
+      installTransientState(liveState);
+      resolveSave(13);
+      await committing;
+
+      expect(currentGatewayMemoryState()).toBe(liveState);
+      expect(currentGatewayMemoryState()).toMatchObject({
+        configRevision: 13,
+        nextEventId: 90_002,
+        pendingNotificationKeys: ["notification-during-save"],
+      });
+      expect(currentGatewayMemoryState().notifications.bark.group).toBe("persisted config");
+      expect(currentGatewayMemoryState().events.map((event) => event.id)).toEqual([90_001]);
+      expect(currentGatewayMemoryState().threadSnapshots.map((entry) => entry.threadId)).toEqual([
+        "thread-during-save",
+      ]);
+    });
+  });
 });
 
 function installLoadedState(revision: number) {
@@ -128,5 +164,63 @@ function hostRecord() {
     hasPassword: true,
     createdAt: "2026-09-05T00:00:00.000Z",
     updatedAt: "2026-09-05T00:00:00.000Z",
+  };
+}
+
+function installTransientState(state: ReturnType<typeof currentGatewayMemoryState>) {
+  state.events.push({
+    id: 90_001,
+    hostId: 1,
+    threadId: "thread-during-save",
+    method: "thread/status/changed",
+    payload: { method: "thread/status/changed", params: { status: "running" } },
+    createdAt: "2026-09-05T01:00:00.000Z",
+  });
+  state.nextEventId = 90_002;
+  state.pendingNotificationKeys.push("notification-during-save");
+  state.threadSnapshots.push({
+    hostId: 1,
+    threadId: "thread-during-save",
+    snapshot: {
+      thread: appServerThread("thread-during-save"),
+      history: { thread: { id: "thread-during-save", turns: [] } },
+      projectId: 2,
+      turnsPage: { nextCursor: null, backwardsCursor: null },
+      threadSettings: null,
+      tokenUsage: null,
+    },
+    updatedAt: "2026-09-05T01:00:00.000Z",
+  });
+}
+
+function appServerThread(id: string): AppServerThread {
+  return {
+    id,
+    extra: null,
+    sessionId: id,
+    forkedFromId: null,
+    parentThreadId: null,
+    preview: id,
+    ephemeral: false,
+    section: null,
+    sectionEnteredAt: null,
+    projectId: null,
+    historyMode: "legacy",
+    modelProvider: "test",
+    createdAt: 1_700_000_000,
+    updatedAt: 1_700_000_000,
+    recencyAt: 1_700_000_000,
+    status: { type: "idle" },
+    path: null,
+    cwd: "/tmp/project",
+    cliVersion: "0.151.0",
+    source: "appServer",
+    canAcceptDirectInput: true,
+    threadSource: null,
+    agentNickname: null,
+    agentRole: null,
+    gitInfo: null,
+    name: id,
+    turns: [],
   };
 }

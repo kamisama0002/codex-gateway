@@ -6,10 +6,9 @@ import {
   onGatewayDatabaseReady,
 } from "../storage/database";
 import {
-  buildGatewayMemoryState,
+  applyGatewayConfigToMemoryState,
   currentGatewayUserId,
   currentGatewayMemoryState,
-  replaceCurrentGatewayMemoryState,
   runWithGatewayUser,
 } from "../state/memory";
 import { connectHostRuntime, publishHostRuntimeFailure } from "./host-runtime-connection";
@@ -78,10 +77,7 @@ class HostRuntimeSupervisor {
       runWithGatewayUser(user.id, () => {
         const state = currentGatewayMemoryState();
         if (!state.configLoaded) {
-          const nextState = buildGatewayMemoryState(config);
-          nextState.configLoaded = true;
-          nextState.configRevision = revision;
-          replaceCurrentGatewayMemoryState(nextState);
+          applyGatewayConfigToMemoryState(state, config, revision);
         }
         this.syncUserConfig(user.id, {
           hosts: config.hosts,

@@ -5,6 +5,7 @@ import { hostResourceLifecycle } from "../runtime/host-resource-lifecycle";
 import { hostRuntimeFingerprint } from "../runtime/host-runtime-fingerprint";
 import { hostRuntimeSupervisor } from "../runtime/host-runtime-supervisor";
 import {
+  applyGatewayConfigToMemoryState,
   currentGatewayMemoryState,
   replaceCurrentGatewayMemoryState,
   type StoredHostRecord,
@@ -17,6 +18,8 @@ import { runtimeConfigStore } from "../state/runtime-config";
 export class UserConfigMutationService {
   async commit<T>(userId: number, mutateDraft: () => T): Promise<T> {
     const previousState = currentGatewayMemoryState();
+    const previousHosts = previousState.hosts;
+    const previousPinnedThreads = previousState.pinnedThreads;
     const draftState = structuredClone(previousState);
     replaceCurrentGatewayMemoryState(draftState);
     let result: T;
@@ -38,14 +41,17 @@ export class UserConfigMutationService {
       nextConfig,
       previousState.configRevision,
     );
-    draftState.configRevision = nextRevision;
-    replaceCurrentGatewayMemoryState(draftState);
+    const committedState = applyGatewayConfigToMemoryState(
+      currentGatewayMemoryState(),
+      nextConfig,
+      nextRevision,
+    );
     this.reconcileCommittedConfig(
       userId,
-      previousState.hosts,
-      draftState.hosts,
-      previousState.pinnedThreads,
-      draftState.pinnedThreads,
+      previousHosts,
+      committedState.hosts,
+      previousPinnedThreads,
+      committedState.pinnedThreads,
     );
     return result;
   }

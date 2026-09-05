@@ -9,9 +9,8 @@ import { userStore } from "../auth/users";
 import { hostRuntimeSupervisor } from "../runtime/host-runtime-supervisor";
 import { projectStore } from "../state/projects";
 import {
-  buildGatewayMemoryState,
+  applyGatewayConfigToMemoryState,
   currentGatewayMemoryState,
-  replaceCurrentGatewayMemoryState,
   runWithGatewayUser,
 } from "../state/memory";
 import { recordFromUnknown } from "~~/shared/utils/records";
@@ -103,10 +102,7 @@ export async function ensureUserConfigLoaded(userId: number): Promise<void> {
 
 async function loadUserConfig(userId: number): Promise<void> {
   const loaded = await userStore.loadConfig(userId);
-  const nextState = buildGatewayMemoryState(loaded.config);
-  nextState.configLoaded = true;
-  nextState.configRevision = loaded.revision;
-  replaceCurrentGatewayMemoryState(nextState);
+  applyGatewayConfigToMemoryState(currentGatewayMemoryState(), loaded.config, loaded.revision);
   hostRuntimeSupervisor.syncCurrentUserConfig();
 }
 

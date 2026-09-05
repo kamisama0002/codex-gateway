@@ -290,3 +290,172 @@ that would be unrelated churn. The complete Task 3 file set passes the same form
   MySQL startup ordering and pool shutdown. This task only makes stored-config bootstrap awaitable.
 - The full repository formatter has the three untouched baseline failures listed above; all Task 3
   files are formatted.
+
+## Fix Round 1: Preserve Transient State and Serialize Remote Config Boundaries
+
+### Blocking Findings Addressed
+
+1. Async config load/save used a whole-state replacement created before the database await. Events,
+   thread snapshots, event IDs, and notification bookkeeping written while persistence was pending
+   could be silently discarded.
+2. Thread delete/archive/rename and automatic title updates performed their remote side effect
+   outside the per-user config mutex. Another same-user config mutation could commit between the
+   remote operation and its config save, making the completed remote operation lose CAS.
+
+The two deferred Minor findings about inactive expired-session cleanup and an empty config row's
+revision were intentionally not changed.
+
+### Files Changed in Fix Round 1
+
+- `server/utils/gateway/state/memory.ts`
+- `server/utils/gateway/config/user-config-mutation-service.ts`
+- `server/utils/gateway/config/user-config-mutation-service.test.ts`
+- `server/utils/gateway/http/errors.ts`
+- `server/utils/gateway/http/errors.test.ts`
+- `server/utils/gateway/http/config-mutation.ts`
+- `server/utils/gateway/http/config-mutation.test.ts`
+- `server/utils/gateway/runtime/host-runtime-supervisor.ts`
+- `server/api/threads/delete.post.ts`
+- `server/api/threads/archive.post.ts`
+- `server/api/threads/rename.post.ts`
+- `server/utils/gateway/thread-titles/service.ts`
+
+### Fix Round RED Evidence
+
+Tests were written before the implementation changes and used deferred Promises so transient state
+and competing operations changed while the target await was unresolved.
+
+```text
+corepack pnpm exec vitest run \
+  server/utils/gateway/config/user-config-mutation-service.test.ts \
+  server/utils/gateway/http/errors.test.ts \
+  server/utils/gateway/http/config-mutation.test.ts
+
+Test Files  3 failed (3)
+Tests       3 failed | 10 passed (13)
+```
+
+The save regression failed because the post-save state was a different object and had empty
+`events`, `threadSnapshots`, and notification keys plus the old process event counter. The load
+regression lost the event, notification key, and updated `nextEventId`. The remote-boundary test
+failed with `withUserConfigLock is not implemented`. All 13 tests collected; there was no missing
+module or zero-test setup failure.
+
+### Implementation
+
+`applyGatewayConfigToMemoryState(state, config, revision)` now applies only the durable fields to
+the latest live user state:
+
+```text
+hosts
+projects
+configuredProjectIds
+pinnedThreads
+notifications
+pet
+configLoaded
+configRevision
+```
+
+It deliberately preserves all transient fields, including thread metadata/snapshots, sub-agent
+state, events, cursor/epoch state, `nextEventId`, and notification delivery bookkeeping. Config
+load, config commit, and stored-user supervisor bootstrap use this helper instead of replacing the
+whole state after an await. Config commit retains the pre-apply host and pinned-thread array
+references only for post-commit reconciliation comparisons.
+
+`withUserConfigLock(userId, operation)` exposes the existing in-process, user-keyed mutex. It now
+guards:
+
+- ordinary and advanced config mutation handlers;
+- thread delete from remote delete through pinned-config commit;
+- thread archive from remote archive through pinned-config commit;
+- manual rename from remote rename through title projection/config commit;
+- automatic title rename from remote rename through title projection/config commit.
+
+Different users continue independently. The locked callbacks call `commit`, `unpinThread`, or
+`updatePinnedThreadTitle`, none of which acquire the mutex themselves, so the new call graph is not
+recursively locking.
+
+### Fix Round GREEN Evidence
+
+Focused regression command:
+
+```text
+corepack pnpm exec vitest run \
+  server/utils/gateway/config/user-config-mutation-service.test.ts \
+  server/utils/gateway/http/errors.test.ts \
+  server/utils/gateway/http/config-mutation.test.ts
+
+Test Files  3 passed (3)
+Tests       13 passed (13)
+```
+
+Affected config and title behavior:
+
+```text
+corepack pnpm exec vitest run \
+  server/utils/gateway/config/user-config-mutation-service.test.ts \
+  server/utils/gateway/http/errors.test.ts \
+  server/utils/gateway/http/config-mutation.test.ts \
+  server/utils/gateway/thread-titles/service.test.ts
+
+Test Files  4 passed (4)
+Tests       18 passed (18)
+```
+
+Final Task 3 propagation and title suites:
+
+```text
+corepack pnpm exec vitest run \
+  server/utils/gateway/auth/context.test.ts \
+  server/utils/gateway/config/user-config-mutation-service.test.ts \
+  server/utils/gateway/http/config-mutation.test.ts \
+  server/utils/gateway/http/errors.test.ts \
+  server/utils/gateway/runtime/host-runtime-supervisor.test.ts \
+  server/utils/gateway/runtime-manager/runtime-service.test.ts \
+  server/utils/gateway/thread-titles/service.test.ts
+
+Test Files  7 passed (7)
+Tests       38 passed (38)
+```
+
+Real MySQL 8.4 repository regression on the authorized isolated CentOS harness:
+
+```text
+bash tests/mysql/run-in-containers.sh pnpm exec vitest run \
+  server/utils/gateway/auth/user-repository.test.ts \
+  server/utils/gateway/auth/session-repository.test.ts \
+  server/utils/gateway/auth/external-identities.test.ts \
+  server/utils/gateway/config/user-config-repository.test.ts
+
+Test Files  4 passed (4)
+Tests       14 passed (14)
+Duration    14.35s
+```
+
+Static verification:
+
+```text
+corepack pnpm typecheck
+exit 0
+
+corepack pnpm exec oxfmt --check <12 fix-round TypeScript files>
+All matched files use the correct format; exit 0
+
+git diff --check
+exit 0
+```
+
+### Fix Round Self-Review and Concerns
+
+- Deferred save/load tests prove both persisted config and concurrent transient changes survive on
+  the same latest live state object.
+- Persistence failure and stale CAS still leave the prior live config/revision installed and do not
+  publish runtime reconciliation.
+- Config-load single-flight retry behavior remains covered and green.
+- `rg` confirms every direct config commit/unpin/title update is inside either a config handler's
+  shared lock or one of the explicit thread/background critical sections.
+- Locks remain process-local and user-scoped; no Redis or multi-Gateway invalidation was added.
+- A CAS conflict caused by a separate active Gateway remains outside this single-Gateway milestone.
+- The checkpoint remains intentionally non-deployable, with the same Task 3 concerns documented
+  above.
