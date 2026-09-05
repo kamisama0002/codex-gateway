@@ -1,5 +1,6 @@
 import type { ComposerTurnOptions } from "~~/shared/types";
 import { INITIAL_TURN_PAGE_LIMIT } from "~~/shared/config";
+import { isManagedRuntimeHostId } from "~~/shared/runtime/managed-runtime";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { projectById } from "@/stores/gateway-catalog/selectors";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
@@ -19,6 +20,18 @@ export type ThreadStartedMessage = Extract<
   { type: "thread.started" }
 >;
 
+const MANAGED_RUNTIME_BROWSER_REQUEST_TIMEOUT_MS = 130_000;
+
+export function realtimeRequestOptionsForHost(hostId: number, signal?: AbortSignal) {
+  const timeoutMs = isManagedRuntimeHostId(hostId)
+    ? MANAGED_RUNTIME_BROWSER_REQUEST_TIMEOUT_MS
+    : undefined;
+  if (timeoutMs !== undefined && signal !== undefined) return { timeoutMs, signal };
+  if (timeoutMs !== undefined) return { timeoutMs };
+  if (signal !== undefined) return { signal };
+  return undefined;
+}
+
 export function requestActivateThreadSnapshot(input: {
   hostId: number;
   projectId: number | null;
@@ -35,11 +48,9 @@ export function requestActivateThreadSnapshot(input: {
       limit: input.limit ?? INITIAL_TURN_PAGE_LIMIT,
     }),
     expectThreadSnapshot,
-    // Legacy app-server rollouts can take longer than 30 seconds to replay even when the first
-    // page contains only two Turns. Use the realtime broker's shared long-operation deadline,
-    // which intentionally exceeds the backend RPC timeout. A shorter transport-specific timer
-    // abandons the browser request while the server keeps loading and later attaches an orphaned
-    // subscription, causing repeated opens to amplify the original slowdown.
+    realtimeRequestOptionsForHost(input.hostId),
+    // Managed runtime RPCs have a bounded backend deadline, so the browser waits just beyond it.
+    // SSH hosts omit this override and retain the broker's 31-minute upgrade/reconnect allowance.
   );
 }
 
@@ -70,9 +81,9 @@ export function requestStartThread(
       approvalPolicy: options.approvalPolicy ?? undefined,
     }),
     expectThreadStarted,
-    { signal },
-    // A new SSH host can still be running the real remote Codex/Node upgrade when the user
-    // creates the first thread. Use the realtime broker's long operation deadline instead of
-    // abandoning the request after 30 seconds, before the backend can return the App Server id.
+    realtimeRequestOptionsForHost(hostId, signal),
+    // Managed runtime RPCs have a bounded backend deadline, so the browser waits just beyond it.
+    // SSH hosts retain the broker's long upgrade/reconnect allowance while still accepting the
+    // submission cancellation signal.
   );
 }

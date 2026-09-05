@@ -5,11 +5,19 @@ import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 import { sshConnections } from "../infra/host-services";
 
 export const MAX_FILE_REFERENCES = 10;
+const FILE_REFERENCE_TIMEOUT_MS = 30_000;
+
+interface ValidateProjectFileReferencesOptions {
+  timeoutMs?: number;
+}
+
+type FileReferenceSftp = Pick<SFTPWrapper, "realpath" | "stat">;
 
 export async function validateProjectFileReferences(
   host: HostRecord,
   project: ProjectRecord,
   references: FileReference[],
+  options: ValidateProjectFileReferencesOptions = {},
 ): Promise<FileReference[]> {
   if (project.hostId !== host.id) {
     throw new Error(`Project ${project.id} does not belong to host ${host.id}`);
@@ -30,16 +38,17 @@ export async function validateProjectFileReferences(
   if (isManagedRuntimeHost(host)) {
     return normalized;
   }
-  const sftp = await sshConnections.sftp(host);
-  const root = await realpath(sftp, project.remotePath);
+  const timeoutMs = options.timeoutMs ?? FILE_REFERENCE_TIMEOUT_MS;
+  const sftp = await withFileReferenceTimeout(() => sshConnections.sftp(host), timeoutMs);
+  const root = await realpath(sftp, project.remotePath, timeoutMs);
 
   await Promise.all(
     normalized.map(async (reference) => {
-      const candidate = await realpath(sftp, posix.join(root, reference.path));
+      const candidate = await realpath(sftp, posix.join(root, reference.path), timeoutMs);
       if (!isWithinRoot(root, candidate)) {
         throw new Error(`Referenced file escapes the project root: ${reference.path}`);
       }
-      const stats = await stat(sftp, candidate);
+      const stats = await stat(sftp, candidate, timeoutMs);
       if (!stats.isFile()) {
         throw new Error(`Referenced path is not a regular file: ${reference.path}`);
       }
@@ -85,16 +94,53 @@ function isWithinRoot(root: string, candidate: string) {
   );
 }
 
-function realpath(sftp: SFTPWrapper, path: string) {
-  return new Promise<string>((resolve, reject) => {
-    sftp.realpath(path, (error, resolved) => (error ? reject(error) : resolve(resolved)));
+function realpath(sftp: FileReferenceSftp, path: string, timeoutMs: number) {
+  return withFileReferenceTimeout(
+    () =>
+      new Promise<string>((resolve, reject) => {
+        sftp.realpath(path, (error, resolved) => (error ? reject(error) : resolve(resolved)));
+      }),
+    timeoutMs,
+  );
+}
+
+function stat(sftp: FileReferenceSftp, path: string, timeoutMs: number) {
+  return withFileReferenceTimeout(
+    () =>
+      new Promise<Stats>((resolve, reject) => {
+        sftp.stat(path, (error, stats) => (error ? reject(error) : resolve(stats)));
+      }),
+    timeoutMs,
+  );
+}
+
+function withFileReferenceTimeout<Value>(operation: () => Promise<Value>, timeoutMs: number) {
+  return new Promise<Value>((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      callback();
+    };
+    const timer = setTimeout(() => {
+      finish(() => reject(new Error("file_reference_timeout")));
+    }, timeoutMs);
+    try {
+      void operation().then(
+        (value) => finish(() => resolve(value)),
+        (error: unknown) => finish(() => reject(fileReferenceOperationError(error))),
+      );
+    } catch (error) {
+      finish(() => reject(fileReferenceOperationError(error)));
+    }
   });
 }
 
-function stat(sftp: SFTPWrapper, path: string) {
-  return new Promise<Stats>((resolve, reject) => {
-    sftp.stat(path, (error, stats) => (error ? reject(error) : resolve(stats)));
-  });
+function fileReferenceOperationError(error: unknown) {
+  return error instanceof Error
+    ? error
+    : new Error("SFTP file reference operation failed", { cause: error });
 }
 
 export function fileReferencesAdditionalContext(

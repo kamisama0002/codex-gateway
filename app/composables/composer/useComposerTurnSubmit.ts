@@ -45,7 +45,9 @@ export function useComposerTurnSubmit(input: {
   const submissionPending = ref(false);
   const failedDrafts: SubmittedDraft[] = [];
   let submissionController: AbortController | null = null;
-  let handedOffThreadId: string | null = null;
+  let submissionHostId: number | null = null;
+  let submissionThreadId: string | null = null;
+  let composerReleased = false;
   let restoringFailedDrafts = false;
   const planModeActive = computed(() => composer.selectedThreadCollaborationMode === "plan");
   const hasComposerInput = computed(() =>
@@ -91,6 +93,8 @@ export function useComposerTurnSubmit(input: {
     };
     const startingNewThread = navigation.selectedThreadId === null;
     if (startingNewThread && navigation.selectedProjectId === null) return;
+    submissionHostId = navigation.selectedHostId;
+    submissionThreadId = navigation.selectedThreadId;
     const draftSnapshot: SubmittedDraft = {
       text: input.turnText.value,
       attachedFiles: [...input.attachedFiles.value],
@@ -105,7 +109,7 @@ export function useComposerTurnSubmit(input: {
       if (startingNewThread) {
         const threadId = await threadView.startThread(
           turnOptions,
-          { onStarted: (startedThreadId) => (handedOffThreadId = startedThreadId) },
+          { onStarted: (startedThreadId) => (submissionThreadId = startedThreadId) },
           controller.signal,
         );
         if (threadId === null || navigation.selectedThreadId !== threadId) return;
@@ -120,6 +124,8 @@ export function useComposerTurnSubmit(input: {
       if (startingNewThread) submittingNewThread.value = false;
       if (submissionController === controller) {
         submissionController = null;
+        submissionHostId = null;
+        submissionThreadId = null;
         submissionPending.value = false;
       }
     }
@@ -160,8 +166,8 @@ export function useComposerTurnSubmit(input: {
   }
 
   function rememberFailedDraft(draft: SubmittedDraft) {
-    if (handedOffThreadId !== null && navigation.selectedHostId !== null) {
-      composer.queueFailedComposerDraft(navigation.selectedHostId, handedOffThreadId, draft);
+    if (composerReleased && submissionHostId !== null && submissionThreadId !== null) {
+      composer.queueFailedComposerDraft(submissionHostId, submissionThreadId, draft);
       return;
     }
     failedDrafts.push(draft);
@@ -191,7 +197,13 @@ export function useComposerTurnSubmit(input: {
     flush: "sync",
   });
   onScopeDispose(() => {
-    if (handedOffThreadId !== null && navigation.selectedThreadId === handedOffThreadId) {
+    composerReleased = true;
+    if (
+      submissionHostId !== null &&
+      submissionThreadId !== null &&
+      navigation.selectedHostId === submissionHostId &&
+      navigation.selectedThreadId === submissionThreadId
+    ) {
       return;
     }
     submissionController?.abort(new Error("Composer released"));

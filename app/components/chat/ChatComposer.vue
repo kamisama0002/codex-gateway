@@ -52,6 +52,7 @@ const {
   selectedThreadStatus,
   selectedThreadTokenUsage,
   sendButtonLabel,
+  creatingFirstThread,
   submissionPending,
   saveSelectedThreadGoal,
   stopSelectedThreadGoal,
@@ -109,6 +110,7 @@ const {
     :interrupting-turn="interruptingTurn"
     :selected-thread-status="selectedThreadStatus"
     :send-button-label="sendButtonLabel"
+    :creating-first-thread="creatingFirstThread"
     :submission-pending="submissionPending"
     :placement="placement"
     @deactivate-plan="deactivatePlanMode"
@@ -132,6 +134,7 @@ const {
   <WorkspaceUploadConflictDialog
     :conflict="pendingWorkspaceUploadConflict"
     :uploading="uploadingWorkspace"
+    :creating-first-thread="creatingFirstThread"
     @cancel="cancelWorkspaceUploadConflict"
     @overwrite="confirmWorkspaceOverwrite"
   />

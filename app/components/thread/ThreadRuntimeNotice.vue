@@ -10,13 +10,14 @@ import {
   SquareIcon,
   XIcon,
 } from "@lucide/vue";
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, toRef, watch } from "vue";
 import { Button } from "@codex-gateway/ui/button";
 import type { ThreadRuntimePhase } from "~~/shared/types";
 import type { GatewayErrorState } from "@/stores/gateway/types";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { MAX_SERVER_OVERLOADED_RETRIES } from "@/stores/gateway-thread-turns/types";
+import { useThreadRuntimeElapsed } from "./useThreadRuntimeElapsed";
 
 const props = defineProps<{
   hostId: number | null;
@@ -29,6 +30,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const bootstrap = useGatewayBootstrapStore();
 const turns = useGatewayThreadTurnsStore();
+const elapsedSeconds = useThreadRuntimeElapsed(toRef(props, "threadId"), toRef(props, "phase"));
 const now = ref(Date.now());
 let countdownTimer: number | null = null;
 
@@ -50,6 +52,7 @@ const visible = computed(
   () =>
     props.error !== null ||
     props.phase === "submitting" ||
+    props.phase === "running" ||
     props.phase === "waitingForApproval" ||
     props.phase === "waitingForInput" ||
     props.phase === "waitingForClient" ||
@@ -134,6 +137,7 @@ const description = computed(() => {
   if (categoryKey !== null) return t(categoryKey);
   const phaseDescription: Partial<Record<ThreadRuntimePhase, string>> = {
     submitting: "app.threadSubmittingDescription",
+    running: "app.threadRunningDescription",
     waitingForApproval: "app.threadWaitingApprovalDescription",
     waitingForInput: "app.threadWaitingInputDescription",
     waitingForClient: "app.threadWaitingClientDescription",
@@ -154,7 +158,11 @@ const retryMeta = computed(() => {
 const technicalDetails = computed(() => {
   const message = props.error?.message?.trim() ?? "";
   const summary = description.value.trim();
-  return [message !== "" && message !== summary ? message : null, props.error?.details, props.error?.code]
+  return [
+    message !== "" && message !== summary ? message : null,
+    props.error?.details,
+    props.error?.code,
+  ]
     .filter((value, index, values): value is string =>
       Boolean(value && values.indexOf(value) === index),
     )
@@ -246,6 +254,13 @@ function firstErrorLine(message?: string | null) {
             }}</span>
             <span v-if="retrySeconds !== null" class="text-xs tabular-nums text-ink-faint">
               {{ t("app.retryCountdown", { seconds: retrySeconds }) }}
+            </span>
+            <span
+              v-if="active"
+              data-testid="thread-runtime-elapsed"
+              class="text-xs tabular-nums text-ink-faint"
+            >
+              {{ t("app.threadRuntimeElapsed", { seconds: elapsedSeconds }) }}
             </span>
           </div>
           <p v-if="description" class="mt-0.5 leading-5 text-ink-muted">{{ description }}</p>

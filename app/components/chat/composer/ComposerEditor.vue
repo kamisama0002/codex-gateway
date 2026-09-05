@@ -113,7 +113,13 @@ watch(
   () => reconfigure(),
   { deep: true },
 );
-watch(() => props.disabled, reconfigure);
+watch(
+  () => props.disabled,
+  (disabled) => {
+    reconfigure();
+    if (disabled) dismissMenu();
+  },
+);
 watch(() => props.placeholder, reconfigure);
 
 function reconfigure() {
@@ -147,11 +153,19 @@ function extensions(): Extension[] {
     Prec.high(
       EditorView.domEventHandlers({
         keydown: (event) => {
+          if (props.disabled) {
+            event.preventDefault();
+            return true;
+          }
           if (handleMentionKeydown(event)) return true;
           emit("keydown", event);
           return event.defaultPrevented;
         },
         paste: (event) => {
+          if (props.disabled) {
+            event.preventDefault();
+            return true;
+          }
           emit("paste", event);
           return event.defaultPrevented;
         },
@@ -159,6 +173,7 @@ function extensions(): Extension[] {
     ),
     EditorView.contentAttributes.of({
       "aria-label": props.placeholder,
+      "aria-disabled": String(props.disabled),
       placeholder: props.placeholder,
       "data-testid": "composer-input",
       "data-value": props.modelValue,

@@ -68,6 +68,7 @@ describe("gateway realtime connection recovery", () => {
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -96,6 +97,21 @@ describe("gateway realtime connection recovery", () => {
     await Promise.resolve();
 
     expect(rejected).toHaveBeenCalledOnce();
+  });
+
+  it("removes an unready waiter, timer, and listener immediately when aborted", async () => {
+    const connection = createConnection();
+    const controller = new AbortController();
+    const removeEventListener = vi.spyOn(controller.signal, "removeEventListener");
+    const ready = connection.waitForReady(15_000, controller.signal);
+    const settled = ready.catch((error: unknown) => error);
+
+    expect(vi.getTimerCount()).toBe(1);
+    controller.abort(new Error("Submission cancelled"));
+
+    expect(await settled).toBe(controller.signal.reason);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(removeEventListener).toHaveBeenCalledWith("abort", expect.any(Function));
   });
 
   it("stops reconnecting after the DSH retry schedule is exhausted", async () => {

@@ -48,6 +48,7 @@ async function dismiss() {
         <XIcon class="size-3.5" />
       </Button>
       <PetSprite
+        class="pointer-events-auto"
         :pet-id="pet.settings.value.petId"
         :status="pet.status.value"
         :animated="pet.settings.value.animations"

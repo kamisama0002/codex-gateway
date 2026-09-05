@@ -9,6 +9,7 @@ import {
   SendIcon,
   SquareIcon,
 } from "@lucide/vue";
+import { nextTick, ref, watch } from "vue";
 import type {
   ApprovalPolicy,
   ModelRecord,
@@ -28,7 +29,7 @@ import ApprovalPolicyPicker from "@/components/chat/composer/ApprovalPolicyPicke
 import ContextUsageMeter from "@/components/chat/composer/ContextUsageMeter.vue";
 import ModelEffortPicker from "@/components/chat/composer/ModelEffortPicker.vue";
 
-defineProps<{
+const props = defineProps<{
   uploadingAttachments: boolean;
   uploadingWorkspace: boolean;
   selectedThreadId: string | null;
@@ -47,6 +48,7 @@ defineProps<{
   canInterruptTurn: boolean;
   canUsePrimaryAction: boolean;
   interruptingTurn: boolean;
+  creatingFirstThread: boolean;
   submissionPending: boolean;
   canAttachFiles: boolean;
   canUploadWorkspace: boolean;
@@ -63,6 +65,19 @@ const emit = defineEmits<{
   selectEffort: [effort: ReasoningEffort];
   updateSelectedApprovalMode: [mode: ApprovalPolicy | "custom"];
 }>();
+
+const primaryActionButton = ref<{ $el: unknown } | null>(null);
+
+watch(
+  () => props.creatingFirstThread,
+  async (creating) => {
+    if (!creating) return;
+    await nextTick();
+    if (!props.creatingFirstThread) return;
+    const element = primaryActionButton.value?.$el;
+    if (element instanceof HTMLButtonElement && !element.disabled) element.focus();
+  },
+);
 </script>
 
 <template>
@@ -105,6 +120,7 @@ const emit = defineEmits<{
       <div class="hidden sm:block">
         <ApprovalPolicyPicker
           :model-value="selectedApprovalMode"
+          :disabled="creatingFirstThread"
           @update:model-value="emit('updateSelectedApprovalMode', $event)"
         />
       </div>
@@ -122,11 +138,13 @@ const emit = defineEmits<{
           :effort-options="effortOptions"
           :label-effort-option="labelEffortOption"
           :model-option-value="modelOptionValue"
+          :disabled="creatingFirstThread"
           @select-model="emit('selectModel', $event)"
           @select-effort="emit('selectEffort', $event)"
         />
       </div>
       <Button
+        ref="primaryActionButton"
         data-testid="send-turn-button"
         class="size-[2.125rem] shrink-0 -translate-y-0.5 rounded-full bg-primary p-0 text-white hover:bg-primary-active disabled:opacity-40"
         :aria-label="sendButtonLabel"

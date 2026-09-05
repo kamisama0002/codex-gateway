@@ -66,14 +66,7 @@ export function useComposerController() {
       : null,
   );
   const isThreadRunning = computed(() => selectedRuntime.value?.canInterrupt === true);
-  const submissionPending = computed(() => {
-    if (submit.submissionPending.value) return true;
-    if (selectedHostId.value === null || selectedThreadId.value === null) return false;
-    return (
-      threadTurns.requestForThread(selectedHostId.value, selectedThreadId.value)?.admitted === false
-    );
-  });
-  const composerInputEnabled = computed(
+  const hasComposerTarget = computed(
     () => selectedThreadId.value !== null || selectedProjectId.value !== null,
   );
   const selectedTurnOptions = () => {
@@ -100,6 +93,16 @@ export function useComposerController() {
     selectedEffort: settings.selectedEffort,
     fileReferencesLabel: computed(() => t("app.attachedFileReferences")),
   });
+  const submissionPending = computed(() => {
+    if (submit.submissionPending.value) return true;
+    if (selectedHostId.value === null || selectedThreadId.value === null) return false;
+    return (
+      threadTurns.requestForThread(selectedHostId.value, selectedThreadId.value)?.admitted === false
+    );
+  });
+  const composerInputEnabled = computed(
+    () => hasComposerTarget.value && !submit.submittingNewThread.value,
+  );
   const goalInputActive = computed(() => /^\/goal(?:\s|$)/i.test(turnText.value.trimStart()));
   const activePlanSummary = computed(() =>
     submit.planModeActive.value ? planItemSummary(latestThreadPlanItem(history.value)) : "",
@@ -122,6 +125,7 @@ export function useComposerController() {
     ),
   );
   const sendButtonLabel = computed(() => {
+    if (submit.submittingNewThread.value) return t("app.cancelThreadCreation");
     if (submissionPending.value) return t("app.cancelSend");
     if (submit.hasComposerInput.value) return t("app.send");
     if (isThreadRunning.value) return t("app.interruptTurn");
@@ -192,6 +196,54 @@ export function useComposerController() {
     });
   }
 
+  function handleAttachmentChange(event: Event) {
+    if (submit.submittingNewThread.value) return;
+    attachmentUpload.handleAttachmentChange(event);
+  }
+
+  function handleWorkspaceSelection(event: Event, selection: "files" | "folder") {
+    if (submit.submittingNewThread.value) return;
+    workspaceUpload.handleWorkspaceSelection(event, selection);
+  }
+
+  async function confirmWorkspaceOverwrite() {
+    if (submit.submittingNewThread.value) return;
+    await workspaceUpload.confirmOverwrite();
+  }
+
+  function cancelWorkspaceUploadConflict() {
+    if (submit.submittingNewThread.value) return;
+    workspaceUpload.cancelConflict();
+  }
+
+  function handlePaste(event: ClipboardEvent) {
+    if (submit.submittingNewThread.value) {
+      event.preventDefault();
+      return;
+    }
+    attachmentUpload.handlePaste(event);
+  }
+
+  function removeAttachment(id: string) {
+    if (submit.submittingNewThread.value) return;
+    attachmentUpload.removeAttachment(id);
+  }
+
+  function setSelectedApprovalMode(value: Parameters<typeof settings.setSelectedApprovalMode>[0]) {
+    if (submit.submittingNewThread.value) return;
+    settings.setSelectedApprovalMode(value);
+  }
+
+  function setSelectedModel(value: string) {
+    if (submit.submittingNewThread.value) return;
+    settings.setSelectedModel(value);
+  }
+
+  function setSelectedEffort(value: Parameters<typeof settings.setSelectedEffort>[0]) {
+    if (submit.submittingNewThread.value) return;
+    settings.setSelectedEffort(value);
+  }
+
   return {
     activePlanSummary,
     attachedFiles,
@@ -209,17 +261,18 @@ export function useComposerController() {
     uploadingAttachments: attachmentUpload.uploadingAttachments,
     uploadingWorkspace: workspaceUpload.uploadingWorkspace,
     pendingWorkspaceUploadConflict: workspaceUpload.pendingConflict,
-    handleAttachmentChange: attachmentUpload.handleAttachmentChange,
-    handleWorkspaceSelection: workspaceUpload.handleWorkspaceSelection,
-    confirmWorkspaceOverwrite: workspaceUpload.confirmOverwrite,
-    cancelWorkspaceUploadConflict: workspaceUpload.cancelConflict,
-    handlePaste: attachmentUpload.handlePaste,
-    removeAttachment: attachmentUpload.removeAttachment,
+    handleAttachmentChange,
+    handleWorkspaceSelection,
+    confirmWorkspaceOverwrite,
+    cancelWorkspaceUploadConflict,
+    handlePaste,
+    removeAttachment,
     openAttachmentPicker: attachmentUpload.openAttachmentPicker,
     planModeActive: submit.planModeActive,
     deactivatePlanMode: submit.deactivatePlanMode,
     hasComposerInput: submit.hasComposerInput,
     interruptingTurn: submit.interruptingTurn,
+    creatingFirstThread: submit.submittingNewThread,
     submissionPending,
     composerInputEnabled,
     selectedHostId,
@@ -242,5 +295,8 @@ export function useComposerController() {
     models,
     loadingModels,
     ...settings,
+    setSelectedApprovalMode,
+    setSelectedModel,
+    setSelectedEffort,
   };
 }

@@ -30,7 +30,7 @@ export interface RealtimeRequestRejection {
 }
 
 interface RealtimeRequestBrokerOptions {
-  waitForReady: (timeoutMs: number) => Promise<void>;
+  waitForReady: (timeoutMs: number, signal?: AbortSignal) => Promise<void>;
   send: (message: RealtimeClientMessage) => boolean;
   unavailableMessage: () => string;
   timeoutMessage: () => string;
@@ -148,29 +148,13 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
   }
 
   async function waitForReady(signal: AbortSignal | undefined, request: RealtimeRequestMessage) {
-    if (signal === undefined) {
-      await options.waitForReady(REALTIME_READY_TIMEOUT_MS);
-      return;
+    try {
+      await options.waitForReady(REALTIME_READY_TIMEOUT_MS, signal);
+    } catch (error: unknown) {
+      if (signal?.aborted === true) throw cancelledError(signal, request);
+      throw error;
     }
-    if (signal.aborted) throw cancelledError(signal, request);
-    await new Promise<void>((resolve, reject) => {
-      const aborted = () => {
-        signal.removeEventListener("abort", aborted);
-        reject(cancelledError(signal, request));
-      };
-      signal.addEventListener("abort", aborted, { once: true });
-      void options.waitForReady(REALTIME_READY_TIMEOUT_MS).then(
-        () => {
-          signal.removeEventListener("abort", aborted);
-          resolve();
-        },
-        (error: unknown) => {
-          signal.removeEventListener("abort", aborted);
-          reject(error instanceof Error ? error : new Error(String(error)));
-        },
-      );
-    });
-    if (signal.aborted) throw cancelledError(signal, request);
+    if (signal?.aborted === true) throw cancelledError(signal, request);
   }
 
   function settlePending(requestId: string, pending: PendingRealtimeRequest) {

@@ -2,10 +2,23 @@ import { expect, test } from "@playwright/test";
 import { openApp } from "./helpers/app";
 import {
   activeRealtimeSocketCount,
+  closeRealtimeSockets,
   dispatchRealtimeServerFrame,
   installRealtimeSocketProbe,
   realtimeSocketCloseCalls,
 } from "./helpers/realtime-socket-probe";
+
+test("shows reconnecting state in the main conversation pane", async ({ page }) => {
+  await installRealtimeSocketProbe(page);
+  await openApp(page);
+  await expect.poll(() => activeRealtimeSocketCount(page)).toBe(1);
+
+  await closeRealtimeSockets(page);
+
+  await expect(
+    page.getByTestId("chat-main-pane").getByTestId("realtime-connection-indicator"),
+  ).toHaveText(/^正在重连 \d+$/);
+});
 
 test("closes the protocol stream instead of ignoring a malformed server frame", async ({
   page,
@@ -43,7 +56,7 @@ test("stops automatic reconnect after the DSH retry schedule and allows manual r
   await openApp(page, { interceptRealtime: false, resetConfig: false });
   await expect.poll(() => connectionAttempts, { timeout: 45_000 }).toBe(7);
 
-  const indicator = page.getByTestId("realtime-connection-indicator");
+  const indicator = page.getByTestId("chat-main-pane").getByTestId("realtime-connection-indicator");
   await expect(indicator).toHaveAccessibleName("实时连接已断开，立即重连");
   await expect(indicator).toBeEnabled();
   await page.waitForTimeout(11_000);

@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { z } from "zod";
 import { expect, test } from "./fixtures/remote-workspace";
 import { E2E_PASSWORD, E2E_USERNAME, openApp } from "./helpers/app";
@@ -6,7 +7,7 @@ import {
   realtimeClientMessageCount,
   waitForRealtimeClientMessage,
 } from "./helpers/realtime-socket-probe";
-import { waitForSelectedThreadId } from "./helpers/remote-codex";
+import { execRemoteSsh, waitForSelectedThreadId } from "./helpers/remote-codex";
 
 test("creates a thread and sends the first message from the centered composer", async ({
   page,
@@ -40,6 +41,12 @@ test("creates a thread and sends the first message from the centered composer", 
   });
 
   const threadId = await waitForSelectedThreadId(page);
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+  await expect(page.locator('input[type="file"]').first()).toBeEnabled();
+  await expect(page.getByTestId("workspace-file-input")).toBeEnabled();
+  await expect(page.getByTestId("workspace-folder-input")).toBeEnabled();
+  await expect(page.getByTestId("composer-add-content")).toBeEnabled();
+  await expect(page.getByTestId("model-select")).toBeEnabled();
   const turnStart = z
     .object({
       type: z.literal("turn.start"),
@@ -51,7 +58,9 @@ test("creates a thread and sends the first message from the centered composer", 
     .parse(await waitForRealtimeClientMessage(page, "turn.start", messageOffset));
   expect(turnStart).toMatchObject({ projectId: project.id, threadId, text: marker });
   await expect(page.getByTestId(`thread-button-${threadId}`)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("chat-scroll-area").getByText(marker)).toBeVisible();
+  await expect(
+    page.getByTestId("chat-scroll-area").locator(".thread-user-message", { hasText: marker }),
+  ).toBeVisible();
   await expect(composer).toHaveAttribute("data-value", "");
 
   const submittedTurns = await page.evaluate(
@@ -62,6 +71,243 @@ test("creates a thread and sends the first message from the centered composer", 
     messageOffset,
   );
   expect(submittedTurns).toBe(1);
+});
+
+test("cancels pending first-thread creation while retaining a delayed workspace conflict", async ({
+  page,
+  remoteWorkspace,
+}, testInfo) => {
+  await installRealtimeSocketProbe(page);
+  await openApp(page);
+  const conflictMarker = String(Date.now());
+  const conflictName = `delayed-conflict-${conflictMarker}.txt`;
+  const remotePath = `/home/codex/delayed-conflict-${conflictMarker}`;
+  await execRemoteSsh(
+    remoteWorkspace.remote,
+    `mkdir -p ${shellQuote(remotePath)}; printf %s ${shellQuote("server original")} > ${shellQuote(`${remotePath}/${conflictName}`)}`,
+  );
+  const { host, project } = await remoteWorkspace.provision({
+    hostName: `cancel-new-thread-host-${Date.now()}`,
+    projectName: `cancel-new-thread-project-${Date.now()}`,
+    remotePath,
+  });
+  const conflictFile = testInfo.outputPath(conflictName);
+  await writeFile(conflictFile, "browser overwrite", "utf8");
+  const conflictResponseReady = deferred<void>();
+  const releaseConflictResponse = deferred<void>();
+  let delayNextConflictResponse = true;
+  await page.route("**/api/workspace/uploads?*", async (route) => {
+    if (!delayNextConflictResponse) {
+      await route.continue();
+      return;
+    }
+    delayNextConflictResponse = false;
+    const response = await route.fetch();
+    conflictResponseReady.resolve();
+    await releaseConflictResponse.promise;
+    await route.fulfill({ response });
+  });
+
+  const paused = await execRemoteSsh(
+    remoteWorkspace.remote,
+    `pids="$(pgrep -f '[c]odex app-server' | tr '\\n' ' ')"; test -n "$pids"; kill -STOP $pids; printf '%s' "$pids"`,
+  );
+  const pausedPids = paused.stdout
+    .trim()
+    .split(/\s+/)
+    .filter((pid) => /^\d+$/.test(pid));
+  expect(pausedPids.length).toBeGreaterThan(0);
+  let resumed = false;
+
+  try {
+    const marker = `取消首次会话创建 ${Date.now()}`;
+    const composer = page.getByTestId("composer-input");
+    const sendButton = page.getByTestId("send-turn-button");
+    const uploadInput = page.locator('input[type="file"]').first();
+    const workspaceFileInput = page.getByTestId("workspace-file-input");
+    const workspaceFolderInput = page.getByTestId("workspace-folder-input");
+    const addContentButton = page.getByTestId("composer-add-content");
+    const modelSelect = page.getByTestId("model-select");
+    const approvalSelect = page.getByRole("button", {
+      name: /^(请求审批|帮我审批|完全访问|自定义)$/,
+    });
+    const deliveredConflictResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/workspace/uploads" &&
+        response.request().method() === "POST",
+    );
+    await workspaceFileInput.setInputFiles(conflictFile);
+    await conflictResponseReady.promise;
+    await uploadInput.setInputFiles({
+      name: "frozen-preview.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+    const attachment = page.getByAltText("frozen-preview.png");
+    const removeAttachment = page.getByRole("button", { name: "移除附件" });
+    await expect(attachment).toBeVisible();
+    const approvalChoice = await approvalSelect.innerText();
+    const modelChoice = await modelSelect.innerText();
+    await composer.fill(marker);
+    const messageOffset = await realtimeClientMessageCount(page);
+    await composer.press("Enter");
+
+    const threadStart = z
+      .object({ type: z.literal("thread.start"), requestId: z.string() })
+      .loose()
+      .parse(await waitForRealtimeClientMessage(page, "thread.start", messageOffset));
+    await page.evaluate(
+      ({ requestId, hostId }) => {
+        const state = window as typeof window & {
+          __cancelledThreadServerMessages?: Array<Record<string, unknown>>;
+        };
+        state.__cancelledThreadServerMessages = [];
+        for (const socket of window.__gatewayRealtimeProbe?.sockets ?? []) {
+          socket.addEventListener("message", (event) => {
+            if (typeof event.data !== "string") return;
+            try {
+              const message: unknown = JSON.parse(event.data);
+              if (message === null || typeof message !== "object" || !("type" in message)) return;
+              if (
+                (message.type === "thread.started" &&
+                  "requestId" in message &&
+                  message.requestId === requestId) ||
+                (message.type === "thread.catalog.updated" &&
+                  "hostId" in message &&
+                  message.hostId === hostId &&
+                  "action" in message &&
+                  message.action === "deleted")
+              ) {
+                state.__cancelledThreadServerMessages?.push(message);
+              }
+            } catch {
+              // Ignore non-protocol frames.
+            }
+          });
+        }
+      },
+      { requestId: threadStart.requestId, hostId: host.id },
+    );
+
+    await expect(sendButton).toBeFocused();
+    releaseConflictResponse.resolve();
+    await deliveredConflictResponse;
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    const conflictDialog = page.getByTestId("workspace-upload-conflict-dialog");
+    await expect(conflictDialog).toBeHidden();
+    await page.keyboard.press("Escape");
+    await expect(sendButton).toBeEnabled();
+    await expect(sendButton).toHaveAttribute("aria-label", "取消创建会话");
+    await expect(sendButton).toBeFocused();
+    await expect(composer).toHaveAttribute("contenteditable", "false");
+    await expect(uploadInput).toBeDisabled();
+    await expect(workspaceFileInput).toBeDisabled();
+    await expect(workspaceFolderInput).toBeDisabled();
+    await expect(addContentButton).toBeDisabled();
+    await expect(removeAttachment).toBeDisabled();
+    await expect(approvalSelect).toBeDisabled();
+    await expect(modelSelect).toBeDisabled();
+    await expect(sendButton).toBeFocused();
+    await composer.evaluate((element) => {
+      const clipboard = new DataTransfer();
+      clipboard.items.add(new File(["late"], "late-paste.png", { type: "image/png" }));
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: clipboard }),
+      );
+    });
+    await expect(page.getByRole("button", { name: "移除附件" })).toHaveCount(1);
+    await sendButton.press("Enter");
+    const cancellation = z
+      .object({ type: z.literal("request.cancel"), targetRequestId: z.string() })
+      .strict()
+      .parse(await waitForRealtimeClientMessage(page, "request.cancel", messageOffset));
+    expect(cancellation.targetRequestId).toBe(threadStart.requestId);
+
+    await expect(conflictDialog).toBeVisible();
+    const overwrite = page.getByTestId("workspace-upload-overwrite");
+    await expect(overwrite).toBeEnabled();
+    await overwrite.click();
+    await expect(conflictDialog).toBeHidden();
+    await expect
+      .poll(
+        async () =>
+          (
+            await execRemoteSsh(
+              remoteWorkspace.remote,
+              `cat ${shellQuote(`${project.remotePath}/${conflictName}`)}`,
+            )
+          ).stdout,
+      )
+      .toBe("browser overwrite");
+
+    await expect(composer).toHaveAttribute("data-value", marker);
+    await expect(composer).toHaveAttribute("contenteditable", "true");
+    await expect(uploadInput).toBeEnabled();
+    await expect(workspaceFileInput).toBeEnabled();
+    await expect(workspaceFolderInput).toBeEnabled();
+    await expect(addContentButton).toBeEnabled();
+    await expect(removeAttachment).toBeEnabled();
+    await expect(approvalSelect).toBeEnabled();
+    await expect.poll(() => approvalSelect.innerText()).toBe(approvalChoice);
+    await expect(modelSelect).toBeEnabled();
+    await expect.poll(() => modelSelect.innerText()).toBe(modelChoice);
+    await expect(attachment).toBeVisible();
+
+    await execRemoteSsh(remoteWorkspace.remote, `kill -CONT ${pausedPids.join(" ")}`);
+    resumed = true;
+    await page.waitForFunction(
+      () =>
+        (
+          (
+            window as typeof window & {
+              __cancelledThreadServerMessages?: Array<Record<string, unknown>>;
+            }
+          ).__cancelledThreadServerMessages ?? []
+        ).some(
+          (message) => message.type === "thread.catalog.updated" && message.action === "deleted",
+        ),
+      undefined,
+      { timeout: 30_000 },
+    );
+
+    const lateServerMessages = await page.evaluate(
+      () =>
+        (
+          window as typeof window & {
+            __cancelledThreadServerMessages?: Array<Record<string, unknown>>;
+          }
+        ).__cancelledThreadServerMessages ?? [],
+    );
+    expect(lateServerMessages.filter((message) => message.type === "thread.started")).toEqual([]);
+    expect(
+      lateServerMessages.filter(
+        (message) => message.type === "thread.catalog.updated" && message.action === "deleted",
+      ),
+    ).toHaveLength(1);
+    await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
+    await expect(composer).toHaveAttribute("data-value", marker);
+    const submittedTurns = await page.evaluate(
+      (offset) =>
+        (window.__gatewayRealtimeProbe?.messages ?? [])
+          .slice(offset)
+          .filter((message) => message.type === "turn.start").length,
+      messageOffset,
+    );
+    expect(submittedTurns).toBe(0);
+  } finally {
+    releaseConflictResponse.resolve();
+    if (!resumed) {
+      await execRemoteSsh(remoteWorkspace.remote, `kill -CONT ${pausedPids.join(" ")}`);
+    }
+  }
 });
 
 test("restores an unthreaded project text draft after the session expires", async ({
@@ -100,3 +346,17 @@ test("restores an unthreaded project text draft after the session expires", asyn
   expect(page.url()).toBe(projectUrl);
   await expect(page.getByTestId("composer-input")).toHaveAttribute("data-value", marker);
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function shellQuote(value: string) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}

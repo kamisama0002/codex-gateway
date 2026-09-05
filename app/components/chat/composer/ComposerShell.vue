@@ -53,6 +53,7 @@ const props = withDefaults(
     canInterruptTurn: boolean;
     canUsePrimaryAction: boolean;
     interruptingTurn: boolean;
+    creatingFirstThread: boolean;
     submissionPending: boolean;
     selectedThreadStatus: ThreadRuntimeStatus;
     sendButtonLabel: string;
@@ -152,6 +153,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           class="hidden"
           type="file"
           multiple
+          :disabled="creatingFirstThread"
           @change="emit('attachmentChange', $event)"
         />
         <input
@@ -160,6 +162,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           class="hidden"
           type="file"
           multiple
+          :disabled="creatingFirstThread"
           @change="emit('workspaceSelection', $event, 'files')"
         />
         <input
@@ -169,9 +172,14 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           type="file"
           multiple
           webkitdirectory
+          :disabled="creatingFirstThread"
           @change="emit('workspaceSelection', $event, 'folder')"
         />
-        <AttachmentChips :files="attachedFiles" @remove="emit('removeAttachment', $event)" />
+        <AttachmentChips
+          :files="attachedFiles"
+          :disabled="creatingFirstThread"
+          @remove="emit('removeAttachment', $event)"
+        />
         <ComposerEditor
           :key="composerScopeKey()"
           :model-value="modelValue"
@@ -207,9 +215,12 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           :can-interrupt-turn="canInterruptTurn"
           :can-use-primary-action="canUsePrimaryAction"
           :interrupting-turn="interruptingTurn"
+          :creating-first-thread="creatingFirstThread"
           :submission-pending="submissionPending"
           :can-attach-files="composerInputEnabled"
-          :can-upload-workspace="selectedHostId !== null && selectedProjectId !== null"
+          :can-upload-workspace="
+            !creatingFirstThread && selectedHostId !== null && selectedProjectId !== null
+          "
           :selected-thread-status="selectedThreadStatus"
           :send-button-label="sendButtonLabel"
           @attach="openAttachmentPicker"

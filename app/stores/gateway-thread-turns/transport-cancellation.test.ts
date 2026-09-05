@@ -13,6 +13,12 @@ const harness = vi.hoisted(() => ({
 vi.mock("@/stores/gateway-realtime", () => ({
   useGatewayRealtimeStore: () => ({ request: harness.request }),
 }));
+vi.mock("@/stores/gateway-catalog", () => ({
+  useGatewayCatalogStore: () => ({ projects: [] }),
+}));
+vi.mock("@/stores/gateway-navigation", () => ({
+  useGatewayNavigationStore: () => ({ selectedHostId: 1, selectedProjectId: 2 }),
+}));
 
 import { requestTurnStart, requestTurnSteer } from "./transport";
 
