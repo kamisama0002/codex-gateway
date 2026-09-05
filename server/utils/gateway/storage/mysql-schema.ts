@@ -15,11 +15,11 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
           username VARCHAR(255) NOT NULL,
           password_hash VARCHAR(512) NOT NULL,
           is_active TINYINT(1) NOT NULL DEFAULT 1,
-          created_at VARCHAR(32) NOT NULL,
-          updated_at VARCHAR(32) NOT NULL,
+          created_at VARCHAR(32) NOT NULL DEFAULT (DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')),
+          updated_at VARCHAR(32) NOT NULL DEFAULT (DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')),
           PRIMARY KEY (id),
           UNIQUE KEY uq_users_username (username)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
       `
         CREATE TABLE IF NOT EXISTS sessions (
@@ -27,25 +27,25 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
           user_id INT UNSIGNED NOT NULL,
           token_hash VARCHAR(255) NOT NULL,
           expires_at VARCHAR(32) NOT NULL,
-          created_at VARCHAR(32) NOT NULL,
-          last_seen_at VARCHAR(32) NOT NULL,
+          created_at VARCHAR(32) NOT NULL DEFAULT (DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')),
+          last_seen_at VARCHAR(32) NOT NULL DEFAULT (DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')),
           PRIMARY KEY (id),
           UNIQUE KEY uq_sessions_token_hash (token_hash),
           KEY idx_sessions_expires_at (expires_at),
           CONSTRAINT fk_sessions_user_id
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
       `
         CREATE TABLE IF NOT EXISTS user_configs (
           user_id INT UNSIGNED NOT NULL,
           encrypted_config_json LONGTEXT NOT NULL,
           revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
-          updated_at VARCHAR(32) NOT NULL,
+          updated_at VARCHAR(32) NOT NULL DEFAULT (DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')),
           PRIMARY KEY (user_id),
           CONSTRAINT fk_user_configs_user_id
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
       `
         CREATE TABLE IF NOT EXISTS tmux_monitors (
@@ -86,7 +86,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
           CONSTRAINT chk_tmux_monitors_status CHECK (status IN ('active', 'completed', 'cancelled')),
           CONSTRAINT fk_tmux_monitors_user_id
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
     ],
   },
@@ -143,7 +143,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
           CONSTRAINT chk_user_agent_runtimes_host_id CHECK (host_id = ${MANAGED_RUNTIME_HOST_ID}),
           CONSTRAINT fk_user_agent_runtimes_user_id
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
     ],
   },
@@ -167,7 +167,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
             FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL,
           CONSTRAINT fk_agent_audit_events_user_id
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
     ],
   },
@@ -189,7 +189,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
           CONSTRAINT chk_model_providers_wire_api CHECK (wire_api IN ('responses', 'chat_completions')),
           CONSTRAINT chk_model_providers_enabled CHECK (enabled IN (0, 1)),
           CONSTRAINT chk_model_providers_timeout CHECK (request_timeout_ms BETWEEN 1000 AND 300000)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
       `
         CREATE TABLE IF NOT EXISTS provider_models (
@@ -205,7 +205,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
           CONSTRAINT chk_provider_models_enabled CHECK (enabled IN (0, 1)),
           CONSTRAINT fk_provider_models_provider_id
             FOREIGN KEY (provider_id) REFERENCES model_providers(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
     ],
   },
@@ -225,7 +225,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
           CONSTRAINT fk_user_model_grants_provider_model
             FOREIGN KEY (provider_id, model_id)
             REFERENCES provider_models(provider_id, model_id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
     ],
   },
@@ -251,7 +251,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
           KEY idx_external_identities_user (user_id),
           CONSTRAINT fk_external_identities_user_id
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
       `
         CREATE TABLE IF NOT EXISTS external_session_contexts (
@@ -267,7 +267,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
           KEY idx_external_session_contexts_project (tenant_id, project_id, external_user_id),
           CONSTRAINT fk_external_session_contexts_token_hash
             FOREIGN KEY (token_hash) REFERENCES sessions(token_hash) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
       `,
     ],
   },

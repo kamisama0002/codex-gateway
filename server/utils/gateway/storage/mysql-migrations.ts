@@ -41,6 +41,9 @@ export async function migrateMysqlGatewayDatabase(db: GatewayDb): Promise<void> 
           continue;
         }
         for (const [statementIndex, statement] of migration.statements.entries()) {
+          if (await migrationStatementAlreadyApplied(tx, migration.version, statementIndex)) {
+            continue;
+          }
           try {
             await tx.execute(statement);
           } catch (error) {
@@ -59,6 +62,30 @@ export async function migrateMysqlGatewayDatabase(db: GatewayDb): Promise<void> 
       await tx.one("SELECT RELEASE_LOCK(?) AS released", [MIGRATION_LOCK_NAME]);
     }
   });
+}
+
+async function migrationStatementAlreadyApplied(
+  db: GatewayDb,
+  version: number,
+  statementIndex: number,
+): Promise<boolean> {
+  if (version === 2 && statementIndex === 0) {
+    const roleColumn = await db.one(
+      "SELECT 1 AS exists_row FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'role'",
+    );
+    const roleConstraint = await db.one(
+      "SELECT 1 AS exists_row FROM information_schema.table_constraints WHERE constraint_schema = DATABASE() AND table_name = 'users' AND constraint_name = 'chk_users_role'",
+    );
+    return roleColumn !== null && roleConstraint !== null;
+  }
+  if (version === 7 && statementIndex === 0) {
+    return (
+      (await db.one(
+        "SELECT 1 AS exists_row FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'model_providers' AND index_name = 'idx_model_providers_enabled'",
+      )) !== null
+    );
+  }
+  return false;
 }
 
 function validateAppliedMigrationChecksums(appliedMigrations: readonly AppliedMigration[]): void {

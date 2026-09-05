@@ -131,3 +131,50 @@ no session ID or final wrapper exit code. `git diff --check --cached` passed bef
 Windows CRLF conversion warnings from Git.
 
 Committed with subject `feat(storage): add mysql schema migrations`.
+
+## Fix Round 1: Binary Semantics, Retryable DDL, and Defaults
+
+New real-MySQL tests were written before the implementation changes and run on the authorized CentOS 10
+host in the same isolated `/tmp/codex-gateway-task2-w8hbnv` project:
+
+```bash
+tests/mysql/run-in-containers.sh pnpm exec vitest run server/utils/gateway/storage/mysql-migrations.test.ts
+```
+
+Valid RED output collected all five tests and failed two:
+
+```text
+Tests  2 failed | 3 passed (5)
+Field 'created_at' doesn't have a default value
+MySQL schema migration 2 statement 1 failed
+Caused by: Duplicate check constraint name 'chk_users_role'.
+```
+
+The implementation changes use `utf8mb4_0900_bin` on each business table, add MySQL expression defaults
+using `DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')` for the SQLite-defaulted user/session/config
+timestamps, and query `information_schema` to skip only the already-existing migration-2 role DDL and
+migration-7 index DDL. Migration 2's data update still executes after its DDL skip.
+
+GREEN used the same command and completed with:
+
+```text
+Test Files  1 passed (1)
+Tests  5 passed (5)
+```
+
+The new tests prove case-distinct user/provider/model/external identifiers coexist, `ACTIVE` is rejected
+for the lowercase status check, omitted user/session/config timestamps become non-empty parseable UTC values,
+and removing migration rows 2 and 7 after their DDL exists is recovered with one row per migration version.
+
+Local Node `v24.17.0` verification used:
+
+```bash
+corepack pnpm typecheck
+corepack pnpm typecheck:dependencies
+git diff --check
+```
+
+The root command ran Nuxt then the E2E `vue-tsc` child; both and the Corepack wrapper exited without
+diagnostics. The dependency command completed all five workspace package checks without diagnostics.
+The desktop bridge again did not return a session identifier or final wrapper exit code for the long root
+command, but process observation confirmed the same invocation's compiler children terminated cleanly.
