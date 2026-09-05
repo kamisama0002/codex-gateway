@@ -320,19 +320,20 @@ describe("ManagedRuntimeService", () => {
     expect(fixture.manager.start).toHaveBeenCalledOnce();
   });
 
-  it("lists admin statuses with usernames and without container identity", async () => {
+  it("awaits usernames when listing admin statuses without container identity", async () => {
     const fixture = runtimeFixture();
     await fixture.service.start(7);
 
-    expect(fixture.service.listStatuses()).toEqual([
+    const statuses = await fixture.service.listStatuses();
+    expect(statuses).toEqual([
       expect.objectContaining({
         userId: 7,
         username: "runtime-a",
         status: "ready",
       }),
     ]);
-    expect(JSON.stringify(fixture.service.listStatuses())).not.toContain("container-01");
-    expect(JSON.stringify(fixture.service.listStatuses())).not.toContain("runtime-token");
+    expect(JSON.stringify(statuses)).not.toContain("container-01");
+    expect(JSON.stringify(statuses)).not.toContain("runtime-token");
   });
 });
 
@@ -470,7 +471,7 @@ function runtimeFixture(
     probeRetryOptions: options.probeRetryOptions,
     closeConnections,
     now: () => new Date(1_788_134_400_000 + tick++).toISOString(),
-    usernameFor: (userId) => (userId === 7 ? "runtime-a" : null),
+    usernameFor: async (userId) => (userId === 7 ? "runtime-a" : null),
   });
   return { service, manager, store, audit, statuses, closeConnections, probe };
 }

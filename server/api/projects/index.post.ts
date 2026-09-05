@@ -16,7 +16,7 @@ export default defineGatewayConfigMutationHandler(async (event) => {
   const input = await readValidatedBody(event, (body) => projectCreateSchema.parse(body));
   if (!isManagedRuntimeHostId(input.hostId)) {
     requireRecord(hostStore.get(input.hostId), "Host not found");
-    return userConfigMutationService.commit(event.context.auth!.user.id, () =>
+    return await userConfigMutationService.commit(event.context.auth!.user.id, () =>
       projectStore.create(input),
     );
   }
@@ -32,7 +32,7 @@ export default defineGatewayConfigMutationHandler(async (event) => {
   }
   const host = await requireWorkspaceHost(input.hostId);
   await threadBroker.createDirectory(host, remotePath);
-  return userConfigMutationService.commit(event.context.auth!.user.id, () =>
+  return await userConfigMutationService.commit(event.context.auth!.user.id, () =>
     projectStore.create({ ...input, remotePath }),
   );
 });

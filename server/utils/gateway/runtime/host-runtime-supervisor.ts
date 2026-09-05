@@ -39,10 +39,10 @@ class HostRuntimeSupervisor {
       this.handleSessionClosed(event),
     );
     this.unsubscribeDatabaseReady = onGatewayDatabaseReady(() => {
-      this.bootstrapStoredUsers();
+      void this.bootstrapStoredUsers();
     });
     if (gatewayDatabaseExists() || gatewayDatabaseReady()) {
-      this.bootstrapStoredUsers();
+      void this.bootstrapStoredUsers();
     }
   }
 
@@ -69,17 +69,18 @@ class HostRuntimeSupervisor {
     });
   }
 
-  bootstrapStoredUsers() {
+  async bootstrapStoredUsers(): Promise<void> {
     if (!this.started || this.bootstrappedStoredUsers) {
       return;
     }
     this.bootstrappedStoredUsers = true;
-    for (const { user, config } of userStore.listStoredConfigs()) {
+    for (const { user, config, revision } of await userStore.listStoredConfigs()) {
       runWithGatewayUser(user.id, () => {
         const state = currentGatewayMemoryState();
         if (!state.configLoaded) {
           const nextState = buildGatewayMemoryState(config);
           nextState.configLoaded = true;
+          nextState.configRevision = revision;
           replaceCurrentGatewayMemoryState(nextState);
         }
         this.syncUserConfig(user.id, {

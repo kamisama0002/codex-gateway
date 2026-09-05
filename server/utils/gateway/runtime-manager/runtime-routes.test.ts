@@ -35,12 +35,12 @@ describe("runtime routes", () => {
 
   it("requires an administrator and accepts only the target user ID for restart", async () => {
     const service = {
-      listStatuses: vi.fn(() => [{ userId: 7, status: "ready" }]),
+      listStatuses: vi.fn(async () => [{ userId: 7, status: "ready" }]),
       restart: vi.fn(async () => ({ userId: 7, status: "ready" })),
     };
     const ordinaryEvent = eventFor({ id: 7, username: "user", role: "user" });
     ordinaryEvent.context.params = { userId: "8" };
-    expect(() => listRuntimesForEvent(ordinaryEvent, service)).toThrow(
+    await expect(listRuntimesForEvent(ordinaryEvent, service)).rejects.toEqual(
       expect.objectContaining({ statusCode: 403 }),
     );
     expect(() => restartRuntimeForEvent(ordinaryEvent, service)).toThrow(
@@ -55,7 +55,9 @@ describe("runtime routes", () => {
       endpoint: "ws://caller",
       serviceToken: "caller-token",
     };
-    expect(listRuntimesForEvent(adminEvent, service)).toEqual([{ userId: 7, status: "ready" }]);
+    await expect(listRuntimesForEvent(adminEvent, service)).resolves.toEqual([
+      { userId: 7, status: "ready" },
+    ]);
     await expect(restartRuntimeForEvent(adminEvent, service)).resolves.toEqual({
       userId: 7,
       status: "ready",

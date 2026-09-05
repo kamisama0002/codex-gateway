@@ -13,7 +13,7 @@ import { threadRuntimeStatusHub } from "../../runtime/thread-runtime-status-hub"
 import { RealtimeAuthenticationRequiredError } from "../message-dispatcher";
 import { REALTIME_AUTHENTICATION_CLOSE_CODE } from "~~/shared/runtime/realtime/close-codes";
 
-export function authenticatePeer(
+export async function authenticatePeer(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "auth.authenticate" }>,
 ) {
@@ -22,7 +22,7 @@ export function authenticatePeer(
     throw new Error("Realtime connection is already authenticated");
   }
   const token = request.token;
-  const user = userStore.authenticateToken(token);
+  const user = await userStore.authenticateToken(token);
   if (user === null) {
     throw new RealtimeAuthenticationRequiredError();
   }

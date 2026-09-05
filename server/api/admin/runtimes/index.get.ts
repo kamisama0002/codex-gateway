@@ -3,12 +3,12 @@ import { requireAdminUser } from "../../../utils/gateway/auth/context";
 import { defineGatewayEventHandler } from "../../../utils/gateway/http/errors";
 import { runtimeService } from "../../../utils/gateway/runtime-manager/runtime-service";
 
-export function listRuntimesForEvent(
+export async function listRuntimesForEvent(
   event: H3Event,
-  service: { listStatuses(): unknown } = runtimeService,
+  service: { listStatuses(): Promise<unknown> } = runtimeService,
 ) {
   requireAdminUser(event);
-  return service.listStatuses();
+  return await service.listStatuses();
 }
 
-export default defineGatewayEventHandler((event) => listRuntimesForEvent(event));
+export default defineGatewayEventHandler(async (event) => await listRuntimesForEvent(event));

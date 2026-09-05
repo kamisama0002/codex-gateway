@@ -22,6 +22,6 @@ export default defineGatewayEventHandler(async (event) => {
     }
     throw error;
   }
-  userConfigMutationService.unpinThread(userId, host.id, input.threadId);
+  await userConfigMutationService.unpinThread(userId, host.id, input.threadId);
   return { ok: true };
 });

@@ -18,9 +18,8 @@ export class TmuxMonitorPollCoordinator {
         groups.map((group) =>
           limit(() =>
             runWithGatewayUser(group.userId, async () => {
-              const host = userStore
-                .loadConfig(group.userId)
-                .hosts.find((candidate) => candidate.id === group.hostId);
+              const loaded = await userStore.loadConfig(group.userId);
+              const host = loaded.config.hosts.find((candidate) => candidate.id === group.hostId);
               if (!host) {
                 tmuxMonitorService.removeHost(group.userId, group.hostId);
                 return;

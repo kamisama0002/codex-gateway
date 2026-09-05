@@ -137,7 +137,7 @@ export const automaticThreadTitleService = new AutomaticThreadTitleService({
   },
   async renameAndProject(candidate, title) {
     await threadBroker.renameThread(candidate.host, candidate.threadId, title);
-    projectThreadTitle(candidate.userId, candidate.host.id, candidate.threadId, title);
+    await projectThreadTitle(candidate.userId, candidate.host.id, candidate.threadId, title);
   },
   runForUser: runWithGatewayUser,
   warn(input) {

@@ -18,6 +18,8 @@ import { recordFromUnknown } from "~~/shared/utils/records";
 import { firstNonEmptyString } from "~~/shared/utils/strings";
 import { ZodError } from "zod";
 
+const userConfigLoadPromises = new Map<number, Promise<void>>();
+
 export class CodexRpcError extends Error {
   constructor(
     readonly rpcMethod: string,
@@ -49,7 +51,7 @@ export function defineGatewayEventHandler<T>(handler: (event: H3Event) => Promis
         return await handler(event);
       }
       return await runWithGatewayUser(user.id, async () => {
-        ensureUserConfigLoaded(user.id);
+        await ensureUserConfigLoaded(user.id);
         return await handler(event);
       });
     } catch (error) {
@@ -78,23 +80,49 @@ export function defineGatewayEventHandler<T>(handler: (event: H3Event) => Promis
   });
 }
 
-export function ensureUserConfigLoaded(userId: number) {
+export async function ensureUserConfigLoaded(userId: number): Promise<void> {
   const state = currentGatewayMemoryState();
   if (state.configLoaded) {
     return;
   }
-  const nextState = buildGatewayMemoryState(userStore.loadConfig(userId));
+  const existing = userConfigLoadPromises.get(userId);
+  if (existing !== undefined) {
+    await existing;
+    return;
+  }
+  const load = loadUserConfig(userId);
+  userConfigLoadPromises.set(userId, load);
+  try {
+    await load;
+  } finally {
+    if (userConfigLoadPromises.get(userId) === load) {
+      userConfigLoadPromises.delete(userId);
+    }
+  }
+}
+
+async function loadUserConfig(userId: number): Promise<void> {
+  const loaded = await userStore.loadConfig(userId);
+  const nextState = buildGatewayMemoryState(loaded.config);
   nextState.configLoaded = true;
+  nextState.configRevision = loaded.revision;
   replaceCurrentGatewayMemoryState(nextState);
   hostRuntimeSupervisor.syncCurrentUserConfig();
 }
 
-export function saveCurrentUserConfig(event: H3Event) {
+export async function saveCurrentUserConfig(event: H3Event): Promise<number | null> {
   const user = event.context.auth?.user;
   if (!user) {
     return null;
   }
-  userStore.saveConfig(user.id, runtimeConfigFromMemory());
+  const state = currentGatewayMemoryState();
+  const revision = await userStore.saveConfig(
+    user.id,
+    runtimeConfigFromMemory(),
+    state.configRevision,
+  );
+  state.configRevision = revision;
+  return revision;
 }
 
 export function runtimeConfigFromMemory(): GatewayConfig {
@@ -170,6 +198,9 @@ function serializeError(error: unknown): Record<string, unknown> {
 }
 
 function statusCodeFromError(error: unknown) {
+  if (recordFromUnknown(error)?.code === "config_revision_conflict") {
+    return 409;
+  }
   if (isStaleThreadCursorErrorLike(error)) {
     return 409;
   }

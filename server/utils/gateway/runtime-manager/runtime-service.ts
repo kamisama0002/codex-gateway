@@ -74,7 +74,7 @@ interface ManagedRuntimeServiceOptions {
   probeRetryOptions?: RetryOptions;
   closeConnections?(userId: number): void;
   now?: () => string;
-  usernameFor?(userId: number): string | null;
+  usernameFor?(userId: number): Promise<string | null>;
 }
 
 const defaultProbeRetryOptions: RetryOptions = {
@@ -127,11 +127,13 @@ export class ManagedRuntimeService {
     return runtime === null ? null : serializeManagedRuntimeStatus(runtime);
   }
 
-  listStatuses(): Array<ManagedRuntimeStatus & { username: string }> {
-    return this.options.store.list().map((runtime) => ({
-      ...serializeManagedRuntimeStatus(runtime),
-      username: this.options.usernameFor?.(runtime.userId) ?? `user-${runtime.userId}`,
-    }));
+  async listStatuses(): Promise<Array<ManagedRuntimeStatus & { username: string }>> {
+    return await Promise.all(
+      this.options.store.list().map(async (runtime) => ({
+        ...serializeManagedRuntimeStatus(runtime),
+        username: (await this.options.usernameFor?.(runtime.userId)) ?? `user-${runtime.userId}`,
+      })),
+    );
   }
 
   sampleAgentStats(userId: number): Promise<AgentRuntimeStatsResult> {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { userStore } from "../auth/users";
 import { handleRealtimePeerMessage } from "./connection";
 import type { RealtimePeer } from "./peer-state";
 
@@ -9,6 +10,7 @@ describe("realtime authentication failure", () => {
 
   it("closes an invalid bearer session instead of leaving the peer open", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(userStore, "authenticateToken").mockResolvedValue(null);
     const close = vi.fn();
     const peer: RealtimePeer = {
       send: vi.fn(),

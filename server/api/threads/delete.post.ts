@@ -10,6 +10,6 @@ export default defineGatewayEventHandler(async (event) => {
   const host = await requireWorkspaceHost(input.hostId);
   const userId = event.context.auth!.user.id;
   await threadBroker.deleteThread(host, input.threadId, userId);
-  userConfigMutationService.unpinThread(userId, host.id, input.threadId);
+  await userConfigMutationService.unpinThread(userId, host.id, input.threadId);
   return { ok: true };
 });

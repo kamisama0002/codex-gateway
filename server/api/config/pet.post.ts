@@ -10,7 +10,7 @@ const bodySchema = z.object({ pet: petSettingsSchema }).strict();
 export default defineGatewayConfigMutationHandler(async (event) => {
   const userId = event.context.auth!.user.id;
   const body = await readValidatedBody(event, (value) => bodySchema.parse(value));
-  return userConfigMutationService.commit(userId, () => {
+  return await userConfigMutationService.commit(userId, () => {
     runtimeConfigStore.replacePet(body.pet);
     return runtimeConfigStore.export();
   });

@@ -12,6 +12,6 @@ export default defineGatewayEventHandler(async (event) => {
   const userId = event.context.auth!.user.id;
   automaticThreadTitleService.cancel(userId, input.hostId, input.threadId);
   await threadBroker.renameThread(host, input.threadId, input.name);
-  projectThreadTitle(userId, input.hostId, input.threadId, input.name);
+  await projectThreadTitle(userId, input.hostId, input.threadId, input.name);
   return { ok: true };
 });

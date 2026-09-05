@@ -14,7 +14,7 @@ export default defineGatewayAdvancedConfigMutationHandler(async (event) => {
   const userId = event.context.auth!.user.id;
   const input = await readValidatedBody(event, (body) => hostUpdateSchema.parse(body));
   requireRecord(hostStore.getWithSecret(id), "Host not found");
-  return userConfigMutationService.commit(userId, () =>
+  return await userConfigMutationService.commit(userId, () =>
     requireRecord(hostStore.update(id, input), "Host not found"),
   );
 });

@@ -12,9 +12,9 @@ export function tokenFromEvent(event: H3Event) {
   return "";
 }
 
-export function authenticateEvent(event: H3Event) {
+export async function authenticateEvent(event: H3Event) {
   const token = tokenFromEvent(event);
-  const user = userStore.authenticateToken(token);
+  const user = await userStore.authenticateToken(token);
   if (user === null) {
     throw createError({
       statusCode: 401,
@@ -26,12 +26,12 @@ export function authenticateEvent(event: H3Event) {
   return user;
 }
 
-export function optionalAuthenticatedUser(event: H3Event) {
+export async function optionalAuthenticatedUser(event: H3Event) {
   const token = tokenFromEvent(event);
   if (token === "") {
     return null;
   }
-  const user = userStore.authenticateToken(token);
+  const user = await userStore.authenticateToken(token);
   if (user !== null) {
     event.context.auth = { user, token };
   }
@@ -41,7 +41,11 @@ export function optionalAuthenticatedUser(event: H3Event) {
 export function requireAuthenticatedUser(event: H3Event): AuthenticatedUser {
   const user = event.context.auth?.user;
   if (!user) {
-    return authenticateEvent(event);
+    throw createError({
+      statusCode: 401,
+      statusMessage: "Unauthorized",
+      message: "Missing or invalid bearer token",
+    });
   }
   return user;
 }
