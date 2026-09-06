@@ -72,7 +72,6 @@ const {
   cancelWorkspaceUploadConflict,
   handleFileReferenceLimit,
   queuedMessages,
-  loadingQueuedMessages,
   queueActionPendingId,
   editQueuedMessage,
   deleteQueuedMessage,
@@ -99,7 +98,6 @@ const {
     :uploading-attachments="uploadingAttachments"
     :uploading-workspace="uploadingWorkspace"
     :queued-messages="queuedMessages"
-    :loading-queued-messages="loadingQueuedMessages"
     :queue-action-pending-id="queueActionPendingId"
     :thread-running="isThreadRunning"
     :selected-thread-id="selectedThreadId"

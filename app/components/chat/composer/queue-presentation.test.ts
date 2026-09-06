@@ -3,6 +3,7 @@ import type { QueuedSubmission } from "~~/shared/types";
 import {
   editableQueuedText,
   moveQueuedSubmissionIds,
+  queueDockKind,
   queuedSubmissionPreview,
 } from "./queue-presentation";
 
@@ -45,6 +46,12 @@ describe("composer queue presentation", () => {
       "queue-2",
       "queue-3",
     ]);
+  });
+
+  it("hides an empty dock, renders one row directly and counts only multiple rows", () => {
+    expect(queueDockKind(0)).toBe("empty");
+    expect(queueDockKind(1)).toBe("single");
+    expect(queueDockKind(2)).toBe("multiple");
   });
 });
 

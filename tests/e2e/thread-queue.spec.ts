@@ -20,6 +20,7 @@ test("queues a busy Enter submission and runs the edited message after the activ
   const marker = String(Date.now());
   const activeMarker = `queue-active-${marker}`;
   const queuedMarker = `queue-original-${marker}`;
+  const secondQueuedMarker = `queue-second-${marker}`;
   const editedMarker = `queue-edited-${marker}`;
   const composer = page.getByPlaceholder("输入后续修改要求");
 
@@ -47,6 +48,7 @@ test("queues a busy Enter submission and runs the edited message after the activ
 
   const dock = page.getByTestId("composer-queue-dock");
   await expect(dock).toContainText(queuedMarker);
+  await expect(dock.getByRole("button", { name: "1 条排队消息" })).toHaveCount(0);
   await expect(
     page
       .getByTestId("chat-scroll-area")
@@ -54,7 +56,19 @@ test("queues a busy Enter submission and runs the edited message after the activ
       .getByText(queuedMarker),
   ).toHaveCount(0);
 
-  await dock.getByRole("button", { name: "编辑排队消息" }).click();
+  const secondQueueOffset = await realtimeClientMessageCount(page);
+  await composer.fill(`用一句话回复：${secondQueuedMarker}`);
+  await composer.press("Enter");
+  const secondQueuedRequest = await waitForRealtimeClientMessage(
+    page,
+    "thread.queue.add",
+    secondQueueOffset,
+  );
+  expect(JSON.stringify(secondQueuedRequest.input)).toContain(secondQueuedMarker);
+  await dock.getByRole("button", { name: "2 条排队消息" }).click();
+  await expect(dock).toContainText(secondQueuedMarker);
+
+  await dock.getByRole("button", { name: "编辑排队消息" }).first().click();
   const queueEditor = dock.getByRole("textbox", { name: "编辑排队消息" });
   await queueEditor.fill(`用一句话回复：${editedMarker}`);
   const updateOffset = await realtimeClientMessageCount(page);
@@ -70,6 +84,9 @@ test("queues a busy Enter submission and runs the edited message after the activ
   await expect(dock).toBeHidden({ timeout: 180_000 });
   await expect(
     page.getByTestId("chat-scroll-area").getByText(editedMarker, { exact: true }),
+  ).toBeVisible({ timeout: 180_000 });
+  await expect(
+    page.getByTestId("chat-scroll-area").getByText(secondQueuedMarker, { exact: true }),
   ).toBeVisible({ timeout: 180_000 });
   await expect(
     page

@@ -38,7 +38,6 @@ const props = withDefaults(
     uploadingAttachments: boolean;
     uploadingWorkspace: boolean;
     queuedMessages: QueuedSubmission[];
-    loadingQueuedMessages: boolean;
     queueActionPendingId: string | null;
     threadRunning: boolean;
     selectedThreadId: string | null;
@@ -158,7 +157,6 @@ function forwardQueueMove(id: string, direction: "up" | "down") {
       />
       <ComposerQueueDock
         :items="queuedMessages"
-        :loading="loadingQueuedMessages"
         :running="threadRunning"
         :pending-id="queueActionPendingId"
         :host-id="selectedHostId"

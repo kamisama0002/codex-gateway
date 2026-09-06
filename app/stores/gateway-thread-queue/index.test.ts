@@ -89,6 +89,47 @@ describe("Gateway thread queue projection", () => {
     expect(queue.queueForThread(1, "thread-1").map((item) => item.id)).toEqual(["queue-new"]);
   });
 
+  it("does not reinsert a consumed item when its add response finishes after an empty snapshot", async () => {
+    const added = deferred<unknown>();
+    harness.addResult = added.promise;
+    harness.listResults.push(Promise.resolve({ items: [] }), Promise.resolve({ items: [] }));
+    const queue = useGatewayThreadQueueStore();
+
+    const adding = queue.queueMessage(1, "thread-1", submission("queue-consumed", "consumed"));
+    await queue.loadQueue(1, "thread-1", { force: true });
+    added.resolve({ item: submission("queue-consumed", "consumed") });
+    await adding;
+
+    expect(queue.queueForThread(1, "thread-1")).toEqual([]);
+  });
+
+  it("reconciles a successful add with the authoritative queue", async () => {
+    harness.addResult = { item: submission("queue-consumed", "consumed") };
+    harness.listResults.push(Promise.resolve({ items: [] }));
+    const queue = useGatewayThreadQueueStore();
+
+    await queue.queueMessage(1, "thread-1", submission("queue-consumed", "consumed"));
+
+    await vi.waitFor(() => {
+      expect(queue.queueForThread(1, "thread-1")).toEqual([]);
+    });
+  });
+
+  it("does not reinsert a consumed item when its update response finishes after an empty snapshot", async () => {
+    const updated = deferred<unknown>();
+    harness.updateResult = updated.promise;
+    harness.listResults.push(Promise.resolve({ items: [] }), Promise.resolve({ items: [] }));
+    const queue = useGatewayThreadQueueStore();
+    queue.replaceQueue(1, "thread-1", [submission("queue-consumed", "before")]);
+
+    const updating = queue.editQueuedMessage(1, "thread-1", "queue-consumed", "after");
+    await queue.loadQueue(1, "thread-1", { force: true });
+    updated.resolve({ item: submission("queue-consumed", "after") });
+    await updating;
+
+    expect(queue.queueForThread(1, "thread-1")).toEqual([]);
+  });
+
   it("removes an exact queue item after the server atomically steers it", async () => {
     const queue = useGatewayThreadQueueStore();
     queue.replaceQueue(1, "thread-1", [submission("queue-1", "correct scope")]);

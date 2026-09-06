@@ -1,5 +1,10 @@
 import type { QueuedSubmission } from "~~/shared/types";
 
+export function queueDockKind(itemCount: number): "empty" | "single" | "multiple" {
+  if (itemCount <= 0) return "empty";
+  return itemCount === 1 ? "single" : "multiple";
+}
+
 export function queuedSubmissionPreview(item: QueuedSubmission, attachmentLabel: string) {
   const text = item.input
     .filter((part) => part.type === "text" && typeof part.text === "string")

@@ -51,8 +51,12 @@ export const useGatewayThreadQueueStore = defineStore("gateway-thread-queue", ()
     submission: Pick<QueuedSubmission, "input" | "clientUserMessageId">,
     signal?: AbortSignal,
   ) {
+    const revision = currentRevision(hostId, threadId);
     const response = await requestThreadQueueAdd({ hostId, threadId, ...submission, signal });
-    upsert(hostId, threadId, response.item);
+    if (currentRevision(hostId, threadId) === revision) {
+      upsert(hostId, threadId, response.item);
+    }
+    reconcileQueue(hostId, threadId);
     return response.item;
   }
 
@@ -62,13 +66,17 @@ export const useGatewayThreadQueueStore = defineStore("gateway-thread-queue", ()
     queuedSubmissionId: string,
     text: string,
   ) {
+    const revision = currentRevision(hostId, threadId);
     const response = await requestThreadQueueUpdate({
       hostId,
       threadId,
       queuedSubmissionId,
       input: [{ type: "text", text, text_elements: [] }],
     });
-    upsert(hostId, threadId, response.item);
+    if (currentRevision(hostId, threadId) === revision) {
+      upsert(hostId, threadId, response.item);
+    }
+    reconcileQueue(hostId, threadId);
     return response.item;
   }
 
@@ -152,6 +160,16 @@ export const useGatewayThreadQueueStore = defineStore("gateway-thread-queue", ()
     const key = pinnedKey(hostId, threadId);
     loadRevisions.set(key, (loadRevisions.get(key) ?? 0) + 1);
     loadingThreadKeys.value = loadingThreadKeys.value.filter((candidate) => candidate !== key);
+  }
+
+  function currentRevision(hostId: number, threadId: string) {
+    return loadRevisions.get(pinnedKey(hostId, threadId)) ?? 0;
+  }
+
+  function reconcileQueue(hostId: number, threadId: string) {
+    void loadQueue(hostId, threadId, { force: true }).catch(() => {
+      // The next App Server notification or reconnect retries the authoritative projection.
+    });
   }
 
   function clearHost(hostId: number) {
