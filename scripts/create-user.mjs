@@ -3,6 +3,7 @@ import process from "node:process";
 import { UserRepository } from "../server/utils/gateway/auth/user-repository.ts";
 import { hashPassword } from "../server/utils/gateway/storage/crypto.ts";
 import { createMysqlGatewayDb } from "../server/utils/gateway/storage/mysql.ts";
+import { validateMysqlGatewaySchema } from "../server/utils/gateway/storage/mysql-schema-validation.ts";
 
 /** @typedef {"admin" | "user"} UserRole */
 /** @typedef {{ username: string, password: string, explicitRole: UserRole | null }} CreateUserOptions */
@@ -12,7 +13,7 @@ async function main() {
   const db = createMysqlGatewayDb(requiredDatabaseUrl());
 
   try {
-    await db.one("SELECT version FROM schema_migrations WHERE version = 1");
+    await validateMysqlGatewaySchema(db);
     const users = new UserRepository(db);
     const existing = await users.findByUsername(username);
     const now = new Date().toISOString();

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createPool, type Pool, type PoolConnection } from "mysql2/promise";
 import type {
   DbRow,
@@ -146,12 +147,18 @@ function mysqlOptions(databaseUrl: string) {
   if (url.hostname.length === 0 || url.pathname.length <= 1) {
     throw new Error("DATABASE_URL must identify a MySQL database");
   }
+  if (url.searchParams.size > 0) {
+    throw new Error(
+      "DATABASE_URL query parameters are not supported; use MYSQL_TLS_MODE and MYSQL_TLS_CA_FILE",
+    );
+  }
 
   const port = url.port.length === 0 ? undefined : Number(url.port);
   if (port !== undefined && (!Number.isSafeInteger(port) || port <= 0 || port > 65535)) {
     throw new Error("DATABASE_URL must contain a valid MySQL port");
   }
 
+  const ssl = mysqlSslOptions();
   return {
     database: decodeURIComponent(url.pathname.slice(1)),
     host: url.hostname,
@@ -160,7 +167,43 @@ function mysqlOptions(databaseUrl: string) {
     port,
     timezone: "Z",
     user: decodeURIComponent(url.username),
+    ...(ssl === undefined ? {} : { ssl }),
   };
+}
+
+function mysqlSslOptions() {
+  const configuredMode = process.env.MYSQL_TLS_MODE;
+  const configuredCaFile = process.env.MYSQL_TLS_CA_FILE;
+  const mode = configuredMode === undefined || configuredMode === "" ? "disabled" : configuredMode;
+  const caFile =
+    configuredCaFile === undefined || configuredCaFile === "" ? undefined : configuredCaFile;
+
+  if (mode === "disabled") {
+    if (caFile !== undefined) {
+      throw new Error("MYSQL_TLS_CA_FILE requires MYSQL_TLS_MODE=verify-identity");
+    }
+    return undefined;
+  }
+  if (mode === "required") {
+    if (caFile !== undefined) {
+      throw new Error("MYSQL_TLS_CA_FILE requires MYSQL_TLS_MODE=verify-identity");
+    }
+    return { rejectUnauthorized: false };
+  }
+  if (mode !== "verify-identity") {
+    throw new Error("MYSQL_TLS_MODE must be disabled, required, or verify-identity");
+  }
+  if (caFile === undefined) {
+    throw new Error("MYSQL_TLS_CA_FILE is required when MYSQL_TLS_MODE=verify-identity");
+  }
+
+  let ca: string;
+  try {
+    ca = readFileSync(caFile, "utf8");
+  } catch {
+    throw new Error("MYSQL_TLS_CA_FILE could not be read");
+  }
+  return { ca, rejectUnauthorized: true, verifyIdentity: true };
 }
 
 function safeInteger(value: number | bigint, field: string): number {

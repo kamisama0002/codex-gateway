@@ -13,6 +13,9 @@ Gateway image and frozen SQLite database until the post-cutover retention period
   the production secret store. Do not rotate either secret during this cutover.
 - Docker Compose supports the `!reset` and `!override` tags used by
   `docker-compose.external-db.yml` (Compose 2.24.4 or newer).
+- External mode sets `MYSQL_TLS_MODE` to `verify-identity` and supplies `MYSQL_TLS_CA_FILE`. The
+  site-local override mounts that CA file read-only at the same path in `database-migrate` and
+  `codex-gateway`; use `required` only under an explicitly approved no-verification policy.
 - A tested rollback artifact contains the old Gateway image and Compose files.
 - Operators have a known password-admin login and a one-time DataOps ticket flow for smoke tests.
 
@@ -119,8 +122,10 @@ Stop if the backup or check fails. Do not substitute a raw file copy.
 
 ## 4. Build and migrate the empty MySQL target
 
-Load `DATABASE_URL` through the production secret mechanism with shell tracing disabled. Do not put
-it on a command line, in shell history, or in a committed file.
+Load `DATABASE_URL`, `MYSQL_TLS_MODE`, and `MYSQL_TLS_CA_FILE` through the production secret
+mechanism with shell tracing disabled. Do not put credentials on a command line, in shell history,
+or in a committed file. Do not append connection options to `DATABASE_URL`; Gateway and all database
+CLIs reject URL query parameters and use the two TLS variables consistently.
 
 ```bash
 set +x

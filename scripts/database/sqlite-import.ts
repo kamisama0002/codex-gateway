@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import type { DbRow, GatewayDb, SqlValue } from "../../server/utils/gateway/storage/contracts.ts";
 import { decryptJson } from "../../server/utils/gateway/storage/crypto.ts";
-import { MYSQL_SCHEMA_MIGRATIONS } from "../../server/utils/gateway/storage/mysql-schema.ts";
+import { validateMysqlGatewaySchema } from "../../server/utils/gateway/storage/mysql-schema-validation.ts";
 
 interface TableSpec {
   name: string;
@@ -474,19 +474,7 @@ function normalizeSqliteRow(spec: TableSpec, row: DbRow): SnapshotRow {
 }
 
 async function assertTargetMigrated(target: GatewayDb): Promise<void> {
-  const rows = await target.many<{ version: number; checksum: string }>(
-    "SELECT version, checksum FROM schema_migrations ORDER BY version ASC",
-  );
-  if (rows.length !== MYSQL_SCHEMA_MIGRATIONS.length) {
-    throw new Error("Target MySQL schema migrations are incomplete");
-  }
-  for (const [index, migration] of MYSQL_SCHEMA_MIGRATIONS.entries()) {
-    const row = rows[index];
-    const checksum = sha256(migration.statements.join("\n"));
-    if (row?.version !== migration.version || row.checksum !== checksum) {
-      throw new Error("Target MySQL schema migration checksum mismatch");
-    }
-  }
+  await validateMysqlGatewaySchema(target);
 }
 
 async function assertTargetEmpty(target: GatewayDb): Promise<void> {

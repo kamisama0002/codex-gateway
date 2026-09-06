@@ -207,6 +207,8 @@ pnpm test:e2e
 | --- | --- | --- |
 | `CODEX_GATEWAY_CONFIG_SECRET` | 生产环境必需 | 用于加密保存 host/project/thread 配置的稳定 secret。 |
 | `DATABASE_URL` | 外部 MySQL 模式 | MySQL 8 连接 URL；设置后使用外部数据库 Compose 覆盖。 |
+| `MYSQL_TLS_MODE` | 外部 MySQL 模式 | `required` 仅加密但不校验证书和主机名；推荐使用同时校验两者的 `verify-identity`。自带 MySQL 在私有网络中默认使用 `disabled`。 |
+| `MYSQL_TLS_CA_FILE` | 使用 `verify-identity` 时 | Gateway 和所有数据库 CLI 容器都能读取的 CA 文件路径。 |
 | `MYSQL_DATABASE` | 自带 Compose | 自带 MySQL 的数据库名，默认为 `codex_gateway`。 |
 | `MYSQL_USER` | 自带 Compose | 自带 MySQL 的应用用户，默认为 `codex_gateway`。 |
 | `MYSQL_PASSWORD` | 自带 Compose | 自带 MySQL 的应用密码；应使用 URL-safe 随机值。 |
@@ -250,17 +252,37 @@ docker compose up -d --build
 
 自带栈把 MySQL 放在内部 Docker 网络，数据持久化到 `mysql-data` named volume，先一次性执行 schema migration，只有 migration 成功后才启动 Gateway。MySQL 和 Gateway 都不发布宿主机端口；Gateway 应通过 `web-common` 后的 nginx、Caddy、Cloudflare Tunnel 或其他可信反向代理对外提供服务。
 
-使用生产托管的外部 MySQL 8 时，设置 `DATABASE_URL`，并在站点本地 override 之前叠加外部数据库 override：
+使用生产托管的外部 MySQL 8 时，把连接和 TLS 设置保存在未提交的 `.env` 中。`verify-identity` 需要 CA 文件，并同时校验证书链和数据库主机名：
+
+```dotenv
+DATABASE_URL=mysql://user:percent-encoded-password@mysql.example.internal:3306/codex_gateway
+MYSQL_TLS_MODE=verify-identity
+MYSQL_TLS_CA_FILE=/run/secrets/mysql-ca.pem
+```
+
+在站点本地 `docker-compose.override.yml` 中，以相同只读路径把 CA 文件挂载到 Gateway 和 migration/CLI 容器：
+
+```yaml
+services:
+  database-migrate:
+    volumes:
+      - ./secrets/mysql-ca.pem:/run/secrets/mysql-ca.pem:ro
+  codex-gateway:
+    volumes:
+      - ./secrets/mysql-ca.pem:/run/secrets/mysql-ca.pem:ro
+```
+
+在站点本地 override 之前叠加外部数据库 override，并且不要在命令末尾指定单个服务；以下命令会启动完整的 Gateway、一次性 migration gate 和 Runtime Manager：
 
 ```bash
 docker compose \
   -f docker-compose.yml \
   -f docker-compose.external-db.yml \
   -f docker-compose.override.yml \
-  up -d --build codex-gateway
+  up -d --build
 ```
 
-外部模式不会启动自带 MySQL。`DATABASE_URL` 和所有密码只能保存在未提交的环境文件或 secret store 中。已有 SQLite 部署切换前必须执行 [MySQL 切换手册](docs/operations/mysql-cutover.md)，日常运维参考 [备份与恢复手册](docs/operations/mysql-backup-restore.md)。
+外部模式不会启动自带 MySQL。只有在策略明确接受不校验证书和主机名时才使用 `required`；生产环境推荐 `verify-identity`。Gateway 和所有数据库 CLI 使用同一组 TLS 变量。系统会拒绝 `DATABASE_URL` 中包括 TLS、时区和多语句选项在内的所有查询参数，而不是静默忽略。`DATABASE_URL`、CA 材料和所有密码只能保存在未提交的环境文件或 secret store 中。已有 SQLite 部署切换前必须执行 [MySQL 切换手册](docs/operations/mysql-cutover.md)，日常运维参考 [备份与恢复手册](docs/operations/mysql-backup-restore.md)。
 
 远程浏览器面板使用 `p-<hmac>.example.com` 形式的隔离 origin。需要为 `p-*.example.com` 配置 wildcard DNS，并把这些 host 转发到 Codex Gateway 同一个 Nitro 端口 `3000`。反向代理必须保留 Host header 和 WebSocket Upgrade；不需要增加第二个监听端口或发布新的容器端口。Gateway 会保留上游的 `Content-Security-Policy` 与 `X-Frame-Options`，因此明确禁止 iframe 嵌入的应用仍会被浏览器阻止。
 

@@ -1,14 +1,13 @@
-import { createHash } from "node:crypto";
-import type { DbRow, GatewayDb } from "./contracts";
-import { MYSQL_SCHEMA_MIGRATIONS, type MysqlSchemaMigration } from "./mysql-schema.ts";
+import type { GatewayDb } from "./contracts";
+import {
+  mysqlMigrationChecksum,
+  type AppliedMysqlMigration,
+  validateAppliedMysqlMigrations,
+} from "./mysql-schema-validation.ts";
+import { MYSQL_SCHEMA_MIGRATIONS } from "./mysql-schema.ts";
 
 const MIGRATION_LOCK_NAME = "codex_gateway_schema_migrate";
 const MIGRATION_LOCK_TIMEOUT_SECONDS = 30;
-
-interface AppliedMigration extends DbRow {
-  version: number;
-  checksum: string;
-}
 
 export async function migrateMysqlGatewayDatabase(db: GatewayDb): Promise<void> {
   await db.transaction(async (tx) => {
@@ -30,11 +29,10 @@ export async function migrateMysqlGatewayDatabase(db: GatewayDb): Promise<void> 
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
       `);
 
-      const appliedMigrations = await tx.many<AppliedMigration>(
+      const appliedMigrations = await tx.many<AppliedMysqlMigration>(
         "SELECT version, checksum FROM schema_migrations ORDER BY version ASC",
       );
-      validateAppliedMigrationChecksums(appliedMigrations);
-      const appliedVersions = new Set(appliedMigrations.map((migration) => migration.version));
+      const appliedVersions = validateAppliedMysqlMigrations(appliedMigrations);
 
       for (const migration of MYSQL_SCHEMA_MIGRATIONS) {
         if (appliedVersions.has(migration.version)) {
@@ -55,7 +53,7 @@ export async function migrateMysqlGatewayDatabase(db: GatewayDb): Promise<void> 
         }
         await tx.execute(
           "INSERT INTO schema_migrations (version, checksum, applied_at) VALUES (?, ?, ?)",
-          [migration.version, migrationChecksum(migration), new Date().toISOString()],
+          [migration.version, mysqlMigrationChecksum(migration), new Date().toISOString()],
         );
       }
     } finally {
@@ -86,23 +84,4 @@ async function migrationStatementAlreadyApplied(
     );
   }
   return false;
-}
-
-function validateAppliedMigrationChecksums(appliedMigrations: readonly AppliedMigration[]): void {
-  const migrationsByVersion = new Map(
-    MYSQL_SCHEMA_MIGRATIONS.map((migration) => [migration.version, migration]),
-  );
-  for (const appliedMigration of appliedMigrations) {
-    const migration = migrationsByVersion.get(appliedMigration.version);
-    if (migration === undefined) {
-      throw new Error(`Unknown applied MySQL schema migration ${appliedMigration.version}`);
-    }
-    if (appliedMigration.checksum !== migrationChecksum(migration)) {
-      throw new Error(`MySQL schema migration ${appliedMigration.version} checksum mismatch`);
-    }
-  }
-}
-
-function migrationChecksum(migration: MysqlSchemaMigration): string {
-  return createHash("sha256").update(migration.statements.join("\n")).digest("hex");
 }

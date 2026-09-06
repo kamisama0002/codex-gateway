@@ -107,6 +107,91 @@ describe("create-user", () => {
     expect(`${result.stdout}${result.stderr}`).not.toContain(url);
     await expect(db.one("SELECT 1 AS ready")).resolves.toEqual({ ready: 1 });
   });
+
+  it("rejects a partial schema before any user change or automatic migration", async () => {
+    const database = await migratedDatabase();
+    expect(runCreateUser(database.url, "partial-schema-user", "password-1").status).toBe(0);
+    const before = await userSnapshot(database.db, "partial-schema-user");
+    await database.db.execute("DELETE FROM schema_migrations WHERE version > ?", [2]);
+
+    const result = runCreateUser(
+      database.url,
+      "partial-schema-user",
+      "password-2",
+      "--role",
+      "user",
+    );
+
+    expectCredentialSafeSchemaFailure(result, database.url, "password-2");
+    expect(await userSnapshot(database.db, "partial-schema-user")).toEqual(before);
+    expect(
+      await database.db.many("SELECT version FROM schema_migrations ORDER BY version"),
+    ).toEqual([{ version: 1 }, { version: 2 }]);
+  }, 15_000);
+
+  it("rejects a corrupted migration checksum before any user change", async () => {
+    const database = await migratedDatabase();
+    expect(runCreateUser(database.url, "checksum-schema-user", "password-1").status).toBe(0);
+    const before = await userSnapshot(database.db, "checksum-schema-user");
+    await database.db.execute("UPDATE schema_migrations SET checksum = ? WHERE version = ?", [
+      "changed-checksum",
+      1,
+    ]);
+
+    const result = runCreateUser(
+      database.url,
+      "checksum-schema-user",
+      "password-2",
+      "--role",
+      "user",
+    );
+
+    expectCredentialSafeSchemaFailure(result, database.url, "password-2");
+    expect(await userSnapshot(database.db, "checksum-schema-user")).toEqual(before);
+    expect(
+      await database.db.one<{ checksum: string }>(
+        "SELECT checksum FROM schema_migrations WHERE version = ?",
+        [1],
+      ),
+    ).toEqual({ checksum: "changed-checksum" });
+  }, 15_000);
+
+  it("rejects an unknown migration before any user change", async () => {
+    const database = await migratedDatabase();
+    expect(runCreateUser(database.url, "unknown-schema-user", "password-1").status).toBe(0);
+    const before = await userSnapshot(database.db, "unknown-schema-user");
+    await database.db.execute(
+      "INSERT INTO schema_migrations (version, checksum, applied_at) VALUES (?, ?, ?)",
+      [999, "unknown-checksum", new Date().toISOString()],
+    );
+
+    const result = runCreateUser(database.url, "unknown-schema-user", "password-2");
+
+    expectCredentialSafeSchemaFailure(result, database.url, "password-2");
+    expect(await userSnapshot(database.db, "unknown-schema-user")).toEqual(before);
+  }, 15_000);
+
+  it("rejects a duplicate migration before any user change", async () => {
+    const database = await migratedDatabase();
+    expect(runCreateUser(database.url, "duplicate-schema-user", "password-1").status).toBe(0);
+    const before = await userSnapshot(database.db, "duplicate-schema-user");
+    await database.db.execute("ALTER TABLE schema_migrations DROP PRIMARY KEY");
+    await database.db.execute(
+      "INSERT INTO schema_migrations (version, checksum, applied_at) SELECT version, checksum, applied_at FROM schema_migrations WHERE version = ? LIMIT 1",
+      [1],
+    );
+
+    const result = runCreateUser(database.url, "duplicate-schema-user", "password-2");
+
+    expectCredentialSafeSchemaFailure(result, database.url, "password-2");
+    expect(await userSnapshot(database.db, "duplicate-schema-user")).toEqual(before);
+    expect(
+      await database.db.one<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM schema_migrations WHERE version = ?",
+        [1],
+      ),
+    ).toEqual({ count: 2 });
+  }, 15_000);
 });
 
 async function migratedDatabase() {
@@ -152,4 +237,30 @@ async function installAtomicRoleFailureTrigger(databaseUrl: string) {
   } finally {
     await connection.end();
   }
+}
+
+async function userSnapshot(
+  db: {
+    one<T extends Record<string, unknown>>(
+      sql: string,
+      params: readonly (string | number)[],
+    ): Promise<T | null>;
+  },
+  username: string,
+) {
+  return await db.one<{ is_active: number; password_hash: string; role: string }>(
+    "SELECT is_active, password_hash, role FROM users WHERE username = ?",
+    [username],
+  );
+}
+
+function expectCredentialSafeSchemaFailure(
+  result: ReturnType<typeof runCreateUser>,
+  databaseUrl: string,
+  password: string,
+) {
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("Could not create user");
+  expect(`${result.stdout}${result.stderr}`).not.toContain(databaseUrl);
+  expect(`${result.stdout}${result.stderr}`).not.toContain(password);
 }

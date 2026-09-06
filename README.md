@@ -210,6 +210,8 @@ Environment variables:
 | --- | --- | --- |
 | `CODEX_GATEWAY_CONFIG_SECRET` | Yes in production | Stable secret used to encrypt stored host/project/thread config. |
 | `DATABASE_URL` | External MySQL mode | MySQL 8 connection URL. Use the external database Compose overlay when setting it. |
+| `MYSQL_TLS_MODE` | External MySQL mode | `required` encrypts without certificate/hostname verification; `verify-identity` verifies both and is recommended. Bundled MySQL defaults to `disabled` on its private network. |
+| `MYSQL_TLS_CA_FILE` | With `verify-identity` | CA file path readable by Gateway and every database CLI container. |
 | `MYSQL_DATABASE` | Self-contained Compose | Bundled MySQL database name. Defaults to `codex_gateway`. |
 | `MYSQL_USER` | Self-contained Compose | Bundled MySQL application user. Defaults to `codex_gateway`. |
 | `MYSQL_PASSWORD` | Self-contained Compose | Bundled MySQL application password. Use a URL-safe random value. |
@@ -253,17 +255,37 @@ docker compose up -d --build
 
 The self-contained stack keeps MySQL on an internal Docker network, persists it in the `mysql-data` named volume, runs schema migration once, and starts Gateway only after migration succeeds. Neither MySQL nor Gateway publishes a host port; put Gateway behind nginx, Caddy, Cloudflare Tunnel, or another trusted reverse proxy on `web-common`.
 
-For a production-managed external MySQL 8 service, set `DATABASE_URL` and layer the external database override before any site-local override:
+For a production-managed external MySQL 8 service, keep the connection and TLS settings in the uncommitted `.env`. `verify-identity` requires a CA file and verifies both the certificate chain and database hostname:
+
+```dotenv
+DATABASE_URL=mysql://user:percent-encoded-password@mysql.example.internal:3306/codex_gateway
+MYSQL_TLS_MODE=verify-identity
+MYSQL_TLS_CA_FILE=/run/secrets/mysql-ca.pem
+```
+
+Mount that file at the same read-only path for Gateway and the migration/CLI container in the site-local `docker-compose.override.yml`:
+
+```yaml
+services:
+  database-migrate:
+    volumes:
+      - ./secrets/mysql-ca.pem:/run/secrets/mysql-ca.pem:ro
+  codex-gateway:
+    volumes:
+      - ./secrets/mysql-ca.pem:/run/secrets/mysql-ca.pem:ro
+```
+
+Layer the external database override before that site-local override, and do not add a trailing service selector; the command starts Gateway, its one-shot migration gate, and Runtime Manager as the complete active stack:
 
 ```bash
 docker compose \
   -f docker-compose.yml \
   -f docker-compose.external-db.yml \
   -f docker-compose.override.yml \
-  up -d --build codex-gateway
+  up -d --build
 ```
 
-External mode does not start the bundled MySQL service. Keep `DATABASE_URL` and all passwords in an uncommitted environment or secret store. Follow [the MySQL cutover runbook](docs/operations/mysql-cutover.md) before changing an existing SQLite deployment, and use [the backup and restore runbook](docs/operations/mysql-backup-restore.md) for ongoing operations.
+External mode does not start the bundled MySQL service. Use `required` only when encryption without certificate/hostname verification is an accepted policy; `verify-identity` is the production recommendation. Gateway and all database CLIs use the same TLS variables. `DATABASE_URL` query parameters, including TLS, timezone, and multi-statement options, are rejected rather than ignored. Keep `DATABASE_URL`, CA material, and all passwords in an uncommitted environment or secret store. Follow [the MySQL cutover runbook](docs/operations/mysql-cutover.md) before changing an existing SQLite deployment, and use [the backup and restore runbook](docs/operations/mysql-backup-restore.md) for ongoing operations.
 
 Remote Browser panels use isolated origins such as `p-<hmac>.example.com`. Configure wildcard DNS for `p-*.example.com` and route those hosts to the same Codex Gateway Nitro port (`3000`). The reverse proxy must preserve the Host header and WebSocket upgrades. No second listener or published container port is required. Upstream `Content-Security-Policy` and `X-Frame-Options` are preserved, so applications that prohibit embedding remain blocked by the browser.
 

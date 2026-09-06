@@ -193,6 +193,8 @@ process.stdin.on("end", () => {
   env \
     CODEX_GATEWAY_CONFIG_SECRET=compose-config-test-secret \
     DATABASE_URL=mysql://external-user:external-password@database.internal:3306/codex_gateway \
+    MYSQL_TLS_CA_FILE=/run/secrets/mysql-ca.pem \
+    MYSQL_TLS_MODE=verify-identity \
     RUNTIME_MANAGER_IMAGE_ALIASES='{"stable":{"image":"codex-agent-runtime:0.151.0","imageVersion":"0.151.0"}}' \
     RUNTIME_MANAGER_SHARED_SECRET=compose-config-runtime-secret \
     docker compose \
@@ -205,9 +207,13 @@ process.stdin.on("data", (chunk) => { input += chunk; });
 process.stdin.on("end", () => {
   const config = JSON.parse(input);
   const services = config.services ?? {};
+  const manager = services["agent-runtime-manager"];
   const migration = services["database-migrate"];
   const gateway = services["codex-gateway"];
   if (services.mysql !== undefined) throw new Error("External database mode must omit bundled MySQL");
+  if (manager === undefined) throw new Error("External database mode must include Runtime Manager");
+  if (migration === undefined) throw new Error("External database mode must include migration");
+  if (gateway === undefined) throw new Error("External database mode must include Gateway");
   if (migration?.depends_on?.mysql !== undefined) {
     throw new Error("External database migration must not depend on bundled MySQL");
   }
@@ -218,6 +224,12 @@ process.stdin.on("end", () => {
     const databaseUrl = new URL(service?.environment?.DATABASE_URL ?? "");
     if (databaseUrl.hostname !== "database.internal") {
       throw new Error(`${name} must use the supplied external DATABASE_URL`);
+    }
+    if (service?.environment?.MYSQL_TLS_MODE !== "verify-identity") {
+      throw new Error(`${name} must use the supplied external MYSQL_TLS_MODE`);
+    }
+    if (service?.environment?.MYSQL_TLS_CA_FILE !== "/run/secrets/mysql-ca.pem") {
+      throw new Error(`${name} must use the supplied external MYSQL_TLS_CA_FILE`);
     }
   }
 });
