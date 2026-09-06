@@ -80,5 +80,6 @@ describe("parseGatewayConfig", () => {
       expect.objectContaining({ id: 1, name: "centos10", sshHost: "192.168.48.110" }),
     ]);
     expect(config.projects).toEqual([]);
+    expect(config.notifications.bark.group).toBe("Agent Platform");
   });
 });

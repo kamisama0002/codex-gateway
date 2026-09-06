@@ -10,8 +10,10 @@ export const SERVER_TURN_CACHE_LIMIT = 50;
 export const SERVER_THREAD_CACHE_LIMIT = 100;
 export const CLIENT_THREAD_CACHE_LIMIT = 24;
 export const DEFAULT_BARK_SERVER_URL = "https://api.day.app";
-export const DEFAULT_BARK_GROUP = "Codex Gateway";
+export const DEFAULT_BARK_GROUP = "Agent Platform";
 export const DEFAULT_PET_ID: GatewayPetId = "congming";
+
+const LEGACY_DEFAULT_BARK_GROUP = "Codex Gateway";
 
 export function defaultNotificationSettings(): GatewayNotificationSettings {
   return {
@@ -31,6 +33,7 @@ export function normalizeNotificationSettings(
   const serverUrl = settings?.bark?.serverUrl?.trim();
   const deviceKey = settings?.bark?.deviceKey?.trim();
   const group = settings?.bark?.group?.trim();
+  const normalizedGroup = group === LEGACY_DEFAULT_BARK_GROUP ? defaults.bark.group : group;
   return {
     bark: {
       ...defaults.bark,
@@ -38,7 +41,8 @@ export function normalizeNotificationSettings(
       serverUrl:
         serverUrl === "" ? defaults.bark.serverUrl : (serverUrl ?? defaults.bark.serverUrl),
       deviceKey: deviceKey ?? "",
-      group: group === "" ? defaults.bark.group : (group ?? defaults.bark.group),
+      group:
+        normalizedGroup === "" ? defaults.bark.group : (normalizedGroup ?? defaults.bark.group),
     },
   };
 }
