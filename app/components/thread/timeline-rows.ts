@@ -2,6 +2,7 @@ import type { ThreadResponseUsage, ThreadTimelineItem, ThreadTimelineTurn } from
 import type { DisplayedTurnTiming } from "@/utils/turn-timing";
 import { threadItemText } from "@/utils/thread-items";
 import { itemKey, userMessageVariant, type ThreadTurnSections } from "./thread-turn-sections";
+import { messageTimestampMs, normalizedTimestampMs } from "@/utils/message-time";
 
 export type { ThreadTimelineTurn } from "~~/shared/types";
 
@@ -46,6 +47,13 @@ export type ThreadTimelineRow = (
       turnTiming: DisplayedTurnTiming | null;
       responseUsage: ThreadResponseUsage[] | undefined;
       agentActionsAvailable: boolean;
+      messageTimeMs: number | null;
+    }
+  | {
+      key: string;
+      type: "turnStatus";
+      turnId: string;
+      startedAtMs: number | null;
     }
   | {
       key: string;
@@ -76,11 +84,14 @@ export function buildThreadTimelineRows(input: {
   turns: ThreadTimelineTurnState[];
   agentActionsAvailable: boolean;
 }) {
+  const activeTurnId = input.agentActionsAvailable ? null : input.turns.at(-1)?.turn.id;
   return input.turns.flatMap(({ turn, sections, intermediateOpen, intermediateLoading }) => {
     const rows: ThreadTimelineRow[] = [];
+    const showTurnStatus = turn.id === activeTurnId;
+    const turnIsActive = sections.turnIsActive || showTurnStatus;
     const timing = displayedTurnTiming(turn);
     const timingTarget = sections.finalItems.findLast((item) => item.type === "agentMessage");
-    appendItemRows(rows, input.threadId, turn.id, "user", sections.userItems, sections);
+    appendItemRows(rows, input.threadId, turn.id, "user", sections.userItems, sections, turn);
 
     // Match DSH's foldable-process rule: incomplete history is not evidence that a process exists.
     // Visible summary Turns are hydrated in the background; only real process items add this row.
@@ -95,7 +106,7 @@ export function buildThreadTimelineRows(input: {
         open: intermediateOpen,
         loading: intermediateLoading,
         loaded: turn.itemsView === "full",
-        active: sections.turnIsActive,
+        active: turnIsActive,
       });
       if (intermediateOpen) {
         appendItemRows(
@@ -105,6 +116,7 @@ export function buildThreadTimelineRows(input: {
           "intermediate",
           sections.intermediateItems,
           sections,
+          turn,
         );
       }
     }
@@ -116,11 +128,20 @@ export function buildThreadTimelineRows(input: {
       "final",
       sections.finalItems,
       sections,
+      turn,
       timingTarget,
       timing,
       input.agentActionsAvailable,
       turn.responseUsage,
     );
+    if (showTurnStatus) {
+      rows.push({
+        key: `${input.threadId}:turn-${turn.id}:status`,
+        type: "turnStatus",
+        turnId: turn.id,
+        startedAtMs: normalizedTimestampMs(turn.startedAt),
+      });
+    }
     // Completed turns normally render timing beside the final answer's copy action. Keep a
     // standalone row only for interrupted/error turns that never produced an Agent answer.
     if (
@@ -138,7 +159,7 @@ export function buildThreadTimelineRows(input: {
     }
     const firstRow = rows[0];
     if (firstRow !== undefined) {
-      firstRow.turnNavigation = turnNavigation(turn, sections);
+      firstRow.turnNavigation = turnNavigation(turn, sections, turnIsActive);
     }
     return rows;
   });
@@ -159,6 +180,7 @@ export function reuseUnchangedTimelineRows(
 export function estimateThreadTimelineRow(row: ThreadTimelineRow | undefined) {
   if (row === undefined) return 96;
   if (row.type === "intermediateHeader") return 48;
+  if (row.type === "turnStatus") return 34;
   if (row.type === "turnDuration") return 28;
   return estimatedItemHeights[row.item.type] ?? 96;
 }
@@ -170,6 +192,7 @@ function appendItemRows(
   section: ThreadTimelineItemSection,
   items: ThreadTimelineItem[],
   sections: ThreadTurnSections,
+  turn: ThreadTimelineTurn,
   timingTarget?: ThreadTimelineItem,
   timing: DisplayedTurnTiming | null = null,
   agentActionsAvailable = false,
@@ -186,6 +209,7 @@ function appendItemRows(
       turnTiming: item === timingTarget ? timing : null,
       responseUsage: item === timingTarget ? responseUsage : undefined,
       agentActionsAvailable: item === timingTarget && agentActionsAvailable,
+      messageTimeMs: messageTimestampMs(item, turn),
     });
   });
 }
@@ -203,7 +227,11 @@ function hasTimingValue(timing: DisplayedTurnTiming) {
   return timing.startedAt !== null || timing.durationMs !== null;
 }
 
-function turnNavigation(turn: ThreadTimelineTurn, sections: ThreadTurnSections) {
+function turnNavigation(
+  turn: ThreadTimelineTurn,
+  sections: ThreadTurnSections,
+  active = sections.turnIsActive,
+) {
   const promptItem = sections.userItems.find((item) => item.type === "userMessage");
   const responseItem =
     sections.finalItems.findLast((item) => item.type === "agentMessage") ??
@@ -212,7 +240,7 @@ function turnNavigation(turn: ThreadTimelineTurn, sections: ThreadTurnSections) 
     turnId: turn.id,
     prompt: promptItem === undefined ? "" : threadItemText(promptItem),
     response: responseItem === undefined ? "" : threadItemText(responseItem),
-    active: sections.turnIsActive,
+    active,
   };
 }
 
@@ -243,9 +271,17 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
       left.section === right.section &&
       left.userMessageVariant === right.userMessageVariant &&
       left.agentActionsAvailable === right.agentActionsAvailable &&
+      left.messageTimeMs === right.messageTimeMs &&
       sameTurnNavigation(left.turnNavigation, right.turnNavigation) &&
       sameResponseUsage(left.responseUsage, right.responseUsage) &&
       sameTurnTiming(left.turnTiming, right.turnTiming)
+    );
+  }
+  if (left.type === "turnStatus" && right.type === "turnStatus") {
+    return (
+      left.turnId === right.turnId &&
+      left.startedAtMs === right.startedAtMs &&
+      sameTurnNavigation(left.turnNavigation, right.turnNavigation)
     );
   }
   if (left.type === "turnDuration" && right.type === "turnDuration") {

@@ -4,6 +4,7 @@ import { Message, MessageContent } from "@codex-gateway/ai-elements/message";
 import { Badge } from "@codex-gateway/ui/badge";
 import MarkdownContent from "@/components/common/MarkdownContent.vue";
 import ThreadImageAttachment from "@/components/thread/attachments/ThreadImageAttachment.vue";
+import MessageTimeLabel from "@/components/thread/MessageTimeLabel.vue";
 import { threadItemText } from "@/utils/thread-items";
 import type { ThreadHistoryItem } from "~~/shared/types";
 import { recordFromUnknown } from "~~/shared/utils/records";
@@ -12,6 +13,7 @@ const props = defineProps<{
   item: ThreadHistoryItem;
   hostId: number | null;
   variant?: "normal" | "steer";
+  messageTimeMs?: number | null;
 }>();
 
 const { t } = useI18n();
@@ -55,35 +57,38 @@ function imageSource(image: { type: string; url: string; path: string }) {
 
 <template>
   <Message from="user" class="min-w-0 max-w-full">
-    <MessageContent
-      :data-testid="variant === 'steer' ? 'steered-conversation-item' : undefined"
-      :class="[
-        'thread-user-message min-w-0 max-w-full space-y-2 px-3 py-2 text-sm leading-6 text-ink group-[.is-user]:py-2 group-[.is-user]:text-ink md:max-w-2xl md:px-3.5 md:group-[.is-user]:px-3.5',
-        variant === 'steer'
-          ? 'rounded-lg border border-primary/20 bg-primary/5 group-[.is-user]:rounded-lg group-[.is-user]:border group-[.is-user]:border-primary/20 group-[.is-user]:bg-primary/5'
-          : 'rounded-lg bg-muted group-[.is-user]:rounded-lg group-[.is-user]:bg-muted',
-      ]"
-    >
-      <div
-        v-if="variant === 'steer'"
-        class="flex items-center gap-2 text-sm font-medium text-primary"
+    <div class="flex min-w-0 max-w-full flex-col items-end gap-1.5">
+      <MessageContent
+        :data-testid="variant === 'steer' ? 'steered-conversation-item' : undefined"
+        :class="[
+          'thread-user-message min-w-0 max-w-full space-y-2 px-3 py-2 text-sm leading-6 text-ink group-[.is-user]:py-2 group-[.is-user]:text-ink md:max-w-2xl md:px-3.5 md:group-[.is-user]:px-3.5',
+          variant === 'steer'
+            ? 'rounded-lg border border-primary/20 bg-primary/5 group-[.is-user]:rounded-lg group-[.is-user]:border group-[.is-user]:border-primary/20 group-[.is-user]:bg-primary/5'
+            : 'rounded-lg bg-user-bubble group-[.is-user]:rounded-lg group-[.is-user]:bg-user-bubble',
+        ]"
       >
-        <Badge variant="outline" class="border-primary/30 bg-surface/60 text-primary">{{
-          t("app.steeredConversation")
-        }}</Badge>
-      </div>
-      <div v-if="imageParts.length" class="grid max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
-        <template v-for="image in imageParts" :key="image.id">
-          <ThreadImageAttachment
-            v-if="imageSource(image)"
-            :source="imageSource(image)"
-            :label="image.path || null"
-            :detail="image.detail"
-          />
-        </template>
-      </div>
-      <MarkdownContent v-if="text" :content="text" compact />
-    </MessageContent>
+        <div
+          v-if="variant === 'steer'"
+          class="flex items-center gap-2 text-sm font-medium text-primary"
+        >
+          <Badge variant="outline" class="border-primary/30 bg-surface/60 text-primary">{{
+            t("app.steeredConversation")
+          }}</Badge>
+        </div>
+        <div v-if="imageParts.length" class="grid max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
+          <template v-for="image in imageParts" :key="image.id">
+            <ThreadImageAttachment
+              v-if="imageSource(image)"
+              :source="imageSource(image)"
+              :label="image.path || null"
+              :detail="image.detail"
+            />
+          </template>
+        </div>
+        <MarkdownContent v-if="text" :content="text" compact />
+      </MessageContent>
+      <MessageTimeLabel :time-ms="messageTimeMs ?? null" />
+    </div>
   </Message>
 </template>
 

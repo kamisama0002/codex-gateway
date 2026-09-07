@@ -15,6 +15,7 @@
   --canvas: #ffffff;
   --canvas-soft: #f5f6f7;
   --surface: #ffffff;
+  --user-bubble: #edf3fe;
   --ink: #0f1115;
   --ink-secondary: #61666b;
   --ink-muted: #61666b;
@@ -73,6 +74,7 @@
   --canvas: #232324;
   --canvas-soft: #2c2c2e;
   --surface: #2c2c2e;
+  --user-bubble: #2c2c2e;
   --ink: #f9fafb;
   --ink-secondary: #cfd3d6;
   --ink-muted: #adb2b8;
@@ -128,6 +130,7 @@
     --canvas: #232324;
     --canvas-soft: #2c2c2e;
     --surface: #2c2c2e;
+    --user-bubble: #2c2c2e;
     --ink: #f9fafb;
     --ink-secondary: #cfd3d6;
     --ink-muted: #adb2b8;
@@ -184,6 +187,7 @@
   --color-canvas: var(--canvas);
   --color-canvas-soft: var(--canvas-soft);
   --color-surface: var(--surface);
+  --color-user-bubble: var(--user-bubble);
   --color-ink: var(--ink);
   --color-ink-secondary: var(--ink-secondary);
   --color-ink-muted: var(--ink-muted);
