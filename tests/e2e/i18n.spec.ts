@@ -62,6 +62,22 @@ test("opens pet settings from the main settings panel", async ({ page }) => {
   expect(config.pet).toEqual({ enabled: true, petId: "jiangjiang", animations: false });
 });
 
+test("uses product-neutral copy throughout settings", async ({ page }) => {
+  await openApp(page);
+  await page.getByTestId("settings-toggle").click();
+  const settingsPanel = page.getByTestId("settings-panel");
+
+  await expect(settingsPanel.getByText("选择界面的显示语言。")).toBeVisible();
+  await settingsPanel.getByRole("tab", { name: "桌宠" }).click();
+  await expect(settingsPanel.getByText("让桌宠跟随当前会话的真实运行状态。")).toBeVisible();
+  await settingsPanel.getByRole("tab", { name: "通知" }).click();
+  await expect(settingsPanel.getByPlaceholder("Agent 平台")).toBeVisible();
+  await settingsPanel.getByRole("tab", { name: "Agent 运行时" }).click();
+  await expect(
+    settingsPanel.getByText(/每个登录用户对应一个 Docker 内的 Agent 运行时/),
+  ).toBeVisible();
+});
+
 test("can revoke the current session from appearance settings", async ({ page }) => {
   await openApp(page);
   const token = await page.evaluate(() => localStorage.getItem("codex-gateway-auth-token"));

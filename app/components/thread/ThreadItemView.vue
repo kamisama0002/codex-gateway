@@ -12,6 +12,7 @@ const props = defineProps<{
   turnTiming?: DisplayedTurnTiming | null;
   responseUsage?: ThreadResponseUsage[];
   agentActionsAvailable?: boolean;
+  messageTimeMs?: number | null;
 }>();
 
 const itemComponent = computed(() => componentForThreadItem(props.item.type));
@@ -27,5 +28,8 @@ const itemComponent = computed(() => componentForThreadItem(props.item.type));
     :turn-timing="item.type === 'agentMessage' ? turnTiming : undefined"
     :response-usage="item.type === 'agentMessage' ? responseUsage : undefined"
     :agent-actions-available="item.type === 'agentMessage' && agentActionsAvailable"
+    :message-time-ms="
+      item.type === 'userMessage' || item.type === 'agentMessage' ? messageTimeMs : undefined
+    "
   />
 </template>

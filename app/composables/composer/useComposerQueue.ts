@@ -20,15 +20,6 @@ export function useComposerQueue(input: {
     const threadId = input.selectedThreadId.value;
     return hostId === null || threadId === null ? [] : queue.queueForThread(hostId, threadId);
   });
-  const loading = computed(() => {
-    const hostId = input.selectedHostId.value;
-    const threadId = input.selectedThreadId.value;
-    return (
-      hostId !== null &&
-      threadId !== null &&
-      queue.loadingThreadKeys.includes(`${hostId}:${threadId}`)
-    );
-  });
 
   watch(
     [input.selectedHostId, input.selectedThreadId],
@@ -85,5 +76,5 @@ export function useComposerQueue(input: {
     }
   }
 
-  return { items, loading, actionPendingId, edit, remove, move, sendNow };
+  return { items, actionPendingId, edit, remove, move, sendNow };
 }

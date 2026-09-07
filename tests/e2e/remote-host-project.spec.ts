@@ -20,6 +20,7 @@ import {
   sendTextTurn,
   waitForSelectedThreadId,
 } from "./helpers/remote-codex";
+import { openTerminalWorkspace } from "./helpers/workspace-actions";
 
 test("references real project files as structured turn context", async ({
   page,
@@ -229,7 +230,13 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
 
   await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
   await expect(page.getByTestId("new-thread-welcome")).toHaveText("你好，今天想完成什么？");
-  await page.getByTestId("open-terminal-button").click();
+  await openTerminalWorkspace(page, {
+    scope: "project",
+    hostId: host.id,
+    projectId: project.id,
+    cwd: project.remotePath,
+    title: project.name,
+  });
   await expect(page.getByTestId("terminal-panel")).toBeVisible({ timeout: 30_000 });
   await runTerminalCommand(page, "pwd");
   await expectTerminalContains(page, remote.projectPath);

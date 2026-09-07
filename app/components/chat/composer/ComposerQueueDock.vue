@@ -17,12 +17,12 @@ import { TooltipProvider } from "@codex-gateway/ui/tooltip";
 import ComposerQueueAction from "@/components/chat/composer/ComposerQueueAction.vue";
 import {
   editableQueuedText,
+  queueDockKind,
   queuedSubmissionPreview,
 } from "@/components/chat/composer/queue-presentation";
 
 const props = defineProps<{
   items: QueuedSubmission[];
-  loading: boolean;
   running: boolean;
   pendingId: string | null;
   hostId: number | null;
@@ -38,6 +38,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const collapsed = ref(true);
 const editing = ref<{ id: string; text: string } | null>(null);
+const dockKind = computed(() => queueDockKind(props.items.length));
 const expanded = computed(
   () => props.items.length <= 1 || !collapsed.value || editing.value !== null,
 );
@@ -81,13 +82,13 @@ function imageSource(part: Record<string, unknown>) {
 
 <template>
   <div
-    v-if="items.length > 0 || loading"
+    v-if="dockKind !== 'empty'"
     data-testid="composer-queue-dock"
     class="relative z-10 -mb-1 px-3"
   >
     <div class="overflow-hidden rounded-t-lg border border-b-0 border-hairline bg-muted/70 py-1">
       <button
-        v-if="items.length > 1"
+        v-if="dockKind === 'multiple'"
         type="button"
         class="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-ink-secondary hover:text-ink"
         :aria-expanded="expanded"
@@ -102,10 +103,6 @@ function imageSource(part: Record<string, unknown>) {
           :class="expanded ? 'rotate-0' : '-rotate-90'"
         />
       </button>
-      <div v-else-if="loading" class="flex h-9 items-center gap-2 px-3 text-sm text-ink-muted">
-        <ListTodoIcon class="size-4" />
-        {{ t("app.loadingQueue") }}
-      </div>
       <ul v-show="expanded" class="max-h-44 overflow-y-auto">
         <li
           v-for="(item, index) in items"
@@ -113,7 +110,7 @@ function imageSource(part: Record<string, unknown>) {
           class="flex min-h-9 items-center gap-2 px-2.5 py-1 text-sm not-first:border-t not-first:border-hairline"
           :data-testid="`queued-message-${item.id}`"
         >
-          <ListTodoIcon v-if="items.length === 1" class="size-4 shrink-0 text-ink-muted" />
+          <ListTodoIcon v-if="dockKind === 'single'" class="size-4 shrink-0 text-ink-muted" />
           <span v-if="images(item).length" class="flex shrink-0 gap-1">
             <img
               v-for="(image, imageIndex) in images(item)"

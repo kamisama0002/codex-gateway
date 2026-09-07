@@ -115,6 +115,14 @@ test("opening completed history does not show fake thinking", async ({ page }) =
   });
 
   await expect(page.getByText("completed history")).toBeVisible();
+  const userMessage = page.locator(".thread-user-message", { hasText: "completed history" });
+  await expect(userMessage).toHaveCSS("background-color", "rgb(237, 243, 254)");
+  const userActions = page.getByTestId("user-message-actions");
+  await expect(userActions.getByRole("button", { name: "复制消息" })).toBeVisible();
+  await userActions.getByRole("button", { name: "复制消息" }).click();
+  await expect(userActions.getByRole("button", { name: "消息已复制" })).toBeVisible();
+  await expect(page.getByTestId("turn-status")).toContainText("思考中");
+  await expect(page.locator('time[datetime="2026-07-02T10:00:00.000Z"]')).toHaveCount(1);
   await expect(page.getByRole("button", { name: /中间过程/ })).toHaveAttribute(
     "data-state",
     "open",
@@ -137,7 +145,8 @@ test("opening completed history does not show fake thinking", async ({ page }) =
   await expect(agentActions.getByText("本轮用时 2.50s")).toBeVisible();
   await expect(agentActions.getByText("用量 0.0046")).toBeVisible();
   await expect(agentActions.getByRole("button", { name: "复制输出" })).toBeAttached();
-  await expect(page.getByText("思考中")).toBeHidden();
+  await expect(page.getByTestId("turn-status")).toBeHidden();
+  await expect(page.locator('time[datetime="2026-07-02T10:00:02.500Z"]')).toHaveCount(1);
 
   await page.getByRole("button", { name: /中间过程/ }).click();
   const tool = page.getByTestId("tool-call-toggle");

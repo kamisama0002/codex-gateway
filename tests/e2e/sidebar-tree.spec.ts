@@ -12,6 +12,18 @@ import {
   realtimeThreadStartRequests,
 } from "./helpers/realtime-route";
 
+test("desktop workspace toolbar exposes only runtime monitoring and sidebar collapse", async ({
+  page,
+}) => {
+  await openApp(page);
+
+  await expect(page.getByTestId("open-host-monitor-button")).toBeVisible();
+  await expect(page.getByTestId("desktop-sidebar-collapse")).toBeVisible();
+  await expect(page.getByTestId("open-tmux-button")).toHaveCount(0);
+  await expect(page.getByTestId("open-terminal-button")).toHaveCount(0);
+  await expect(page.getByTestId("open-browser-button")).toHaveCount(0);
+});
+
 test("collapses the desktop sidebar and restores the saved layout", async ({ page }) => {
   await openApp(page);
 

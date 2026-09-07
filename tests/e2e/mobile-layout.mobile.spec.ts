@@ -572,6 +572,18 @@ test("mobile momentum scrolling stays anchored after touchend while output strea
     .toBeLessThanOrEqual(finalAnchor!.top + 2);
 });
 
+test("mobile workspace header exposes only runtime monitoring and the sidebar entry", async ({
+  page,
+}) => {
+  await openApp(page);
+
+  await expect(page.getByTestId("mobile-sidebar-toggle")).toBeVisible();
+  await expect(page.getByTestId("open-host-monitor-mobile-button")).toBeVisible();
+  await expect(page.getByTestId("open-tmux-mobile-button")).toHaveCount(0);
+  await expect(page.getByTestId("open-terminal-mobile-button")).toHaveCount(0);
+  await expect(page.getByTestId("open-browser-mobile-button")).toHaveCount(0);
+});
+
 test("opens sidebar context actions with long press on mobile", async ({
   page,
   remoteWorkspace,
@@ -606,13 +618,9 @@ test("opens sidebar context actions with long press on mobile", async ({
   await page.getByTestId("mobile-sidebar-toggle").click();
   await page.getByTestId(`project-button-${project.id}`).click();
   await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
-  await expect(page.getByTestId("open-tmux-mobile-button")).toBeVisible();
   await expect(page.getByTestId("open-host-monitor-mobile-button")).toBeVisible();
   await page.getByTestId("open-host-monitor-mobile-button").click();
   await expect(page.getByTestId("host-metrics-panel")).toBeVisible();
-  await page.getByRole("tab", { name: /Agent/ }).click();
-  await page.getByTestId("open-terminal-mobile-button").click();
-  await expect(page.getByTestId("terminal-panel")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("tab", { name: /Agent/ }).click();
   await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
   const threadButton = page.getByTestId(`thread-button-${threadId}`);

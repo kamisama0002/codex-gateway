@@ -105,6 +105,53 @@ describe("reasoning visibility", () => {
   });
 });
 
+describe("running turn status", () => {
+  it("keeps an independent status row visible before reasoning or tools arrive", () => {
+    const turn: ThreadTimelineTurn = {
+      id: "turn-waiting",
+      status: "completed",
+      startedAt: 1_782_986_400,
+      itemsView: "full",
+      items: [
+        {
+          id: "user-waiting",
+          type: "userMessage",
+          startedAt: 1_782_986_400_125,
+          content: [{ type: "text", text: "刚刚发送" }],
+        },
+      ],
+    };
+    const sections = buildThreadTurnSections(turn, { planModeActive: false });
+
+    const rows = buildThreadTimelineRows({
+      threadId: "thread-1",
+      turns: [{ turn, sections, intermediateOpen: false, intermediateLoading: false }],
+      agentActionsAvailable: false,
+    });
+
+    expect(rows.map((row) => row.type)).toEqual(["item", "turnStatus"]);
+    expect(rows[0]).toMatchObject({ type: "item", messageTimeMs: 1_782_986_400_125 });
+    expect(rows[1]).toMatchObject({ type: "turnStatus", startedAtMs: 1_782_986_400_000 });
+  });
+
+  it("does not trust a stale in-progress Turn after the thread runtime is terminal", () => {
+    const state = turnState({
+      id: "turn-stale",
+      status: "inProgress",
+      prompt: "已经结束了吗",
+      response: "已经结束",
+    });
+
+    const rows = buildThreadTimelineRows({
+      threadId: "thread-1",
+      turns: [state],
+      agentActionsAvailable: true,
+    });
+
+    expect(rows.some((row) => row.type === "turnStatus")).toBe(false);
+  });
+});
+
 describe("turn navigation metadata", () => {
   it("attaches one prompt and response preview to the first visible row of every turn", () => {
     const first = turnState({

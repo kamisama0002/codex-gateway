@@ -33,6 +33,7 @@ export function insertOptimisticSteerMessage(
       clientId: clientUserMessageId,
       turnId,
       content,
+      startedAt: Date.now(),
     }),
   );
   cacheSelectedThreadView();
@@ -50,6 +51,7 @@ export function insertOptimisticNewTurnMessage(
       id: clientUserMessageId,
       clientId: clientUserMessageId,
       content,
+      startedAt: Date.now(),
     }),
   );
   cacheSelectedThreadView();

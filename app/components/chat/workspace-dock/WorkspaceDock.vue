@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { DockviewVue, themeDark, themeLight } from "dockview-vue";
 import { computed, provide, ref, toRefs } from "vue";
-import BrowserOpenDialog from "@/components/browser/BrowserOpenDialog.vue";
 import { useTerminalTheme } from "@/composables/terminal/useTerminalTheme";
 import { useWorkspaceLaunchActions } from "@/composables/workspace/useWorkspaceLaunchActions";
-import { useTmuxMonitorLauncher } from "@/composables/workspace/useTmuxMonitorLauncher";
 import { useChatWorkspaceState } from "../chat-workspace-state";
 import { fileWorkspaceScopeKey } from "@/stores/file-workspace";
 import { workspaceLayoutScopeKey } from "@/stores/gateway-workspace-layout";
@@ -63,10 +61,8 @@ const panelIds = computed(() => [
   hostMetricsPanel.value.map(({ id }) => id),
   gitReviewPanel.value.map(({ id }) => id),
 ]);
-const browserDialogOpen = ref(false);
 const dockviewHost = ref<HTMLElement | null>(null);
 const workspaceActions = useWorkspaceLaunchActions();
-const tmuxLauncher = useTmuxMonitorLauncher();
 const lifecycle = useWorkspaceDockLifecycle({
   scopeKey,
   host: dockviewHost,
@@ -88,7 +84,6 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
   layout: refs.layout,
   closePanel: panels.closeDynamic,
 });
-
 </script>
 
 <template>
@@ -98,11 +93,6 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
   >
     <MobileWorkspaceHeader
       v-if="layout === 'mobile'"
-      :can-open-terminal="workspace.canOpenTerminal.value"
-      :tmux-active-count="tmuxLauncher.activeCount.value"
-      @open-tmux="tmuxLauncher.open"
-      @open-terminal="workspaceActions.openTerminal"
-      @open-browser="browserDialogOpen = true"
       @open-host-monitor="workspaceActions.openHostMonitor"
     >
       <template #start><slot name="mobile-header-start" /></template>
@@ -125,11 +115,6 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
         @ready="lifecycle.ready"
       />
     </div>
-    <BrowserOpenDialog
-      v-if="layout === 'mobile'"
-      v-model:open="browserDialogOpen"
-      :open-target="workspaceActions.openBrowser"
-    />
   </div>
 </template>
 

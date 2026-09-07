@@ -271,7 +271,6 @@ export function useComposerController() {
     uploadingWorkspace: workspaceUpload.uploadingWorkspace,
     pendingWorkspaceUploadConflict: workspaceUpload.pendingConflict,
     queuedMessages: composerQueue.items,
-    loadingQueuedMessages: composerQueue.loading,
     queueActionPendingId: composerQueue.actionPendingId,
     editQueuedMessage: composerQueue.edit,
     deleteQueuedMessage: composerQueue.remove,
