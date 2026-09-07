@@ -134,7 +134,7 @@ function forwardQueueMove(id: string, direction: "up" | "down") {
 
 <template>
   <div
-    class="shrink-0"
+    class="relative z-40 shrink-0"
     :class="
       placement === 'centered'
         ? 'w-full'

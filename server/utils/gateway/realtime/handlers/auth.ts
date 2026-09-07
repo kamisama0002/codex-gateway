@@ -12,8 +12,9 @@ import { sendRealtimePeerMessage, stateFor, type RealtimePeer } from "../peer-st
 import { threadRuntimeStatusHub } from "../../runtime/thread-runtime-status-hub";
 import { RealtimeAuthenticationRequiredError } from "../message-dispatcher";
 import { REALTIME_AUTHENTICATION_CLOSE_CODE } from "~~/shared/runtime/realtime/close-codes";
+import { databaseUnavailableError } from "../../storage/database";
 
-export function authenticatePeer(
+export async function authenticatePeer(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "auth.authenticate" }>,
 ) {
@@ -22,7 +23,7 @@ export function authenticatePeer(
     throw new Error("Realtime connection is already authenticated");
   }
   const token = request.token;
-  const user = userStore.authenticateToken(token);
+  const user = await authenticateToken(token);
   if (user === null) {
     throw new RealtimeAuthenticationRequiredError();
   }
@@ -61,4 +62,12 @@ export function authenticatePeer(
   });
   subscribeTerminalEvents(peer);
   subscribeBrowserPreviewEvents(peer);
+}
+
+async function authenticateToken(token: string) {
+  try {
+    return await userStore.authenticateToken(token);
+  } catch (error) {
+    throw databaseUnavailableError(error);
+  }
 }

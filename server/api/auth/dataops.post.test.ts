@@ -36,7 +36,7 @@ describe("POST /api/auth/dataops", () => {
       loginWithDataOpsForEvent(
         event,
         { exchange: async (ticket: string) => (expect(ticket).toBe("pct_once"), claims) },
-        { loginDataOps: () => session },
+        { loginDataOps: async () => session },
       ),
     ).resolves.toEqual(session);
   });
@@ -54,7 +54,7 @@ describe("POST /api/auth/dataops", () => {
         },
       },
       {
-        loginDataOps: () => {
+        loginDataOps: async () => {
           throw new Error("must not login");
         },
       },
@@ -75,7 +75,7 @@ describe("POST /api/auth/dataops", () => {
       event,
       { exchange: async () => Promise.reject(new DataOpsSsoError(code)) },
       {
-        loginDataOps: () => {
+        loginDataOps: async () => {
           throw new Error("must not login");
         },
       },

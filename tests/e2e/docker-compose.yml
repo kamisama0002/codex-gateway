@@ -8,6 +8,25 @@ x-ssh-target: &ssh-target
     - ${E2E_CODEX_PROVIDER_KEY_FILE:-/dev/null}:/run/secrets/codex-provider-key:ro
 
 services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
+      MYSQL_PASSWORD: codex-gateway-e2e-password
+      MYSQL_ROOT_PASSWORD: codex-gateway-e2e-root-password
+      MYSQL_USER: codex_gateway_e2e
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'mysqladmin ping -h 127.0.0.1 -uroot --password="$${MYSQL_ROOT_PASSWORD}" --silent',
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+    volumes:
+      - mysql-data:/var/lib/mysql
+
   agent-runtime-image:
     profiles: ["image-build"]
     image: codex-agent-runtime:0.151.0
@@ -138,12 +157,14 @@ services:
       # Keep enough cgroup headroom for Rolldown/Nitro native allocations while allowing the
       # JavaScript heap to finish the production bundle. The container remains capped at 2 GiB.
       NODE_OPTIONS: --max-old-space-size=1536
-      CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
+      DATABASE_URL: mysql://codex_gateway_e2e:codex-gateway-e2e-password@mysql:3306/${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
       E2E_GATEWAY_USERNAME: ${E2E_GATEWAY_USERNAME:-e2e}
       E2E_GATEWAY_PASSWORD: ${E2E_GATEWAY_PASSWORD:-codex-gateway-e2e-password}
+    depends_on:
+      mysql:
+        condition: service_healthy
     volumes:
       - build-output:/e2e-output
-      - e2e-data:/workspace/codex-gateway/.data-e2e
 
   gateway-under-test:
     image: codex-gateway-e2e-runner
@@ -158,6 +179,8 @@ services:
         condition: service_healthy
       dataops-target:
         condition: service_healthy
+      mysql:
+        condition: service_healthy
       ssh-target:
         condition: service_started
       ssh-target-legacy-node:
@@ -168,7 +191,7 @@ services:
       HOST: 0.0.0.0
       PORT: "3100"
       CODEX_GATEWAY_CONFIG_SECRET: e2e-config-secret
-      CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
+      DATABASE_URL: mysql://codex_gateway_e2e:codex-gateway-e2e-password@mysql:3306/${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
       DATAOPS_BASE_URL: http://dataops-target:8080
       DATAOPS_SSO_SHARED_SECRET: dataops-e2e-shared-secret
       DATAOPS_ALLOWED_ORIGINS: http://dataops.127.0.0.1.nip.io:3100
@@ -183,10 +206,16 @@ services:
       BROWSER_PREVIEW_SCHEME: http
     volumes:
       - build-output:/e2e-output:ro
-      - e2e-data:/workspace/codex-gateway/.data-e2e
     # Exercise the same V8 memory policy as production; the wider 2 GiB cgroup remains available
     # to Playwright's shared test topology and native browser/runtime allocations.
-    command: ["/usr/local/bin/codex-gateway-e2e-supervisor", "node", "--expose-gc", "--max-old-space-size=512", "/e2e-output/server/index.mjs"]
+    command:
+      [
+        "/usr/local/bin/codex-gateway-e2e-supervisor",
+        "node",
+        "--expose-gc",
+        "--max-old-space-size=512",
+        "/e2e-output/server/index.mjs",
+      ]
     networks:
       - default
       - runtime-manager
@@ -230,6 +259,7 @@ services:
       CI: ${CI:-}
       E2E_CONTAINERIZED: "1"
       E2E_DATABASE_PREPARED: "1"
+      DATABASE_URL: mysql://codex_gateway_e2e:codex-gateway-e2e-password@mysql:3306/${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
       E2E_SOURCE_DIR: /workspace/source
       E2E_CODEX_HOME: /codex-auth
       E2E_REMOTE_HOST: ssh-target
@@ -254,7 +284,6 @@ services:
     volumes:
       - ${E2E_CODEX_HOME:-${HOME}/.codex}:/codex-auth:ro
       - ../../test-results:/workspace/codex-gateway/test-results
-      - e2e-data:/workspace/codex-gateway/.data-e2e
       - bark-requests:/bark-requests
       - runner-home:/home/pwuser
     working_dir: /workspace/codex-gateway
@@ -262,7 +291,7 @@ services:
 volumes:
   bark-requests:
   build-output:
-  e2e-data:
+  mysql-data:
   runtime-manager-data:
   runner-home:
 

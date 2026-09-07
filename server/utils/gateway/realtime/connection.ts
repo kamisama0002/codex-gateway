@@ -12,6 +12,7 @@ import { recordFromUnknown } from "~~/shared/utils/records";
 import { REALTIME_AUTHENTICATION_CLOSE_CODE } from "~~/shared/runtime/realtime/close-codes";
 import { runPeerScoped, sendRealtimePeerMessage, stateFor, type RealtimePeer } from "./peer-state";
 import { clearOwnedSubscriptions, clearSubscriptions } from "./subscription-map";
+import { DATABASE_UNAVAILABLE_CODE } from "../storage/database";
 
 export function openRealtimePeer(peer: RealtimePeer) {
   const state = stateFor(peer);
@@ -45,7 +46,7 @@ export async function handleRealtimePeerMessage(peer: RealtimePeer, rawMessage: 
       type: "error",
       message: error instanceof Error ? error.message : "Realtime message failed",
       requestId: request && "requestId" in request ? request.requestId : undefined,
-      request,
+      request: safeRealtimeErrorRequest(request),
       code: realtimeErrorCode(error),
       details,
     });
@@ -89,9 +90,16 @@ function rejectUnauthenticatedPeer(peer: RealtimePeer, request: RealtimeClientMe
   sendRealtimePeerMessage(peer, {
     type: "error",
     message: "Realtime connection is not authenticated",
-    request,
+    request: safeRealtimeErrorRequest(request),
   });
   peer.close(REALTIME_AUTHENTICATION_CLOSE_CODE, "Authentication required");
+}
+
+function safeRealtimeErrorRequest(request: RealtimeClientMessage | undefined) {
+  if (request?.type === "auth.authenticate") {
+    return { ...request, token: "[REDACTED]" };
+  }
+  return request;
 }
 
 function parseClientMessage(raw: string): RealtimeClientMessage {
@@ -132,6 +140,9 @@ function realtimeRequestHostName(peer: RealtimePeer, request: RealtimeClientMess
 }
 
 function realtimeErrorCode(error: unknown) {
+  if (recordFromUnknown(error)?.code === DATABASE_UNAVAILABLE_CODE) {
+    return DATABASE_UNAVAILABLE_CODE;
+  }
   if (isStaleThreadCursorErrorLike(error)) {
     return STALE_THREAD_CURSOR_ERROR_CODE;
   }

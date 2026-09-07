@@ -8,7 +8,7 @@ export default async function globalTeardown() {
   ) {
     throw new Error("Managed Runtime E2E cleanup requires an exact managed label value");
   }
-  // Docker resources deliberately remain until the host runner has inspected their effective
-  // security policy, then the runner removes only the exact E2E-labeled containers/volumes.
+  // Compose resources, including the isolated MySQL volume, deliberately remain until the host
+  // runner has inspected them. The runner then removes only its exact project and labels.
   await stopDockerEnvironment();
 }

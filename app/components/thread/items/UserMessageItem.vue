@@ -22,7 +22,11 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const text = computed(() => threadItemText(props.item));
-const { copy, copied, isSupported } = useClipboard({ source: text, copiedDuring: 1200 });
+const { copy, copied, isSupported } = useClipboard({
+  source: text,
+  copiedDuring: 1200,
+  legacy: true,
+});
 type ImagePart = Record<string, unknown> & { type: "image" | "localImage" };
 
 async function copyText() {

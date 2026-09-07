@@ -5,21 +5,21 @@ import type { StoredTmuxMonitor } from "./types";
 export class PermanentTmuxMonitorChecker {
   constructor(private readonly repository: TmuxMonitorRepository) {}
 
-  check(monitor: StoredTmuxMonitor, sessions: TmuxSessionSnapshot[]) {
+  async check(monitor: StoredTmuxMonitor, sessions: TmuxSessionSnapshot[]) {
     const pane = logicalPaneFor(monitor, sessions);
 
     // Permanent rules follow a logical tmux slot, not one pane PID. This lets a training
     // workspace return to shell or recreate the pane without silently losing the watch.
     if (monitor.runStartedAt === null) {
-      if (pane === undefined) this.repository.recordWaitingCheck(monitor);
-      else if (pane.running === true) this.repository.startPermanentRun(monitor, pane);
-      else this.repository.recordChecked(monitor, pane);
+      if (pane === undefined) await this.repository.recordWaitingCheck(monitor);
+      else if (pane.running === true) await this.repository.startPermanentRun(monitor, pane);
+      else await this.repository.recordChecked(monitor, pane);
       return null;
     }
 
     if (pane === undefined) {
       const sessionExists = sessions.some((session) => session.name === monitor.sessionName);
-      return this.repository.completePermanentRun(
+      return await this.repository.completePermanentRun(
         monitor,
         sessionExists ? "paneExited" : "sessionExited",
         null,
@@ -28,14 +28,19 @@ export class PermanentTmuxMonitorChecker {
 
     const replaced = pane.sessionId !== monitor.sessionId || pane.paneId !== monitor.paneId;
     if (replaced) {
-      const completed = this.repository.completePermanentRun(monitor, "paneReplaced", pane);
-      if (pane.running === true) this.repository.startPermanentRun(monitor, pane);
+      const completed = await this.repository.completePermanentRun(monitor, "paneReplaced", pane);
+      if (completed !== null && pane.running === true) {
+        const current = await this.repository.getOwned(monitor.userId, monitor.id);
+        if (current?.status === "active" && current.runStartedAt === null) {
+          await this.repository.startPermanentRun(current, pane);
+        }
+      }
       return completed;
     }
     if (pane.running === false) {
-      return this.repository.completePermanentRun(monitor, "returnedToShell", pane);
+      return await this.repository.completePermanentRun(monitor, "returnedToShell", pane);
     }
-    this.repository.recordChecked(monitor, pane);
+    await this.repository.recordChecked(monitor, pane);
     return null;
   }
 }

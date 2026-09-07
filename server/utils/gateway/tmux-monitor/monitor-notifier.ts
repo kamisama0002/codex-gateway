@@ -11,11 +11,10 @@ export class TmuxMonitorNotifier {
 
   async publishCompletion(host: HostWithSecret, monitor: StoredTmuxMonitor) {
     if (this.pendingMonitorIds.has(monitor.id)) return;
-    const persisted = this.repository.getOwned(monitor.userId, monitor.id);
-    if (persisted === null || persisted.notificationSentAt !== null) return;
-
     this.pendingMonitorIds.add(monitor.id);
     try {
+      const persisted = await this.repository.getOwned(monitor.userId, monitor.id);
+      if (persisted === null || persisted.notificationSentAt !== null) return;
       await notificationCenter.publish({
         key: `tmux-monitor:${monitor.userId}:${monitor.id}:completed`,
         title: `Tmux 任务已结束 · ${firstNonEmptyString([host.name, host.sshHost]) ?? String(host.id)} · ${monitor.sessionName}`,
@@ -37,7 +36,7 @@ export class TmuxMonitorNotifier {
       // Browser fan-out is synchronous and Bark resolves only after delivery (or when disabled).
       // Persist acknowledgement last so a crash or exhausted Bark retry leaves this row eligible
       // for the next poll instead of permanently losing the notification.
-      this.repository.markNotificationSent(monitor.userId, monitor.id);
+      await this.repository.markNotificationSent(monitor.userId, monitor.id);
     } finally {
       this.pendingMonitorIds.delete(monitor.id);
     }

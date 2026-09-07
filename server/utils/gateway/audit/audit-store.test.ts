@@ -1,27 +1,25 @@
-import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { freshMysqlTestDatabase } from "../../../../tests/mysql/helpers";
+import type { GatewayDb } from "../storage/contracts";
+import { migrateMysqlGatewayDatabase } from "../storage/mysql-migrations";
 import { createAuditStore } from "./audit-store";
-import { migrateGatewayDatabase } from "../storage/migrations";
 
 describe("auditStore", () => {
-  it("records safe metadata and scopes user history to its subject", () => {
-    const db = new DatabaseSync(":memory:");
-    migrateGatewayDatabase(db);
-    db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
-      1,
-      "first-user",
-      "hash",
-      "admin",
-    );
-    db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
-      2,
-      "second-user",
-      "hash",
-      "user",
-    );
-    const store = createAuditStore(db);
+  let db: GatewayDb;
+  let store: ReturnType<typeof createAuditStore>;
 
-    store.record({
+  beforeEach(async () => {
+    db = await freshMysqlTestDatabase();
+    await migrateMysqlGatewayDatabase(db);
+    await db.execute(
+      "INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?), (?, ?, ?, ?)",
+      [1, "first-user", "hash", "admin", 2, "second-user", "hash", "user"],
+    );
+    store = createAuditStore(db);
+  });
+
+  it("records safe metadata and scopes user history to its subject in newest-first order", async () => {
+    await store.record({
       actorUserId: 1,
       userId: 1,
       action: "runtime.start",
@@ -29,7 +27,7 @@ describe("auditStore", () => {
       metadata: { runtimeId: "runtime-1", imageVersion: "image-1", attemptCount: 2 },
       createdAt: "2024-01-01T00:00:00.000Z",
     });
-    store.record({
+    await store.record({
       actorUserId: 2,
       userId: 2,
       action: "runtime.stop",
@@ -38,8 +36,24 @@ describe("auditStore", () => {
       metadata: { runtimeId: "runtime-2", status: "degraded" },
       createdAt: "2024-01-02T00:00:00.000Z",
     });
+    await store.record({
+      actorUserId: 1,
+      userId: 1,
+      action: "runtime.restart",
+      outcome: "success",
+      metadata: { runtimeId: "runtime-1", status: "ready" },
+      createdAt: "2024-01-02T00:00:00.000Z",
+    });
 
-    expect(store.listForUser(1)).toEqual([
+    expect(await store.listForUser(1)).toEqual([
+      expect.objectContaining({
+        actorUserId: 1,
+        userId: 1,
+        action: "runtime.restart",
+        outcome: "success",
+        errorCode: null,
+        metadata: { runtimeId: "runtime-1", status: "ready" },
+      }),
       expect.objectContaining({
         actorUserId: 1,
         userId: 1,
@@ -49,17 +63,14 @@ describe("auditStore", () => {
         metadata: { runtimeId: "runtime-1", imageVersion: "image-1", attemptCount: 2 },
       }),
     ]);
-    expect(store.listForAdmin()).toEqual([
-      expect.objectContaining({ action: "runtime.stop", userId: 2 }),
-      expect.objectContaining({ action: "runtime.start", userId: 1 }),
+    expect((await store.listForAdmin()).map((event) => event.action)).toEqual([
+      "runtime.restart",
+      "runtime.stop",
+      "runtime.start",
     ]);
   });
 
-  it("rejects sensitive metadata keys before they can be persisted", () => {
-    const db = new DatabaseSync(":memory:");
-    migrateGatewayDatabase(db);
-    const store = createAuditStore(db);
-
+  it("rejects sensitive metadata synchronously before starting persistence", async () => {
     expect(() =>
       store.record({
         userId: 1,
@@ -68,6 +79,25 @@ describe("auditStore", () => {
         metadata: { accessToken: "do-not-store" },
       }),
     ).toThrow(/sensitive/i);
-    expect(db.prepare("SELECT COUNT(*) AS count FROM agent_audit_events").get()).toMatchObject({ count: 0 });
+    expect(
+      await db.one<{ count: number }>("SELECT COUNT(*) AS count FROM agent_audit_events"),
+    ).toMatchObject({ count: 0 });
+  });
+
+  it("rolls back an event rejected by the user foreign key", async () => {
+    await expect(
+      store.record({
+        actorUserId: 1,
+        userId: 99,
+        action: "runtime.start",
+        outcome: "failure",
+        errorCode: "runtime_not_found",
+        metadata: { userId: 99, runtimeStatus: "absent" },
+      }),
+    ).rejects.toMatchObject({ code: "ER_NO_REFERENCED_ROW_2" });
+
+    expect(
+      await db.one<{ count: number }>("SELECT COUNT(*) AS count FROM agent_audit_events"),
+    ).toMatchObject({ count: 0 });
   });
 });

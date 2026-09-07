@@ -216,7 +216,6 @@ export function useComposerController() {
   }
 
   async function confirmWorkspaceOverwrite() {
-    if (submit.submittingNewThread.value) return;
     await workspaceUpload.confirmOverwrite();
   }
 

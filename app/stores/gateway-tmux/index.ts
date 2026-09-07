@@ -225,7 +225,6 @@ export const useGatewayTmuxStore = defineStore("gateway-tmux", () => {
   function resetState() {
     sessionGeneration += 1;
     pendingSummary = null;
-    panelOpen.value = false;
     active.value = [];
     history.value = [];
     loading.value = false;

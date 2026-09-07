@@ -32,5 +32,5 @@ export default defineGatewayEventHandler(async (event) => {
   if (!isManagedRuntimeHost(host)) return catalog;
 
   const user = requireAuthenticatedUser(event);
-  return filterManagedModelCatalog(catalog, providerStore.listForUser(user.id));
+  return filterManagedModelCatalog(catalog, await providerStore.listForUser(user.id));
 });

@@ -5,6 +5,13 @@ type ChatVirtualizerBehavior = Pick<
   "anchorTo" | "followOnAppend" | "scrollEndThreshold"
 >;
 
+export function resolveBackwardWheelOwnership(options: {
+  deltaY: number;
+  scrollTop: number;
+}) {
+  return options.deltaY < 0 && options.scrollTop > 0;
+}
+
 export function resolveChatFollowLatest(options: {
   currentlyFollowing: boolean;
   distanceFromEnd: number;

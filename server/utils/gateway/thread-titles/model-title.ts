@@ -37,11 +37,11 @@ export async function generateModelThreadTitle(
 ) {
   input.signal.throwIfAborted();
   const store = options.store ?? providerStore;
-  const model = store
-    .listForUser(input.userId)
-    .find((candidate) => candidate.modelId === input.model);
+  const model = (await store.listForUser(input.userId)).find(
+    (candidate) => candidate.modelId === input.model,
+  );
   if (model === undefined) throw new Error("No granted Provider model matches the current turn");
-  const provider = store.getWithSecret(model.providerId);
+  const provider = await store.getWithSecret(model.providerId);
   if (provider === null || !provider.enabled) throw new Error("Title Provider is unavailable");
 
   const framedInput = `Generate the session title from this JSON array of human messages:\n${JSON.stringify([{ text: input.message }])}`;

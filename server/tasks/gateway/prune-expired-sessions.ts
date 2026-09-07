@@ -5,7 +5,7 @@ export default defineTask({
     name: "gateway:prune-expired-sessions",
     description: "Delete expired gateway bearer sessions and close their realtime peers.",
   },
-  run() {
-    return { result: expiredSessionCleanupTask.run() };
+  async run() {
+    return { result: await expiredSessionCleanupTask.run() };
   },
 });

@@ -5,6 +5,7 @@ import type {
   UserAgentRuntimeRecord,
 } from "@codex-gateway/agent-runtime-contracts";
 import type { AuditEventInput } from "~~/shared/types/audit";
+import type { UserProviderModel } from "~~/shared/types";
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import type { ProvisionRuntimeRequest } from "./client";
 import { ManagedRuntimeService, ManagedRuntimeServiceError } from "./runtime-service";
@@ -85,7 +86,7 @@ describe("ManagedRuntimeService", () => {
       }),
     );
 
-    expect(fixture.store.getByUserId(7)).toMatchObject({
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
       status: "incompatible",
       lastError: "runtime_version_incompatible",
     });
@@ -142,7 +143,7 @@ describe("ManagedRuntimeService", () => {
       ["runtime.restart", 1],
       ["runtime.remove", 1],
     ]);
-    expect(fixture.store.getByUserId(7)).toBeNull();
+    expect(await fixture.store.getByUserId(7)).toBeNull();
   });
 
   it("reprovisions a managed container on restart so current runtime configuration is applied", async () => {
@@ -178,7 +179,7 @@ describe("ManagedRuntimeService", () => {
 
     await expect(fixture.service.start(7)).rejects.toBeTruthy();
 
-    expect(fixture.store.getByUserId(7)).toMatchObject({
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
       status: "degraded",
       lastError: "runtime_identity_conflict",
     });
@@ -224,7 +225,7 @@ describe("ManagedRuntimeService", () => {
       expect.objectContaining({ code: "runtime_manager_invalid_response" }),
     );
 
-    expect(fixture.store.getByUserId(7)).toMatchObject({
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
       status: "degraded",
       lastError: "runtime_manager_invalid_response",
     });
@@ -248,7 +249,7 @@ describe("ManagedRuntimeService", () => {
       expect.objectContaining({ code: "runtime_operation_failed" }),
     );
 
-    expect(fixture.store.getByUserId(7)).toMatchObject({
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
       status: "degraded",
       lastError: "runtime_operation_failed",
     });
@@ -280,7 +281,7 @@ describe("ManagedRuntimeService", () => {
       expect.objectContaining({ code: "runtime_operation_failed" }),
     );
 
-    expect(fixture.store.getByUserId(7)).toMatchObject({
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
       status: "degraded",
       lastError: "runtime_operation_failed",
     });
@@ -320,19 +321,77 @@ describe("ManagedRuntimeService", () => {
     expect(fixture.manager.start).toHaveBeenCalledOnce();
   });
 
-  it("lists admin statuses with usernames and without container identity", async () => {
+  it("awaits usernames when listing admin statuses without container identity", async () => {
     const fixture = runtimeFixture();
     await fixture.service.start(7);
 
-    expect(fixture.service.listStatuses()).toEqual([
+    const statuses = await fixture.service.listStatuses();
+    expect(statuses).toEqual([
       expect.objectContaining({
         userId: 7,
         username: "runtime-a",
         status: "ready",
       }),
     ]);
-    expect(JSON.stringify(fixture.service.listStatuses())).not.toContain("container-01");
-    expect(JSON.stringify(fixture.service.listStatuses())).not.toContain("runtime-token");
+    expect(JSON.stringify(statuses)).not.toContain("container-01");
+    expect(JSON.stringify(statuses)).not.toContain("runtime-token");
+  });
+
+  it("awaits a state write before sending the next lifecycle request", async () => {
+    const fixture = runtimeFixture();
+    const gate = deferred<void>();
+    const upsert = fixture.store.upsert.getMockImplementation();
+    fixture.store.upsert.mockImplementationOnce(async (record) => {
+      await gate.promise;
+      if (upsert === undefined) throw new Error("Missing store implementation");
+      return await upsert(record);
+    });
+
+    const starting = fixture.service.start(7);
+    await vi.waitFor(() => expect(fixture.store.upsert).toHaveBeenCalledOnce());
+    expect(fixture.manager.provision).not.toHaveBeenCalled();
+
+    gate.resolve();
+    await expect(starting).resolves.toMatchObject({ status: "ready" });
+    expect(fixture.manager.provision).toHaveBeenCalledOnce();
+  });
+
+  it("awaits the user's provider model before building the provision request", async () => {
+    const models = deferred<UserProviderModel[]>();
+    const fixture = runtimeFixture({
+      listProviderModels: async () => await models.promise,
+    });
+
+    const starting = fixture.service.start(7);
+    await vi.waitFor(() => expect(fixture.providerStore.listForUser).toHaveBeenCalledWith(7));
+    expect(fixture.manager.provision).not.toHaveBeenCalled();
+
+    models.resolve([providerModel()]);
+    await expect(starting).resolves.toMatchObject({ status: "ready" });
+    expect(fixture.manager.provision.mock.calls[0]?.[0].providerConfig).toMatchObject({
+      providerId: "provider-1",
+      modelId: "model-1",
+      wireApi: "responses",
+    });
+  });
+
+  it("preserves the operational error when recording its audit event fails", async () => {
+    const fixture = runtimeFixture();
+    fixture.manager.provision.mockRejectedValueOnce(
+      Object.assign(new Error("manager failure"), { code: "runtime_identity_conflict" }),
+    );
+    fixture.auditRecord.mockRejectedValueOnce(new Error("database secret must stay private"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      await expect(fixture.service.start(7)).rejects.toMatchObject({
+        code: "runtime_identity_conflict",
+      });
+      expect(logged).toHaveBeenCalledOnce();
+      expect(JSON.stringify(logged.mock.calls)).not.toContain("database secret");
+    } finally {
+      logged.mockRestore();
+    }
   });
 });
 
@@ -346,6 +405,7 @@ function runtimeFixture(
       maxTimeout: number;
       factor: number;
     };
+    listProviderModels?: (userId: number) => Promise<UserProviderModel[]>;
   } = {},
 ) {
   const endpoint: ManagedRuntimeEndpoint = {
@@ -356,15 +416,17 @@ function runtimeFixture(
   const records = new Map<number, UserAgentRuntimeRecord>();
   const statuses: RuntimeStatus[] = [];
   const store = {
-    getByUserId: (userId: number) => records.get(userId) ?? null,
-    list: () => [...records.values()].sort((left, right) => left.userId - right.userId),
-    upsert: (record: UserAgentRuntimeRecord) => {
+    getByUserId: vi.fn(async (userId: number) => records.get(userId) ?? null),
+    list: vi.fn(async () =>
+      [...records.values()].sort((left, right) => left.userId - right.userId),
+    ),
+    upsert: vi.fn(async (record: UserAgentRuntimeRecord) => {
       const copy = structuredClone(record);
       records.set(copy.userId, copy);
       statuses.push(copy.status);
       return copy;
-    },
-    deleteForUser: (userId: number) => records.delete(userId),
+    }),
+    deleteForUser: vi.fn(async (userId: number) => records.delete(userId)),
   };
   const manager = {
     provision: vi.fn(async (request: ProvisionRuntimeRequest) => ({
@@ -445,6 +507,12 @@ function runtimeFixture(
     })),
   };
   const audit: AuditEventInput[] = [];
+  const auditRecord = vi.fn(async (event: AuditEventInput) => {
+    audit.push(structuredClone(event));
+  });
+  const providerStore = {
+    listForUser: vi.fn(options.listProviderModels ?? (async () => [])),
+  };
   const closeConnections = vi.fn();
   let probeFailures = options.probeFailures ?? 0;
   const probe = vi.fn(async () => {
@@ -462,7 +530,8 @@ function runtimeFixture(
   const service = new ManagedRuntimeService({
     manager,
     store,
-    audit: { record: (event: AuditEventInput) => audit.push(structuredClone(event)) },
+    audit: { record: auditRecord },
+    providerStore,
     identitySecret: "identity-secret",
     imageAlias: "stable",
     expectedRuntimeVersion: "0.151.0",
@@ -470,7 +539,54 @@ function runtimeFixture(
     probeRetryOptions: options.probeRetryOptions,
     closeConnections,
     now: () => new Date(1_788_134_400_000 + tick++).toISOString(),
-    usernameFor: (userId) => (userId === 7 ? "runtime-a" : null),
+    usernameFor: async (userId) => (userId === 7 ? "runtime-a" : null),
   });
-  return { service, manager, store, audit, statuses, closeConnections, probe };
+  return {
+    service,
+    manager,
+    store,
+    audit,
+    auditRecord,
+    providerStore,
+    statuses,
+    closeConnections,
+    probe,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function providerModel(): UserProviderModel {
+  return {
+    providerId: "provider-1",
+    modelId: "model-1",
+    displayName: "Model 1",
+    enabled: true,
+    capabilities: {
+      tools: false,
+      streamingTools: false,
+      vision: false,
+      reasoning: true,
+      maxContextTokens: null,
+    },
+    provider: {
+      id: "provider-1",
+      name: "Provider",
+      baseUrl: "https://provider.test/v1",
+      wireApi: "responses",
+      enabled: true,
+      hasApiKey: true,
+      requestTimeoutMs: 30_000,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
 }

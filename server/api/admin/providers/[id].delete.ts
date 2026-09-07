@@ -5,11 +5,13 @@ import { providerIdSchema } from "../../../utils/gateway/http/validation/provide
 import { providerStore } from "../../../utils/gateway/providers/provider-store";
 import { auditStore } from "../../../utils/gateway/audit/audit-store";
 
-export function deleteProviderForEvent(event: H3Event, store = providerStore) {
+export async function deleteProviderForEvent(event: H3Event, store = providerStore) {
   const admin = requireAdminUser(event);
   const id = providerIdSchema.parse(getRouterParam(event, "id"));
-  if (!store.delete(id)) throw createError({ statusCode: 404, statusMessage: "Provider not found" });
-  auditStore.record({
+  if (!(await store.delete(id))) {
+    throw createError({ statusCode: 404, statusMessage: "Provider not found" });
+  }
+  await auditStore.record({
     actorUserId: admin.id,
     action: "provider.delete",
     outcome: "success",
@@ -18,4 +20,4 @@ export function deleteProviderForEvent(event: H3Event, store = providerStore) {
   return { deleted: true };
 }
 
-export default defineGatewayEventHandler((event) => deleteProviderForEvent(event));
+export default defineGatewayEventHandler(async (event) => await deleteProviderForEvent(event));

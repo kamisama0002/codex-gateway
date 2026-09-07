@@ -8,8 +8,8 @@ import { auditStore } from "../../../utils/gateway/audit/audit-store";
 export async function createProviderForEvent(event: H3Event, store = providerStore) {
   const admin = requireAdminUser(event);
   const input = await readValidatedBody(event, (body) => providerCreateSchema.parse(body));
-  const provider = store.create(input);
-  auditStore.record({
+  const provider = await store.create(input);
+  await auditStore.record({
     actorUserId: admin.id,
     action: "provider.create",
     outcome: "success",

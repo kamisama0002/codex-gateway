@@ -58,7 +58,7 @@ describe("generateModelThreadTitle", () => {
 
 function providerStoreFixture(wireApi: "responses" | "chat_completions") {
   return {
-    listForUser: () => [
+    listForUser: async () => [
       {
         providerId: "provider-1",
         modelId: "model-1",
@@ -86,7 +86,7 @@ function providerStoreFixture(wireApi: "responses" | "chat_completions") {
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
     ],
-    getWithSecret: () => ({
+    getWithSecret: async () => ({
       id: "provider-1",
       name: "Provider",
       baseUrl: "https://provider.test/v1",

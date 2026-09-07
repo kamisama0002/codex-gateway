@@ -1,15 +1,9 @@
 import type { HostRecord } from "~~/shared/types";
 import { userStore } from "../auth/users";
 import {
-  gatewayDatabaseExists,
-  gatewayDatabaseReady,
-  onGatewayDatabaseReady,
-} from "../storage/database";
-import {
-  buildGatewayMemoryState,
+  applyGatewayConfigToMemoryState,
   currentGatewayUserId,
   currentGatewayMemoryState,
-  replaceCurrentGatewayMemoryState,
   runWithGatewayUser,
 } from "../state/memory";
 import { connectHostRuntime, publishHostRuntimeFailure } from "./host-runtime-connection";
@@ -26,7 +20,6 @@ import { threadBroker } from "./broker";
 class HostRuntimeSupervisor {
   private readonly slots = new Map<string, HostRuntimeSlot>();
   private unsubscribeSessionClosed: (() => void) | null = null;
-  private unsubscribeDatabaseReady: (() => void) | null = null;
   private bootstrappedStoredUsers = false;
   private started = false;
 
@@ -38,20 +31,12 @@ class HostRuntimeSupervisor {
     this.unsubscribeSessionClosed = hostSessionEvents.onClosed((event) =>
       this.handleSessionClosed(event),
     );
-    this.unsubscribeDatabaseReady = onGatewayDatabaseReady(() => {
-      this.bootstrapStoredUsers();
-    });
-    if (gatewayDatabaseExists() || gatewayDatabaseReady()) {
-      this.bootstrapStoredUsers();
-    }
   }
 
   stop() {
     this.started = false;
     this.unsubscribeSessionClosed?.();
-    this.unsubscribeDatabaseReady?.();
     this.unsubscribeSessionClosed = null;
-    this.unsubscribeDatabaseReady = null;
     this.bootstrappedStoredUsers = false;
     for (const slot of Array.from(this.slots.values())) {
       this.removeSlot(this.slotKey(slot.userId, slot.hostId), slot);
@@ -69,18 +54,16 @@ class HostRuntimeSupervisor {
     });
   }
 
-  bootstrapStoredUsers() {
+  async bootstrapStoredUsers(): Promise<void> {
     if (!this.started || this.bootstrappedStoredUsers) {
       return;
     }
     this.bootstrappedStoredUsers = true;
-    for (const { user, config } of userStore.listStoredConfigs()) {
+    for (const { user, config, revision } of await userStore.listStoredConfigs()) {
       runWithGatewayUser(user.id, () => {
         const state = currentGatewayMemoryState();
         if (!state.configLoaded) {
-          const nextState = buildGatewayMemoryState(config);
-          nextState.configLoaded = true;
-          replaceCurrentGatewayMemoryState(nextState);
+          applyGatewayConfigToMemoryState(state, config, revision);
         }
         this.syncUserConfig(user.id, {
           hosts: config.hosts,
@@ -149,13 +132,17 @@ class HostRuntimeSupervisor {
     this.slots.delete(key);
     activeMainThreadMonitor.forgetHost(slot.userId, slot.hostId);
     const connection = slot.connectPromise;
+    const closeHost = () => {
+      runWithGatewayUser(slot.userId, () => threadBroker.closeHost(slot.hostId));
+    };
+    closeHost();
     if (connection !== null) {
       void connection
         .finally(() => {
-          // HostResourceLifecycle closes the current session synchronously, but an SSH/RPC connect
-          // already in flight can finish afterwards. Replacement slots wait on this same promise,
-          // so closing here cannot race a new target and removes any late old-identity session.
-          runWithGatewayUser(slot.userId, () => threadBroker.closeHost(slot.hostId));
+          // An SSH/RPC connect already in flight can finish after the immediate close. Replacement
+          // slots wait on this same promise, so closing again removes any late old-identity session
+          // before the replacement can connect.
+          closeHost();
         })
         .catch(() => {});
     }

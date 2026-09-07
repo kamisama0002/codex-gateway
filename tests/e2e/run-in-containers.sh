@@ -4,7 +4,8 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd "$script_dir/../.." && pwd)"
 compose_file="$script_dir/docker-compose.yml"
-project_name="${E2E_COMPOSE_PROJECT_NAME:-codex-gateway-e2e}"
+project_name="${E2E_COMPOSE_PROJECT_NAME:-codex-gateway-e2e}-$$"
+database_name="codex_gateway_e2e_$$"
 agent_image="codex-agent-runtime:0.151.0"
 e2e_managed_label="com.codex-gateway.e2e-managed=$project_name"
 
@@ -19,6 +20,7 @@ fi
 
 export E2E_UID="${E2E_UID:-12345}"
 export E2E_GID="${E2E_GID:-12345}"
+export E2E_MYSQL_DATABASE="$database_name"
 export E2E_CODEX_HOME="${E2E_CODEX_HOME:-$HOME/.codex}"
 if [ -z "${E2E_CODEX_PROVIDER_KEY_FILE:-}" ]; then
   if [ -r /etc/codex/providers/kimi-k3.key ]; then
@@ -96,6 +98,25 @@ process.stdin.on("data", (chunk) => { input += chunk; });
 process.stdin.on("end", () => {
   const config = JSON.parse(input);
   const services = config.services ?? {};
+  if (config.name !== process.env.E2E_EXPECTED_COMPOSE_PROJECT_NAME) {
+    throw new Error("E2E Compose project is not the exact generated project");
+  }
+  const mysql = services.mysql;
+  if (mysql === undefined) throw new Error("E2E MySQL service is missing");
+  if ((mysql.ports ?? []).length !== 0) throw new Error("E2E MySQL publishes a host port");
+  if (mysql.healthcheck === undefined) throw new Error("E2E MySQL healthcheck is missing");
+  if (!(mysql.volumes ?? []).some((mount) => mount.target === "/var/lib/mysql")) {
+    throw new Error("E2E MySQL persistent data mount is missing");
+  }
+  for (const name of ["build-runner", "gateway-under-test", "test-runner"]) {
+    const databaseUrl = new URL(services[name]?.environment?.DATABASE_URL ?? "");
+    if (databaseUrl.protocol !== "mysql:" || databaseUrl.hostname !== "mysql") {
+      throw new Error(`${name} must use the E2E MySQL service`);
+    }
+    if (databaseUrl.pathname !== `/${process.env.E2E_MYSQL_DATABASE ?? ""}`) {
+      throw new Error(`${name} must use the unique E2E MySQL database`);
+    }
+  }
   const socket = "/var/run/docker.sock";
   const socketOwners = Object.entries(services)
     .filter(([, service]) => (service.volumes ?? []).some((mount) => mount.source === socket || mount.target === socket))
@@ -119,6 +140,102 @@ process.stdin.on("end", () => {
 '
 }
 
+verify_production_database_modes() {
+  env \
+    CODEX_GATEWAY_CONFIG_SECRET=compose-config-test-secret \
+    MYSQL_DATABASE=codex_gateway \
+    MYSQL_PASSWORD=compose-config-app-password \
+    MYSQL_ROOT_PASSWORD=compose-config-root-password \
+    MYSQL_USER=codex_gateway \
+    RUNTIME_MANAGER_IMAGE_ALIASES='{"stable":{"image":"codex-agent-runtime:0.151.0","imageVersion":"0.151.0"}}' \
+    RUNTIME_MANAGER_SHARED_SECRET=compose-config-runtime-secret \
+    docker compose -f "$project_dir/docker-compose.yml" config --format json | node -e '
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  const config = JSON.parse(input);
+  const services = config.services ?? {};
+  const mysql = services.mysql;
+  const migration = services["database-migrate"];
+  const gateway = services["codex-gateway"];
+  if (mysql === undefined) throw new Error("Production MySQL service is missing");
+  if ((mysql.ports ?? []).length !== 0) throw new Error("Production MySQL publishes a host port");
+  if (mysql.healthcheck === undefined) throw new Error("Production MySQL healthcheck is missing");
+  if (!(mysql.volumes ?? []).some((mount) => mount.target === "/var/lib/mysql")) {
+    throw new Error("Production MySQL persistent data mount is missing");
+  }
+  if (config.networks?.["gateway-database"]?.internal !== true) {
+    throw new Error("Bundled MySQL network must be internal");
+  }
+  if (migration === undefined) throw new Error("Production database migration service is missing");
+  if (migration.depends_on?.mysql?.condition !== "service_healthy") {
+    throw new Error("Database migration must wait for healthy MySQL");
+  }
+  if (gateway?.depends_on?.["database-migrate"]?.condition !== "service_completed_successfully") {
+    throw new Error("Gateway must wait for successful database migration");
+  }
+  if (migration.image !== gateway.image) {
+    throw new Error("Database migration and Gateway must use the same image");
+  }
+  for (const [name, service] of [["database-migrate", migration], ["codex-gateway", gateway]]) {
+    const databaseUrl = new URL(service?.environment?.DATABASE_URL ?? "");
+    if (databaseUrl.protocol !== "mysql:" || databaseUrl.hostname !== "mysql") {
+      throw new Error(`${name} must use bundled MySQL in self-contained mode`);
+    }
+    if ((service?.volumes ?? []).some((mount) => mount.target === "/data")) {
+      throw new Error(`${name} must not mount the retired SQLite data path`);
+    }
+  }
+});
+'
+
+  env \
+    CODEX_GATEWAY_CONFIG_SECRET=compose-config-test-secret \
+    DATABASE_URL=mysql://external-user:external-password@database.internal:3306/codex_gateway \
+    MYSQL_TLS_CA_FILE=/run/secrets/mysql-ca.pem \
+    MYSQL_TLS_MODE=verify-identity \
+    RUNTIME_MANAGER_IMAGE_ALIASES='{"stable":{"image":"codex-agent-runtime:0.151.0","imageVersion":"0.151.0"}}' \
+    RUNTIME_MANAGER_SHARED_SECRET=compose-config-runtime-secret \
+    docker compose \
+      -f "$project_dir/docker-compose.yml" \
+      -f "$project_dir/docker-compose.external-db.yml" \
+      config --format json | node -e '
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  const config = JSON.parse(input);
+  const services = config.services ?? {};
+  const manager = services["agent-runtime-manager"];
+  const migration = services["database-migrate"];
+  const gateway = services["codex-gateway"];
+  if (services.mysql !== undefined) throw new Error("External database mode must omit bundled MySQL");
+  if (manager === undefined) throw new Error("External database mode must include Runtime Manager");
+  if (migration === undefined) throw new Error("External database mode must include migration");
+  if (gateway === undefined) throw new Error("External database mode must include Gateway");
+  if (migration?.depends_on?.mysql !== undefined) {
+    throw new Error("External database migration must not depend on bundled MySQL");
+  }
+  if (gateway?.depends_on?.["database-migrate"]?.condition !== "service_completed_successfully") {
+    throw new Error("External database Gateway must still wait for migration");
+  }
+  for (const [name, service] of [["database-migrate", migration], ["codex-gateway", gateway]]) {
+    const databaseUrl = new URL(service?.environment?.DATABASE_URL ?? "");
+    if (databaseUrl.hostname !== "database.internal") {
+      throw new Error(`${name} must use the supplied external DATABASE_URL`);
+    }
+    if (service?.environment?.MYSQL_TLS_MODE !== "verify-identity") {
+      throw new Error(`${name} must use the supplied external MYSQL_TLS_MODE`);
+    }
+    if (service?.environment?.MYSQL_TLS_CA_FILE !== "/run/secrets/mysql-ca.pem") {
+      throw new Error(`${name} must use the supplied external MYSQL_TLS_CA_FILE`);
+    }
+  }
+});
+'
+}
+
 verify_agent_image() {
   assert_equal "Agent image user" "10001:10001" \
     "$(docker image inspect --format '{{.Config.User}}' "$agent_image")"
@@ -135,7 +252,7 @@ verify_agent_image() {
 }
 
 verify_managed_runtime_docker_state() {
-  local manager_id gateway_id user_hash
+  local manager_id gateway_id user_hash expected_runtime_count expected_volume_count
   local agent_ids=()
   local volume_names=()
   local -A user_hashes=()
@@ -148,12 +265,22 @@ verify_managed_runtime_docker_state() {
   assert_equal "Gateway Docker socket mount count" "" \
     "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/run/docker.sock"}}1{{end}}{{end}}' "$gateway_id")"
 
+  expected_runtime_count="$(
+    docker compose -p "$project_name" -f "$compose_file" exec -T mysql \
+      sh -eu -c 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --batch --skip-column-names --user="$MYSQL_USER" "$MYSQL_DATABASE" --execute="SELECT COUNT(*) FROM user_agent_runtimes"'
+  )"
+  case "$expected_runtime_count" in
+    "" | *[!0-9]*)
+      printf 'E2E assertion failed: MySQL runtime count is not a non-negative integer\n' >&2
+      return 1
+      ;;
+  esac
+  expected_volume_count=$((expected_runtime_count * 2))
+
   while IFS= read -r container_id; do
     [ -n "$container_id" ] && agent_ids+=("$container_id")
   done < <(docker ps --all --quiet --filter "label=$e2e_managed_label")
-  # The suite signs in its primary admin plus two explicit isolation users. Since the built-in
-  # local workspace now provisions one long-lived Agent per user, all three must remain present.
-  assert_equal "managed Agent container count" "3" "${#agent_ids[@]}"
+  assert_equal "managed Agent container count" "$expected_runtime_count" "${#agent_ids[@]}"
   for container_id in "${agent_ids[@]}"; do
     user_hash="$(docker inspect --format '{{index .Config.Labels "com.codex-gateway.user-hash"}}' "$container_id")"
     if [ -z "$user_hash" ]; then
@@ -191,19 +318,19 @@ verify_managed_runtime_docker_state() {
     assert_equal "managed Agent named volume mount markers" "11" \
       "$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}1{{end}}{{end}}' "$container_id")"
   done
-  assert_equal "managed Agent isolated user count" "3" "${#user_hashes[@]}"
+  assert_equal "managed Agent isolated user count" "$expected_runtime_count" "${#user_hashes[@]}"
 
   while IFS= read -r volume_name; do
     [ -n "$volume_name" ] && volume_names+=("$volume_name")
   done < <(docker volume ls --quiet --filter "label=$e2e_managed_label")
-  assert_equal "managed Agent volume count" "6" "${#volume_names[@]}"
+  assert_equal "managed Agent volume count" "$expected_volume_count" "${#volume_names[@]}"
 }
 
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
     docker compose -p "$project_name" -f "$compose_file" logs --no-color \
-      agent-runtime-manager gateway-under-test model-target ssh-target >&2 || true
+      mysql agent-runtime-manager gateway-under-test model-target ssh-target >&2 || true
   fi
   cleanup_managed_resources
   docker compose -p "$project_name" -f "$compose_file" down --volumes --remove-orphans >/dev/null 2>&1 || true
@@ -216,15 +343,21 @@ fi
 trap cleanup EXIT
 
 cleanup_managed_resources
+verify_production_database_modes
+export E2E_EXPECTED_COMPOSE_PROJECT_NAME="$project_name"
 verify_compose_security_boundary
+if [ "${E2E_VERIFY_CONFIG_ONLY:-0}" = "1" ]; then
+  exit 0
+fi
 docker compose -p "$project_name" -f "$compose_file" build \
   agent-runtime-image agent-runtime-manager build-runner ssh-target ssh-target-legacy-node ssh-target-legacy-codex
 verify_agent_image
 # Build, application server, and browser runner use separate 2 GiB cgroups. Sharing only the
 # gateway network namespace preserves the production-like nip.io subdomain routing used by browser
 # preview tests without coupling process memory.
-docker compose -p "$project_name" -f "$compose_file" run --rm build-runner \
-  bash -lc 'rm -rf .output .nuxt .data-e2e/* /e2e-output/* && pnpm exec nuxt build --extends ./tests/e2e/nuxt-layer && cp -a .output/. /e2e-output/ && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD" --role admin && node scripts/create-user.mjs runtime-a managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-b managed-runtime-e2e-password --role user'
+docker compose -p "$project_name" -f "$compose_file" up -d --wait mysql
+docker compose -p "$project_name" -f "$compose_file" run --rm --no-deps build-runner \
+  bash -lc 'rm -rf .output .nuxt /e2e-output/* && pnpm exec nuxt build --extends ./tests/e2e/nuxt-layer && cp -a .output/. /e2e-output/ && node scripts/database/migrate.mjs && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD" --role admin && node scripts/create-user.mjs runtime-a managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-b managed-runtime-e2e-password --role user'
 docker compose -p "$project_name" -f "$compose_file" up -d --wait \
   agent-runtime-manager gateway-under-test browser-preview-ingress
 docker compose -p "$project_name" -f "$compose_file" run --rm test-runner \
