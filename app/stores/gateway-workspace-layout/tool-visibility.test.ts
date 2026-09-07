@@ -39,9 +39,13 @@ describe("workspace tool visibility", () => {
     const layout = useGatewayWorkspaceLayoutStore();
 
     expect(layout.isFilesPanelOpen("host:project:one")).toBe(false);
+    expect(layout.hasFilesPanelPreference("host:project:one")).toBe(false);
     layout.setFilesPanelOpen("host:project:one", true);
 
     expect(layout.isFilesPanelOpen("host:project:one")).toBe(true);
+    expect(layout.hasFilesPanelPreference("host:project:one")).toBe(true);
     expect(layout.isFilesPanelOpen("host:project:two")).toBe(false);
+    layout.setFilesPanelOpen("host:project:one", false);
+    expect(layout.hasFilesPanelPreference("host:project:one")).toBe(true);
   });
 });

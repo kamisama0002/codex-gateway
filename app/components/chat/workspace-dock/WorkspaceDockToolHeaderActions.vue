@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { IDockviewHeaderActionsProps } from "dockview-vue";
 import { PlusIcon } from "@lucide/vue";
+import { onBeforeUnmount, ref } from "vue";
 import { Button } from "@codex-gateway/ui/button";
 import {
   DropdownMenu,
@@ -14,10 +15,15 @@ import { requireWorkspaceDockUiContext } from "./context";
 const props = defineProps<{ params?: IDockviewHeaderActionsProps }>();
 if (!props.params) throw new Error("Dockview header action parameters are unavailable");
 const { toolCatalog } = requireWorkspaceDockUiContext();
+const groupVisible = ref(props.params.group.api.isVisible);
+const visibilitySubscription = props.params.group.api.onDidVisibilityChange((event) => {
+  groupVisible.value = event.isVisible;
+});
+onBeforeUnmount(() => visibilitySubscription.dispose());
 </script>
 
 <template>
-  <DropdownMenu v-if="props.params?.group.id === TOOLS_WORKSPACE_GROUP_ID">
+  <DropdownMenu v-if="props.params?.group.id === TOOLS_WORKSPACE_GROUP_ID && groupVisible">
     <DropdownMenuTrigger as-child>
       <Button
         data-testid="workspace-tool-menu-trigger"

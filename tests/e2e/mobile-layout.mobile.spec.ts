@@ -575,16 +575,19 @@ test("mobile momentum scrolling stays anchored after touchend while output strea
 test("mobile workspace header switches between Agent and full-width tools", async ({ page }) => {
   await openApp(page);
 
+  const mobileHeader = page.getByTestId("mobile-layout").locator("header").first();
   await expect(page.getByTestId("mobile-sidebar-toggle")).toBeVisible();
   await expect(page.getByTestId("mobile-workspace-tools-toggle")).toBeVisible();
   await expect(page.getByTestId("chat-main-pane")).toBeVisible();
   await expect(page.getByTestId("workspace-tool-home")).toBeHidden();
 
   await page.getByTestId("mobile-workspace-tools-toggle").click();
+  await expect(mobileHeader.getByText("工具", { exact: true })).toBeVisible();
   await expect(page.getByTestId("workspace-tool-home")).toBeVisible();
   await expect(page.getByTestId("chat-main-pane")).toBeHidden();
 
   await page.getByTestId("mobile-workspace-tools-toggle").click();
+  await expect(mobileHeader.getByText("工具", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("chat-main-pane")).toBeVisible();
   await expect(page.getByTestId("open-tmux-mobile-button")).toHaveCount(0);
   await expect(page.getByTestId("open-terminal-mobile-button")).toHaveCount(0);

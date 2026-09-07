@@ -148,7 +148,7 @@ services:
     <<: *ssh-target
 
   build-runner:
-    image: codex-gateway-e2e-runner
+    image: ${E2E_RUNNER_IMAGE:?E2E_RUNNER_IMAGE is required}
     mem_limit: 2g
     build:
       context: ../..
@@ -167,7 +167,7 @@ services:
       - build-output:/e2e-output
 
   gateway-under-test:
-    image: codex-gateway-e2e-runner
+    image: ${E2E_RUNNER_IMAGE:?E2E_RUNNER_IMAGE is required}
     mem_limit: 2g
     restart: unless-stopped
     depends_on:
@@ -249,7 +249,7 @@ services:
       retries: 30
 
   test-runner:
-    image: codex-gateway-e2e-runner
+    image: ${E2E_RUNNER_IMAGE:?E2E_RUNNER_IMAGE is required}
     mem_limit: 2g
     network_mode: service:gateway-under-test
     depends_on:
@@ -257,6 +257,8 @@ services:
         condition: service_healthy
     environment:
       CI: ${CI:-}
+      E2E_GATEWAY_USERNAME: ${E2E_GATEWAY_USERNAME:-e2e}
+      E2E_GATEWAY_PASSWORD: ${E2E_GATEWAY_PASSWORD:-codex-gateway-e2e-password}
       E2E_CONTAINERIZED: "1"
       E2E_DATABASE_PREPARED: "1"
       DATABASE_URL: mysql://codex_gateway_e2e:codex-gateway-e2e-password@mysql:3306/${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}

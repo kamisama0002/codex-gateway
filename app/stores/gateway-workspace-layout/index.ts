@@ -28,6 +28,8 @@ export const useGatewayWorkspaceLayoutStore = defineStore("gateway-workspace-lay
     activePanelByScope.value[scopeKey] ?? AGENT_WORKSPACE_PANEL_ID;
   const isToolSidebarOpen = (scopeKey: string) => toolSidebarOpenByScope.value[scopeKey] ?? true;
   const isFilesPanelOpen = (scopeKey: string) => filesPanelOpenByScope.value[scopeKey] === true;
+  const hasFilesPanelPreference = (scopeKey: string) =>
+    Object.prototype.hasOwnProperty.call(filesPanelOpenByScope.value, scopeKey);
 
   function saveLayout(scopeKey: string, layout: SerializedDockview) {
     layoutsByScope.value = { ...layoutsByScope.value, [scopeKey]: layout };
@@ -72,6 +74,7 @@ export const useGatewayWorkspaceLayoutStore = defineStore("gateway-workspace-lay
     activePanelFor,
     isToolSidebarOpen,
     isFilesPanelOpen,
+    hasFilesPanelPreference,
     saveLayout,
     setActivePanel,
     setToolSidebarOpen,

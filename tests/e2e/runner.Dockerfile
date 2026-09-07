@@ -23,6 +23,8 @@ RUN --mount=type=cache,id=codex-gateway-e2e-pnpm-store,target=/pnpm/store \
   pnpm install --frozen-lockfile
 
 COPY . /workspace/source
+RUN test -f /workspace/source/playwright.config.ts \
+  && test -f /workspace/source/tests/e2e/workspace-tool-sidebar.spec.ts
 
 COPY tests/e2e/runner-entrypoint.sh /usr/local/bin/codex-gateway-e2e-runner
 COPY tests/e2e/gateway-supervisor.sh /usr/local/bin/codex-gateway-e2e-supervisor

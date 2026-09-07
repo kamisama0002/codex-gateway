@@ -35,8 +35,8 @@ export function useWorkspaceDockLifecycle(options: {
     api,
     activeScopeKey: () => activeScopeKey,
   });
-  function activate(panelId: string) {
-    options.showPanel(panelId);
+  function activate(panelId: string, reveal = true) {
+    if (reveal) options.showPanel(panelId);
     const panel = api.value?.getPanel(panelId);
     if (!panel) return;
     panel.api.setActive();
@@ -114,12 +114,18 @@ export function useWorkspaceDockLifecycle(options: {
     // addPanel path used by reconcile performs that first mount for a new unsaved scope.
     persistence.setDockedLayout(null);
     options.reconcile(api.value);
-    activate(workspaceLayout.activePanelFor(scopeKey));
+    activate(restoredActivePanel(scopeKey), false);
   }
 
   function restoreScope(scopeKey: string) {
     if (!api.value) return;
     const saved = workspaceLayout.layoutFor(scopeKey);
+    if (
+      saved?.panels[FILES_WORKSPACE_PANEL_ID] !== undefined &&
+      !workspaceLayout.hasFilesPanelPreference(scopeKey)
+    ) {
+      workspaceLayout.setFilesPanelOpen(scopeKey, true);
+    }
     const dockedLayoutState = saved ? dockedLayout(saved) : null;
     persistence.setDockedLayout(dockedLayoutState);
     try {
@@ -131,7 +137,14 @@ export function useWorkspaceDockLifecycle(options: {
       api.value.fromJSON(options.defaultLayout(api.value));
     }
     options.reconcile(api.value);
-    activate(workspaceLayout.activePanelFor(scopeKey));
+    activate(restoredActivePanel(scopeKey), false);
+  }
+
+  function restoredActivePanel(scopeKey: string) {
+    const panelId = workspaceLayout.activePanelFor(scopeKey);
+    return options.toolSidebarOpen.value || panelId === AGENT_WORKSPACE_PANEL_ID
+      ? panelId
+      : AGENT_WORKSPACE_PANEL_ID;
   }
 
   async function restoreRequestedPanel() {

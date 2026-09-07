@@ -44,7 +44,7 @@ watch([selectedHostId, selectedProjectId, selectedThreadId], () => {
     class="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-canvas-soft text-ink"
   >
     <ChatWorkspace layout="mobile">
-      <template #mobile-header-start>
+      <template #mobile-header-start="{ toolsOpen }">
         <Sheet v-model:open="sidebarOpen">
           <Button
             data-testid="mobile-sidebar-toggle"
@@ -66,7 +66,9 @@ watch([selectedHostId, selectedProjectId, selectedThreadId], () => {
           </SheetContent>
         </Sheet>
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium">{{ mobileTitle }}</p>
+          <p class="truncate text-sm font-medium">
+            {{ toolsOpen ? $t("app.workspaceTools") : mobileTitle }}
+          </p>
         </div>
       </template>
     </ChatWorkspace>

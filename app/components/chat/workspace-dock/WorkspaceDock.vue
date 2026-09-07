@@ -174,7 +174,7 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
       :tools-open="toolSidebarOpen"
       @toggle-tools="toggleToolSidebar"
     >
-      <template #start><slot name="mobile-header-start" /></template>
+      <template #start><slot name="mobile-header-start" :tools-open="toolSidebarOpen" /></template>
     </MobileWorkspaceHeader>
     <!--
       h-0 + flex-1 gives the Dockview host a definite remaining height. Keeping an auto height here

@@ -8,11 +8,12 @@ import {
   PictureInPicture2Icon,
   Rows3Icon,
 } from "@lucide/vue";
-import { onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import { Button } from "@codex-gateway/ui/button";
 
 import { floatDockItem, popoutDockItem } from "./actions";
 import { requireWorkspaceDockUiContext } from "./context";
+import { AGENT_WORKSPACE_GROUP_ID, TOOLS_WORKSPACE_GROUP_ID } from "./workspace-layout";
 
 const props = defineProps<{ params?: IDockviewHeaderActionsProps }>();
 if (!props.params) throw new Error("Dockview header action parameters are unavailable");
@@ -20,10 +21,36 @@ const params = props.params;
 const { t } = useI18n();
 const dockUi = requireWorkspaceDockUiContext();
 const location = ref(params.group.api.location.type);
+const groupVisible = ref(params.group.api.isVisible);
 const locationSubscription = params.group.api.onDidLocationChange((event) => {
   location.value = event.location.type;
+  syncDetachmentAvailability();
 });
-onBeforeUnmount(() => locationSubscription.dispose());
+const visibilitySubscription = params.group.api.onDidVisibilityChange((event) => {
+  groupVisible.value = event.isVisible;
+});
+const canDetach = ref(false);
+const layoutSubscription = params.containerApi.onDidLayoutChange(syncDetachmentAvailability);
+const detachmentDisabled = computed(() => location.value === "grid" && !canDetach.value);
+syncDetachmentAvailability();
+onBeforeUnmount(() => {
+  locationSubscription.dispose();
+  visibilitySubscription.dispose();
+  layoutSubscription.dispose();
+});
+
+function syncDetachmentAvailability() {
+  const referenceGroupId = oppositeFixedGroupId();
+  const referenceGroup = params.containerApi.groups.find(({ id }) => id === referenceGroupId);
+  canDetach.value =
+    referenceGroup?.api.location.type === "grid" && referenceGroup.api.isVisible === true;
+}
+
+function oppositeFixedGroupId() {
+  return params.group.id === AGENT_WORKSPACE_GROUP_ID
+    ? TOOLS_WORKSPACE_GROUP_ID
+    : AGENT_WORKSPACE_GROUP_ID;
+}
 
 function toggleMaximize() {
   const api = params.group.api;
@@ -36,13 +63,22 @@ function toggleMaximize() {
 
 function toggleFloating() {
   if (location.value === "floating" || location.value === "popout") {
-    params.group.api.moveTo({ position: "right" });
+    const referenceGroup = params.containerApi.groups.find(
+      ({ id, api }) => id === oppositeFixedGroupId() && api.location.type === "grid",
+    );
+    if (!referenceGroup) return;
+    params.group.api.moveTo({
+      group: referenceGroup,
+      position: params.group.id === AGENT_WORKSPACE_GROUP_ID ? "left" : "right",
+    });
   } else {
+    if (detachmentDisabled.value) return;
     floatDockItem(params.containerApi, params.group);
   }
 }
 
 function popout() {
+  if (detachmentDisabled.value) return;
   void popoutDockItem(params.containerApi, params.group, {
     title: t("app.popupBlocked"),
     description: t("app.popupBlockedDescription"),
@@ -51,7 +87,7 @@ function popout() {
 </script>
 
 <template>
-  <div class="flex h-full items-center gap-px px-0.5">
+  <div v-if="groupVisible" class="flex h-full items-center gap-px px-0.5">
     <Button
       variant="ghost"
       size="icon-xs"
@@ -65,6 +101,7 @@ function popout() {
       variant="ghost"
       size="icon-xs"
       class="size-6"
+      :disabled="detachmentDisabled"
       :aria-label="$t('app.floatPanel')"
       @click="toggleFloating"
     >
@@ -77,6 +114,7 @@ function popout() {
       variant="ghost"
       size="icon-xs"
       class="size-6"
+      :disabled="detachmentDisabled"
       :aria-label="$t('app.popoutPanel')"
       @click="popout"
     >

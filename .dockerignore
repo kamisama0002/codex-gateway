@@ -17,6 +17,4 @@ logs
 .env.*
 !.env.example
 third_party
-tests
-playwright.config.ts
 README.md

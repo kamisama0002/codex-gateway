@@ -20,6 +20,8 @@ fi
 
 export E2E_UID="${E2E_UID:-12345}"
 export E2E_GID="${E2E_GID:-12345}"
+export E2E_GATEWAY_USERNAME="${E2E_GATEWAY_USERNAME:-e2e}"
+export E2E_GATEWAY_PASSWORD="${E2E_GATEWAY_PASSWORD:-codex-gateway-e2e-password}"
 export E2E_MYSQL_DATABASE="$database_name"
 export E2E_CODEX_HOME="${E2E_CODEX_HOME:-$HOME/.codex}"
 if [ -z "${E2E_CODEX_PROVIDER_KEY_FILE:-}" ]; then
@@ -31,8 +33,9 @@ if [ -z "${E2E_CODEX_PROVIDER_KEY_FILE:-}" ]; then
 fi
 export E2E_AGENT_NETWORK_NAME="${E2E_AGENT_NETWORK_NAME:-$project_name-agent-runtime}"
 export E2E_RUNTIME_MANAGER_NETWORK_NAME="${E2E_RUNTIME_MANAGER_NETWORK_NAME:-$project_name-runtime-manager}"
+export E2E_RUNNER_IMAGE="${E2E_RUNNER_IMAGE:-$project_name-runner}"
 export E2E_MANAGED_LABEL_VALUE="$project_name"
-export RUNTIME_MANAGER_SHARED_SECRET="${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}"
+export RUNTIME_MANAGER_SHARED_SECRET="${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret-$project_name}"
 
 cleanup_managed_resources() {
   local container_ids=()
@@ -115,6 +118,18 @@ process.stdin.on("end", () => {
     }
     if (databaseUrl.pathname !== `/${process.env.E2E_MYSQL_DATABASE ?? ""}`) {
       throw new Error(`${name} must use the unique E2E MySQL database`);
+    }
+  }
+  for (const name of ["build-runner", "test-runner"]) {
+    for (const key of ["E2E_GATEWAY_USERNAME", "E2E_GATEWAY_PASSWORD"]) {
+      if (services[name]?.environment?.[key] !== process.env[key]) {
+        throw new Error(`${name} must receive ${key}`);
+      }
+    }
+  }
+  for (const name of ["agent-runtime-manager", "gateway-under-test", "test-runner"]) {
+    if (services[name]?.environment?.RUNTIME_MANAGER_SHARED_SECRET !== process.env.RUNTIME_MANAGER_SHARED_SECRET) {
+      throw new Error(`${name} must receive the isolated Runtime Manager secret`);
     }
   }
   const socket = "/var/run/docker.sock";
