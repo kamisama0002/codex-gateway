@@ -157,6 +157,9 @@ describe("MySQL gateway database", () => {
     await db.execute("CREATE TABLE samples (id INT PRIMARY KEY, value_text VARCHAR(32) NOT NULL)");
     await db.transaction(async (tx) => {
       await tx.execute("INSERT INTO samples (id, value_text) VALUES (?, ?)", [1, "committed"]);
+      await expect(
+        tx.one("SELECT value_text FROM samples WHERE id = ? FOR UPDATE", [1]),
+      ).resolves.toEqual({ value_text: "committed" });
     });
     await expect(
       db.transaction(async (tx) => {

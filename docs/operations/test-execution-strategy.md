@@ -37,6 +37,10 @@ Compose 项目生成唯一密钥，并检查 Runtime Manager、Gateway 和 test 
 如果测试覆盖自定义登录账号，`E2E_GATEWAY_USERNAME` 和 `E2E_GATEWAY_PASSWORD` 必须同时传入
 build runner 和 test runner。只让 build runner 创建新用户、但 Playwright 仍使用默认账号，会把登录失败误判为功能回归。
 
+runner 镜像还必须在固定的 `COREPACK_HOME` 中准备 pnpm。生产构建完成后才让 test runner 临时访问
+npm registry，会导致“构建成功、0 条测试、启动阶段网络超时”的假失败。镜像构建后应在
+`--network none` 且切换运行时 `HOME` 的条件下验证 `pnpm --version`。
+
 ## 测试层级
 
 | 层级         | 命令                                        | 适用范围                               | 是否需要每次运行                                      |

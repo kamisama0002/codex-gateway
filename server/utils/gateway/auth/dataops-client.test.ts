@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDataOpsSsoClient } from "./dataops-client";
+import { dataOpsClaimsSchema } from "./dataops-claims";
 
 const claims = {
   audience: "codex-gateway",
@@ -18,6 +19,14 @@ const claims = {
   authzVersion: 3,
   issuedAt: "2026-09-04T00:00:00.000Z",
   ticket: null,
+};
+
+const runtimePolicy = {
+  version: 1 as const,
+  imageAlias: "stable",
+  memoryMiB: 2048,
+  cpuCores: 2,
+  pidsLimit: 256,
 };
 
 describe("DataOps SSO client", () => {
@@ -41,6 +50,40 @@ describe("DataOps SSO client", () => {
     await expect(client.exchange("pct_once")).resolves.toEqual(claims);
     expect(seenUrl).toBe("http://dataops.internal:8888/api/codex-gateway/portal-tickets/exchange");
     expect(seenAuthorization).toBe("Bearer shared-secret");
+  });
+
+  it("accepts a strict version 1 runtime policy", () => {
+    expect(dataOpsClaimsSchema.parse({ ...claims, runtimePolicy }).runtimePolicy).toEqual(
+      runtimePolicy,
+    );
+  });
+
+  it("keeps claims without a runtime policy valid during rollout", () => {
+    expect(dataOpsClaimsSchema.parse(claims)).not.toHaveProperty("runtimePolicy");
+  });
+
+  it("accepts an offset-form issuedAt for a runtime policy before persistence normalizes it", () => {
+    const issuedAt = "2026-09-04T02:00:00.000+02:00";
+
+    expect(dataOpsClaimsSchema.parse({ ...claims, issuedAt, runtimePolicy }).issuedAt).toBe(
+      issuedAt,
+    );
+  });
+
+  it.each([
+    ["unknown fields", { ...runtimePolicy, containerId: "container-private" }],
+    ["unsupported versions", { ...runtimePolicy, version: 2 }],
+    ["non-finite CPU", { ...runtimePolicy, cpuCores: Number.NaN }],
+    ["invalid image aliases", { ...runtimePolicy, imageAlias: "Latest Image" }],
+    ["memory below the minimum", { ...runtimePolicy, memoryMiB: 127 }],
+    ["memory above the maximum", { ...runtimePolicy, memoryMiB: 16_385 }],
+    ["CPU below the minimum", { ...runtimePolicy, cpuCores: 0.24 }],
+    ["CPU above the maximum", { ...runtimePolicy, cpuCores: 8.01 }],
+    ["CPU with more than two decimals", { ...runtimePolicy, cpuCores: 1.001 }],
+    ["PID limits below the minimum", { ...runtimePolicy, pidsLimit: 31 }],
+    ["PID limits above the maximum", { ...runtimePolicy, pidsLimit: 4097 }],
+  ])("rejects runtime policies with %s", (_case, invalidPolicy) => {
+    expect(() => dataOpsClaimsSchema.parse({ ...claims, runtimePolicy: invalidPolicy })).toThrow();
   });
 
   it("rejects invalid audiences without leaking the ticket or shared secret", async () => {

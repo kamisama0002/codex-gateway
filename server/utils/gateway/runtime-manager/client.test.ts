@@ -5,6 +5,55 @@ import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import { RuntimeManagerClient, RuntimeManagerClientError } from "./client";
 
 describe("RuntimeManagerClient", () => {
+  it("signs requested start resources in the exact request body", async () => {
+    const timestamp = 1_788_131_200_000;
+    const nonce = "resources-nonce";
+    const secret = "manager-shared-secret";
+    const resources = {
+      memoryBytes: 1024 * 1024 * 1024,
+      nanoCpus: 1_500_000_000,
+      pidsLimit: 128,
+    };
+    const requestBody = JSON.stringify({ runtimeId: "runtime_01", resources });
+    const bodySha256 = createHash("sha256").update(requestBody).digest("hex");
+    const signature = createHmac("sha256", secret)
+      .update(`POST\n/v1/runtimes/start\n${timestamp}\n${nonce}\n${bodySha256}`)
+      .digest("hex");
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({
+        runtimeId: "runtime_01",
+        containerId: "container-01",
+        imageAlias: "stable",
+        imageVersion: "0.151.0",
+        status: "running",
+        endpoint: {
+          runtimeId: "runtime_01",
+          websocketUrl: "ws://runtime-01:4500",
+          serviceToken: "runtime-token",
+        },
+        actualResources: resources,
+      }),
+    );
+    const client = new RuntimeManagerClient({
+      baseUrl: "http://runtime-manager:8787",
+      secret,
+      fetch,
+      now: () => timestamp,
+      nonce: () => nonce,
+    });
+
+    await expect(client.start("runtime_01", resources)).resolves.toMatchObject({
+      actualResources: resources,
+    });
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({
+      body: requestBody,
+      headers: {
+        "x-runtime-body-sha256": bodySha256,
+        "x-runtime-signature": signature,
+      },
+    });
+  });
+
   it("signs the exact request body and validates a lifecycle response", async () => {
     const timestamp = 1_788_131_200_000;
     const nonce = "fixed-nonce";
@@ -30,6 +79,11 @@ describe("RuntimeManagerClient", () => {
           runtimeId: "runtime_01",
           websocketUrl: "ws://runtime-01:4500",
           serviceToken: "runtime-token",
+        },
+        actualResources: {
+          memoryBytes: 2 * 1024 * 1024 * 1024,
+          nanoCpus: 2_000_000_000,
+          pidsLimit: 256,
         },
       }),
     );

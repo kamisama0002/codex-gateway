@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dataOpsRuntimePolicySchema } from "../runtime-manager/runtime-policy";
 
 export const dataOpsClaimsSchema = z
   .object({
@@ -20,6 +21,7 @@ export const dataOpsClaimsSchema = z
     permissions: z.array(z.string().trim().min(1).max(256)).default([]),
     authzVersion: z.number().int().positive(),
     issuedAt: z.string().refine((value) => Number.isFinite(Date.parse(value)), "Invalid issuedAt"),
+    runtimePolicy: dataOpsRuntimePolicySchema.optional(),
     ticket: z.null().optional(),
   })
   .strict();

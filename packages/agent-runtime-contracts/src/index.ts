@@ -15,6 +15,8 @@ export type {
 export {
   managedRuntimeEndpointSchema,
   managedRuntimeStatusSchema,
+  managedRuntimeStatusViewSchema,
+  runtimeResourcePolicySchema,
   runtimeStatusSchema,
   runtimeTypeSchema,
   serializeManagedRuntimeStatus,
@@ -23,6 +25,8 @@ export {
 export type {
   ManagedRuntimeEndpoint,
   ManagedRuntimeStatus,
+  ManagedRuntimeStatusView,
+  RuntimeResourcePolicy,
   RuntimeStatus,
   RuntimeType,
   UserAgentRuntimeRecord,

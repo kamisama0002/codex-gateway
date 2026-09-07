@@ -1,6 +1,7 @@
 FROM mcr.microsoft.com/playwright:v1.62.0-noble
 
 ENV PNPM_HOME=/pnpm
+ENV COREPACK_HOME=/corepack
 ENV PATH=$PNPM_HOME:$PATH
 
 RUN apt-get update \

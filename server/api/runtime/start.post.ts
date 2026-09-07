@@ -5,10 +5,14 @@ import { runtimeService } from "../../utils/gateway/runtime-manager/runtime-serv
 
 export async function startRuntimeForEvent(
   event: H3Event,
-  service: { start(userId: number, actorUserId: number): Promise<unknown> } = runtimeService,
+  service: {
+    start(userId: number, actorUserId: number): Promise<unknown>;
+    getStatusView(userId: number): Promise<unknown>;
+  } = runtimeService,
 ) {
   const user = requireAuthenticatedUser(event);
-  return await service.start(user.id, user.id);
+  await service.start(user.id, user.id);
+  return await service.getStatusView(user.id);
 }
 
 export default defineGatewayEventHandler(async (event) => await startRuntimeForEvent(event));
