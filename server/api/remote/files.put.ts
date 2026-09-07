@@ -1,21 +1,22 @@
 import { createError, getHeader, getValidatedQuery, readRawBody } from "h3";
 import type { RemoteFileWriteResult } from "~~/shared/types";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 import {
   defineGatewayEventHandler,
   hostLogContext,
   setGatewayRequestLogContext,
 } from "../../utils/gateway/http/errors";
 import { remoteFileEtag } from "../../utils/gateway/http/remote-file-response";
-import { requireRecord } from "../../utils/gateway/http/validation/common";
 import { remoteFileSchema } from "../../utils/gateway/http/validation/remote";
 import { remoteFiles } from "../../utils/gateway/infra/host-services";
-import { hostStore } from "../../utils/gateway/state/hosts";
+import { requireWorkspaceHost } from "../../utils/gateway/runtime-manager/local-workspace";
+import { threadBroker } from "../../utils/gateway/runtime/broker";
 
 const MAX_EDITABLE_FILE_BYTES = 5 * 1024 * 1024;
 
 export default defineGatewayEventHandler(async (event): Promise<RemoteFileWriteResult> => {
   const query = await getValidatedQuery(event, (value) => remoteFileSchema.parse(value));
-  const host = requireRecord(hostStore.getWithSecret(query.hostId), "Host not found");
+  const host = await requireWorkspaceHost(query.hostId);
   setGatewayRequestLogContext(event, "remote/files.put", {
     ...hostLogContext(host),
     path: query.path,
@@ -29,9 +30,11 @@ export default defineGatewayEventHandler(async (event): Promise<RemoteFileWriteR
 
   const force = getHeader(event, "x-codex-force-overwrite") === "true";
   const expectedEtag = getHeader(event, "if-match");
-  const current = await remoteFiles.statRemoteFile(host, query.path, {
-    maxSize: Number.MAX_SAFE_INTEGER,
-  });
+  const current = isManagedRuntimeHost(host)
+    ? await threadBroker.statFile(host, query.path)
+    : await remoteFiles.statRemoteFile(host, query.path, {
+        maxSize: Number.MAX_SAFE_INTEGER,
+      });
   const currentEtag = remoteFileEtag(current.size, current.modifiedAt);
   if (
     !force &&
@@ -48,7 +51,9 @@ export default defineGatewayEventHandler(async (event): Promise<RemoteFileWriteR
     });
   }
 
-  const written = await remoteFiles.writeTextFile(host, query.path, body);
+  const written = isManagedRuntimeHost(host)
+    ? await threadBroker.writeFile(host, query.path, body)
+    : await remoteFiles.writeTextFile(host, query.path, body);
   return {
     etag: remoteFileEtag(written.size, written.modifiedAt),
     lastModified: new Date(written.modifiedAt).toUTCString(),
