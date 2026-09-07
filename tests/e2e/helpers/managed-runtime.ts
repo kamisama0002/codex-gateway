@@ -81,9 +81,6 @@ const BUILT_IN_PINNED_SECTION_NAME = "Pinned";
 // but Compose service DNS resolves the restarted container's current address on the default network.
 const MANAGED_RUNTIME_GATEWAY_ORIGIN =
   process.env.E2E_MANAGED_RUNTIME_GATEWAY_URL ?? "http://gateway-under-test:3100";
-const MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE =
-  process.env.E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE ??
-  "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations.json";
 const ALL_THREAD_SOURCE_KINDS = [
   "cli",
   "vscode",
@@ -271,7 +268,7 @@ export async function recordManagedRuntimeResourceExpectations(
     ]),
   );
   await writer(
-    MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE,
+    requiredEnvironment("E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE"),
     `${JSON.stringify(artifact, null, 2)}\n`,
     "utf8",
   );

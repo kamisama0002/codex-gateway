@@ -90,6 +90,7 @@ test("applies DataOps tenant policies to isolated runtimes and preserves workspa
     { waitUntil: "domcontentloaded" },
   );
   await expect(page.getByTestId("desktop-layout")).toBeVisible();
+  await expectDataOpsTicketRejected(request, FIRST_POLICY_REFRESH_BROWSER_TICKET);
   await page.getByTestId("settings-toggle").click();
   const settings = page.getByTestId("settings-panel");
   await settings.getByRole("tab", { name: /Agent/ }).click();

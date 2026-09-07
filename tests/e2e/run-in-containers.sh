@@ -5,8 +5,14 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd "$script_dir/../.." && pwd)"
 compose_file="$script_dir/docker-compose.yml"
 project_name="${E2E_COMPOSE_PROJECT_NAME:-codex-gateway-e2e}-$$"
+if [[ ! "$project_name" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+  printf 'E2E Compose project name is invalid: %s\n' "$project_name" >&2
+  exit 64
+fi
 database_name="codex_gateway_e2e_$$"
-resource_expectations_file="$project_dir/test-results/managed-runtime-resource-expectations.json"
+resource_expectations_filename="managed-runtime-resource-expectations-$project_name.json"
+resource_expectations_file="$project_dir/test-results/$resource_expectations_filename"
+container_resource_expectations_file="/workspace/codex-gateway/test-results/$resource_expectations_filename"
 agent_image_is_generated=0
 runtime_manager_image_is_generated=0
 runner_image_is_generated=0
@@ -55,9 +61,12 @@ export E2E_AGENT_IMAGE="$agent_image"
 export E2E_RUNTIME_MANAGER_NETWORK_NAME="${E2E_RUNTIME_MANAGER_NETWORK_NAME:-$project_name-runtime-manager}"
 export E2E_RUNTIME_MANAGER_IMAGE="$runtime_manager_image"
 export E2E_RUNNER_IMAGE="$runner_image"
-export E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE="/workspace/codex-gateway/test-results/managed-runtime-resource-expectations.json"
+export E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE="$container_resource_expectations_file"
 export E2E_MANAGED_LABEL_VALUE="$project_name"
 export RUNTIME_MANAGER_SHARED_SECRET="${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}"
+if [ "${E2E_PRINT_RESOURCE_EXPECTATIONS_FILE:-0}" = "1" ]; then
+  printf '%s\n' "$resource_expectations_file"
+fi
 
 cleanup_managed_resources() {
   local container_ids=()
@@ -154,6 +163,9 @@ process.stdin.on("end", () => {
     if (services[name]?.image !== process.env.E2E_RUNNER_IMAGE) {
       throw new Error(`${name} must use the exact generated E2E runner tag`);
     }
+  }
+  if (services["test-runner"]?.environment?.E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE !== process.env.E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE) {
+    throw new Error("test-runner must use the exact per-project Runtime expectation artifact");
   }
   for (const name of ["build-runner", "gateway-under-test", "test-runner"]) {
     const databaseUrl = new URL(services[name]?.environment?.DATABASE_URL ?? "");

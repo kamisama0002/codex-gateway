@@ -275,6 +275,10 @@ describe("managed Runtime E2E helper", () => {
 
   it("records only runtime ids and exact policy resources for the Docker postcondition", async () => {
     vi.stubEnv("RUNTIME_MANAGER_SHARED_SECRET", "shared-secret");
+    vi.stubEnv(
+      "E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE",
+      "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations-project-a-101.json",
+    );
     const writes: Array<{ path: unknown; data: unknown; encoding: unknown }> = [];
     const session = {
       token: "gateway-session-token",
@@ -310,11 +314,31 @@ describe("managed Runtime E2E helper", () => {
     });
     expect(writes).toEqual([
       {
-        path: "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations.json",
+        path: "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations-project-a-101.json",
         data: `${JSON.stringify(artifact, null, 2)}\n`,
         encoding: "utf8",
       },
     ]);
     expect(JSON.stringify(artifact)).not.toContain(session.token);
+  });
+
+  it("writes concurrent projects to distinct Runtime expectation artifacts", async () => {
+    vi.stubEnv("RUNTIME_MANAGER_SHARED_SECRET", "shared-secret");
+    const paths: unknown[] = [];
+    for (const projectName of ["project-a-101", "project-b-202"]) {
+      vi.stubEnv(
+        "E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE",
+        `/workspace/codex-gateway/test-results/managed-runtime-resource-expectations-${projectName}.json`,
+      );
+      await recordManagedRuntimeResourceExpectations([], async (path) => {
+        paths.push(path);
+      });
+    }
+
+    expect(paths).toEqual([
+      "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations-project-a-101.json",
+      "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations-project-b-202.json",
+    ]);
+    expect(new Set(paths).size).toBe(2);
   });
 });
