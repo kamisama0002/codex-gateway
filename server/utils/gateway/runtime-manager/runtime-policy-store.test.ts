@@ -43,7 +43,7 @@ describe("runtimePolicyStore", () => {
       policyInput(1, {
         policy: policy({ imageAlias: "high-memory", memoryMiB: 4096, cpuCores: 3.5 }),
         sourceIssuedAt: "2026-09-04T00:02:00.000Z",
-        now: "2026-09-04T00:03:00.000Z",
+        now: "Fri Sep 04 2026 00:03:00 GMT+0000 (Coordinated Universal Time)",
       }),
     );
 

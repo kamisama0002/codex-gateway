@@ -51,6 +51,7 @@ export const assignedRuntimePolicySchema: z.ZodType<AssignedRuntimePolicy> = z
 
 export function assignRuntimePolicy(input: AssignRuntimePolicyInput): AssignedRuntimePolicy {
   const policy = dataOpsRuntimePolicySchema.parse(input.policy);
+  const now = new Date(input.now).toISOString();
   return assignedRuntimePolicySchema.parse({
     userId: input.userId,
     tenantId: input.tenantId,
@@ -60,8 +61,8 @@ export function assignRuntimePolicy(input: AssignRuntimePolicyInput): AssignedRu
     cpuMillicores: Math.round(policy.cpuCores * 1000),
     pidsLimit: policy.pidsLimit,
     sourceIssuedAt: new Date(input.sourceIssuedAt).toISOString(),
-    createdAt: input.now,
-    updatedAt: input.now,
+    createdAt: now,
+    updatedAt: now,
   });
 }
 
