@@ -131,14 +131,17 @@ test("shows effort and compact context usage without mobile approval controls", 
   await page.locator('[data-slot="dialog-overlay"]').click({ position: { x: 4, y: 4 } });
   await expect(modelSearch).toBeHidden();
 
-  await page.locator('input[type="file"]').setInputFiles({
-    name: "mobile-preview.png",
-    mimeType: "image/png",
-    buffer: Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-      "base64",
-    ),
-  });
+  await page
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({
+      name: "mobile-preview.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
   await expect(page.getByAltText("mobile-preview.png")).toBeVisible();
   await page.getByRole("button", { name: "移除附件" }).click();
   await expect(page.getByAltText("mobile-preview.png")).toHaveCount(0);
