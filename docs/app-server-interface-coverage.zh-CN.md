@@ -5,7 +5,7 @@
 ## 1. 基准与判定口径
 
 - Gateway 代码基准：本文档所在提交。
-- Gateway 声明支持的 Codex 版本：`0.151.0`，定义于 `server/utils/gateway/infra/codex/codex-version.ts`。
+- Gateway 声明支持的 Codex 版本：`0.153.4`，定义于 `server/utils/gateway/infra/codex/codex-version.ts`。
 - App Server 协议源码基准：`third_party/openai-codex` 提交 `78c290807ce710180111df227df3b7a4fe845452`。
 - 协议定义来源：`third_party/openai-codex/codex-rs/app-server-protocol/src/protocol/common.rs`。
 - Gateway 扫描范围：`app/`、`server/`、`shared/` 下的生产 TypeScript/Vue 源码，不把测试和第三方源码计入已实现。

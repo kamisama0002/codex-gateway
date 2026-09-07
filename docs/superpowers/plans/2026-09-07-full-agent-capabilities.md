@@ -39,7 +39,7 @@
 - Produces: `SUPPORTED_CODEX_VERSION = "0.153.4"` as the single Gateway version gate.
 - Produces: Docker label `com.qiancheng.codex.version=0.153.4` and image alias metadata with the same version.
 
-- [ ] **Step 1: Write the failing version policy assertions**
+- [x] **Step 1: Write the failing version policy assertions**
 
 Update the image policy test to assert these literal values:
 
@@ -49,17 +49,17 @@ expect(readFileSync(dockerfilePath, "utf8")).toContain("@openai/codex@0.153.4");
 expect(SUPPORTED_CODEX_VERSION).toBe("0.153.4");
 ```
 
-- [ ] **Step 2: Run the focused tests and observe the old-version failures**
+- [x] **Step 2: Run the focused tests and observe the old-version failures**
 
 Run: `pnpm exec vitest run packages/agent-runtime-manager/src/image-policy.test.ts server/utils/gateway/infra/codex/codex-version.test.ts`
 
 Expected: FAIL because production files still contain `0.151.0`.
 
-- [ ] **Step 3: Update all runtime version gates**
+- [x] **Step 3: Update all runtime version gates**
 
 Replace only the declared Codex version, image tag and policy label. Do not change application dependencies or unrelated image tags.
 
-- [ ] **Step 4: Generate the 0.153.4 App Server schemas in an isolated container**
+- [x] **Step 4: Generate the 0.153.4 App Server schemas in an isolated container**
 
 Run:
 
@@ -70,7 +70,7 @@ docker run --rm --entrypoint codex codex-agent-runtime:0.153.4-protocol app-serv
 
 Compare the generated client requests, server requests, notifications and v2 schemas with Gateway parsers. Add parser changes only for methods consumed in later tasks.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run the focused Vitest command again, then `pnpm typecheck` and `git diff --check`.
 
@@ -160,7 +160,7 @@ Use a temporary `CODEX_HOME` containing a manual MCP entry, execute the entrypoi
 ```ts
 expect(readFileSync(configPath, "utf8")).toContain("[mcp_servers.user_server]");
 expect(capturedArgs).toContain('model_provider="codex_gateway"');
-expect(capturedArgs).toContain("features.memory_tool=true");
+expect(capturedArgs).toContain("features.memories=true");
 expect(capturedArgs.join(" ")).not.toContain(providerToken);
 ```
 

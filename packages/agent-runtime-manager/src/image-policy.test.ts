@@ -1,13 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,7 +58,7 @@ describe("Agent runtime image policy", () => {
         readOnlyRootFilesystem: true,
         user: "10001:10001",
         labels: {
-          "com.qiancheng.codex.version": "0.151.0",
+          "com.qiancheng.codex.version": "0.153.4",
         },
       },
     });
@@ -148,8 +141,7 @@ describe("Agent runtime image policy", () => {
     chmodSync(fakeChildPath, 0o755);
 
     try {
-      const shell =
-        process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+      const shell = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
       const result = spawnSync(
         shell,
         [
@@ -212,9 +204,9 @@ describe("Agent runtime image policy", () => {
         "  printf '%s\\n' token-present",
         "else",
         "  printf '%s\\n' token-unset",
-        "fi > \"$E2E_CAPTURE_PATH\"",
+        'fi > "$E2E_CAPTURE_PATH"',
         'for argument in "$@"; do',
-        "  printf '%s\\n' \"$argument\" >> \"$E2E_CAPTURE_PATH\"",
+        '  printf \'%s\\n\' "$argument" >> "$E2E_CAPTURE_PATH"',
         "done",
       ].join("\n"),
       { mode: 0o755 },
@@ -222,8 +214,7 @@ describe("Agent runtime image policy", () => {
     chmodSync(fakeCodexPath, 0o755);
 
     try {
-      const shell =
-        process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+      const shell = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
       const shellFixtureDirectory = shellPath(fixtureDirectory);
       const result = spawnSync(shell, [shellPath(agentEntrypointPath)], {
         encoding: "utf8",
@@ -251,7 +242,7 @@ describe("Agent runtime image policy", () => {
       const entrypoint = readFileSync(agentEntrypointPath, "utf8");
       expect(entrypoint).not.toContain("--remote-auth-token-env");
       expect(entrypoint).not.toContain("--ws-token-file");
-      expect(entrypoint).toContain('unset CODEX_REMOTE_TOKEN');
+      expect(entrypoint).toContain("unset CODEX_REMOTE_TOKEN");
     } finally {
       rmSync(fixtureDirectory, { force: true, recursive: true });
     }

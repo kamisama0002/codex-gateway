@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd "$script_dir/../.." && pwd)"
 compose_file="$script_dir/docker-compose.yml"
 project_name="${E2E_COMPOSE_PROJECT_NAME:-codex-gateway-e2e}"
-agent_image="codex-agent-runtime:0.151.0"
+agent_image="codex-agent-runtime:0.153.4"
 e2e_managed_label="com.codex-gateway.e2e-managed=$project_name"
 
 if [ "${1:-}" = "--turn" ]; then
@@ -122,7 +122,7 @@ process.stdin.on("end", () => {
 verify_agent_image() {
   assert_equal "Agent image user" "10001:10001" \
     "$(docker image inspect --format '{{.Config.User}}' "$agent_image")"
-  assert_equal "Agent image Codex version label" "0.151.0" \
+  assert_equal "Agent image Codex version label" "0.153.4" \
     "$(docker image inspect --format '{{index .Config.Labels "com.qiancheng.codex.version"}}' "$agent_image")"
   assert_equal "Agent image exposed port" "4500/tcp" \
     "$(docker image inspect --format '{{range $port, $_ := .Config.ExposedPorts}}{{$port}}{{end}}' "$agent_image")"
@@ -186,7 +186,7 @@ verify_managed_runtime_docker_state() {
       "$(docker inspect --format '{{json .HostConfig.Tmpfs}}' "$container_id")"
     assert_equal "managed Agent private network" "$E2E_AGENT_NETWORK_NAME" \
       "$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$container_id")"
-    assert_equal "managed Agent image version" "0.151.0" \
+    assert_equal "managed Agent image version" "0.153.4" \
       "$(docker inspect --format '{{index .Config.Labels "com.codex-gateway.image-version"}}' "$container_id")"
     assert_equal "managed Agent named volume mount markers" "11" \
       "$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}1{{end}}{{end}}' "$container_id")"

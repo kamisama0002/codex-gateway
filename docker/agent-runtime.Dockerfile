@@ -2,7 +2,7 @@
 
 FROM node:24-bookworm-slim
 
-LABEL com.qiancheng.codex.version=0.151.0
+LABEL com.qiancheng.codex.version=0.153.4
 
 ENV CODEX_HOME=/codex-home
 ENV CODEX_WORKSPACE=/workspace
@@ -15,7 +15,7 @@ RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 codex \
     && useradd --uid 10001 --gid 10001 --create-home --home-dir /codex-home --shell /usr/sbin/nologin codex \
-    && npm install --global @openai/codex@0.151.0 \
+    && npm install --global @openai/codex@0.153.4 \
     && npm cache clean --force \
     && mkdir --parents /workspace /tmp \
     && chown --recursive codex:codex /codex-home /workspace /tmp

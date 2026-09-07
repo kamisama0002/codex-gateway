@@ -15,9 +15,9 @@
     },
     "capDrop": ["ALL"],
     "codexHome": "/codex-home",
-    "image": "codex-agent-runtime:0.151.0",
+    "image": "codex-agent-runtime:0.153.4",
     "labels": {
-      "com.qiancheng.codex.version": "0.151.0"
+      "com.qiancheng.codex.version": "0.153.4"
     },
     "publishedPorts": [],
     "readOnlyRootFilesystem": true,

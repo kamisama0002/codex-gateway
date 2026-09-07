@@ -60,7 +60,7 @@ services:
       dockerfile: docker/runtime-manager.Dockerfile
       args:
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
-    image: ${RUNTIME_MANAGER_IMAGE:-codex-runtime-manager:0.151.0}
+    image: ${RUNTIME_MANAGER_IMAGE:-codex-runtime-manager:0.153.4}
     restart: unless-stopped
     logging: *default-logging
     mem_limit: ${RUNTIME_MANAGER_MEM_LIMIT:-512m}

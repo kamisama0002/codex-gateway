@@ -10,7 +10,7 @@ x-ssh-target: &ssh-target
 services:
   agent-runtime-image:
     profiles: ["image-build"]
-    image: codex-agent-runtime:0.151.0
+    image: codex-agent-runtime:0.153.4
     build:
       context: ../..
       dockerfile: docker/agent-runtime.Dockerfile
@@ -18,7 +18,7 @@ services:
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
 
   agent-runtime-manager:
-    image: codex-runtime-manager-e2e:0.151.0
+    image: codex-runtime-manager-e2e:0.153.4
     build:
       context: ../..
       dockerfile: docker/runtime-manager.Dockerfile
@@ -27,7 +27,7 @@ services:
     environment:
       NODE_ENV: test
       RUNTIME_MANAGER_AGENT_NETWORK: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
-      RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"codex-agent-runtime:0.151.0","imageVersion":"0.151.0"}}'
+      RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"codex-agent-runtime:0.153.4","imageVersion":"0.153.4"}}'
       RUNTIME_MANAGER_PORT: "8787"
       RUNTIME_MANAGER_RESOURCE_LABELS: '{"com.codex-gateway.e2e-managed":"${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}"}'
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
