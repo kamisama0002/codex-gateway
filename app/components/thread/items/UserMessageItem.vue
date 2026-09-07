@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Message, MessageContent } from "@codex-gateway/ai-elements/message";
+import { CheckIcon, CopyIcon } from "@lucide/vue";
+import { useClipboard } from "@vueuse/core";
+import { Message, MessageAction, MessageContent } from "@codex-gateway/ai-elements/message";
 import { Badge } from "@codex-gateway/ui/badge";
+import { toast } from "@codex-gateway/ui/sonner";
 import MarkdownContent from "@/components/common/MarkdownContent.vue";
 import ThreadImageAttachment from "@/components/thread/attachments/ThreadImageAttachment.vue";
 import MessageTimeLabel from "@/components/thread/MessageTimeLabel.vue";
 import { threadItemText } from "@/utils/thread-items";
+import { copyMessageText } from "@/utils/message-copy";
 import type { ThreadHistoryItem } from "~~/shared/types";
 import { recordFromUnknown } from "~~/shared/utils/records";
 
@@ -18,7 +22,17 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const text = computed(() => threadItemText(props.item));
+const { copy, copied, isSupported } = useClipboard({ source: text, copiedDuring: 1200 });
 type ImagePart = Record<string, unknown> & { type: "image" | "localImage" };
+
+async function copyText() {
+  const success = await copyMessageText(text.value, isSupported.value, (value) => copy(value));
+  if (success) {
+    toast.success(t("app.userMessageCopied"));
+  } else {
+    toast.error(t("app.copyUserMessageFailed"));
+  }
+}
 
 function isImagePart(part: Record<string, unknown> | null): part is ImagePart {
   return part?.type === "image" || part?.type === "localImage";
@@ -87,7 +101,19 @@ function imageSource(image: { type: string; url: string; path: string }) {
         </div>
         <MarkdownContent v-if="text" :content="text" compact />
       </MessageContent>
-      <MessageTimeLabel :time-ms="messageTimeMs ?? null" />
+      <div data-testid="user-message-actions" class="flex h-7 items-center gap-2">
+        <MessageTimeLabel :time-ms="messageTimeMs ?? null" />
+        <MessageAction
+          v-if="text"
+          :tooltip="copied ? t('app.userMessageCopied') : t('app.copyUserMessage')"
+          size="sm"
+          class="size-7 p-0 text-ink-muted hover:bg-canvas-soft hover:text-ink"
+          @click="copyText"
+        >
+          <CheckIcon v-if="copied" class="size-4 text-accent-green" />
+          <CopyIcon v-else class="size-4" />
+        </MessageAction>
+      </div>
     </div>
   </Message>
 </template>
