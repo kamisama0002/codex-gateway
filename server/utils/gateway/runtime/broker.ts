@@ -14,6 +14,7 @@ import { ThreadQueueService } from "./thread-queue";
 import { ThreadHistoryReader } from "./thread-history-reader";
 import { McpRuntimeService } from "./mcp-runtime";
 import { AppServerFileService } from "./app-server-files";
+import { AppServerCapabilityService } from "./app-server-capabilities";
 
 class ThreadBroker {
   private readonly registry = new ControllerRegistry();
@@ -27,6 +28,7 @@ class ThreadBroker {
   private readonly queue = new ThreadQueueService(this.registry);
   private readonly mcp = new McpRuntimeService(this.registry);
   private readonly files = new AppServerFileService(this.registry);
+  private readonly capabilities = new AppServerCapabilityService(this.registry);
 
   async openThread(
     host: HostRecord,
@@ -250,6 +252,10 @@ class ThreadBroker {
 
   async listMcpStatuses(host: HostRecord, threadId: string) {
     return this.mcp.listStatuses(host, threadId);
+  }
+
+  capabilityRuntime() {
+    return this.capabilities;
   }
 
   async startMcpEventStream(
