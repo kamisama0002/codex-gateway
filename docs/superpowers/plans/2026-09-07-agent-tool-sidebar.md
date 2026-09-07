@@ -24,10 +24,12 @@
 ### Task 1: Account-scoped tool visibility state
 
 **Files:**
+
 - Create: `app/stores/gateway-workspace-layout/tool-visibility.test.ts`
 - Modify: `app/stores/gateway-workspace-layout/index.ts`
 
 **Interfaces:**
+
 - Produces: `isToolSidebarOpen(scopeKey: string): boolean`
 - Produces: `setToolSidebarOpen(scopeKey: string, open: boolean): void`
 - Produces: `isFilesPanelOpen(scopeKey: string): boolean`
@@ -97,6 +99,7 @@ git commit -m "feat(workspace): persist tool sidebar visibility"
 ### Task 2: Pure two-group Dockview policy and reconciliation
 
 **Files:**
+
 - Create: `app/components/chat/workspace-dock/workspace-layout.ts`
 - Create: `app/components/chat/workspace-dock/workspace-layout.test.ts`
 - Modify: `app/components/chat/workspace-dock/types.ts`
@@ -107,6 +110,7 @@ git commit -m "feat(workspace): persist tool sidebar visibility"
 - Modify: `app/stores/gateway/workspace-panels.ts`
 
 **Interfaces:**
+
 - Produces: `AGENT_WORKSPACE_GROUP_ID`, `TOOLS_WORKSPACE_GROUP_ID`, `TOOL_HOME_WORKSPACE_PANEL_ID`
 - Produces: `workspacePanelGroup(kind: WorkspacePanelKind): "agent" | "tools"`
 - Produces: `buildWorkspaceDefaultLayout(definitions, width, height): SerializedDockview`
@@ -118,14 +122,25 @@ Use literal panel definitions and assert:
 
 ```ts
 expect(workspacePanelGroup("agent")).toBe("agent");
-for (const kind of ["toolHome", "files", "gitReview", "terminal", "subagent", "browser", "tmux", "hostMetrics"] as const) {
+for (const kind of [
+  "toolHome",
+  "files",
+  "gitReview",
+  "terminal",
+  "subagent",
+  "browser",
+  "tmux",
+  "hostMetrics",
+] as const) {
   expect(workspacePanelGroup(kind)).toBe("tools");
 }
 
 const layout = buildWorkspaceDefaultLayout(definitions, 1000, 700);
 expect(layout.grid.root.data).toMatchObject([
   { data: { id: AGENT_WORKSPACE_GROUP_ID, views: ["agent"], hideHeader: false } },
-  { data: { id: TOOLS_WORKSPACE_GROUP_ID, views: ["tool-home", "files"], activeView: "tool-home" } },
+  {
+    data: { id: TOOLS_WORKSPACE_GROUP_ID, views: ["tool-home", "files"], activeView: "tool-home" },
+  },
 ]);
 expect(layout.panels["agent"]?.renderer).toBe("always");
 expect(layout.panels["tool-home"]?.renderer).toBe("always");
@@ -158,9 +173,10 @@ api.addPanel({
   ...definition,
   tabComponent: "WorkspaceDockTab",
   renderer: "always",
-  position: definition.params.kind === "agent"
-    ? { referenceGroup: ensureAgentGroup(api) }
-    : { referenceGroup: ensureToolsGroup(api) },
+  position:
+    definition.params.kind === "agent"
+      ? { referenceGroup: ensureAgentGroup(api) }
+      : { referenceGroup: ensureToolsGroup(api) },
 });
 ```
 
@@ -188,6 +204,7 @@ git commit -m "feat(workspace): establish agent and tool dock groups"
 ### Task 3: Shared tool catalog and real launch actions
 
 **Files:**
+
 - Create: `app/components/chat/workspace-tools/tool-catalog.ts`
 - Create: `app/components/chat/workspace-tools/tool-catalog.test.ts`
 - Create: `app/components/chat/workspace-tools/WorkspaceToolCatalog.vue`
@@ -202,6 +219,7 @@ git commit -m "feat(workspace): establish agent and tool dock groups"
 - Modify: `i18n/locales/en.json`
 
 **Interfaces:**
+
 - Produces: `WorkspaceToolCatalogItem` with `id`, `labelKey`, `descriptionKey`, `icon`, `disabled`, and `activate`
 - Produces: `createWorkspaceToolCatalog(input): WorkspaceToolCatalogItem[]`
 - Produces through Dock context: `openToolCatalog`, `toggleToolSidebar`, `toolSidebarOpen`
@@ -214,7 +232,14 @@ Pass literal capability input and spy functions, then assert seven stable tool c
 ```ts
 const catalog = createWorkspaceToolCatalog(fixture);
 expect(catalog.map(({ id }) => id)).toEqual([
-  "files", "gitReview", "terminal", "browser", "subagent:1:a", "subagent:1:b", "tmux", "hostMetrics",
+  "files",
+  "gitReview",
+  "terminal",
+  "browser",
+  "subagent:1:a",
+  "subagent:1:b",
+  "tmux",
+  "hostMetrics",
 ]);
 catalog.find(({ id }) => id === "files")?.activate();
 expect(actions.openFiles).toHaveBeenCalledOnce();
@@ -264,6 +289,7 @@ git commit -m "feat(workspace): add unified tool catalog"
 ### Task 4: Agent information header, group controls, and responsive shell
 
 **Files:**
+
 - Create: `app/components/chat/workspace-dock/WorkspaceAgentTab.vue`
 - Modify: `app/components/chat/workspace-dock/WorkspaceDockTab.vue`
 - Modify: `app/components/chat/workspace-dock/WorkspaceDockGroupActions.vue`
@@ -284,6 +310,7 @@ git commit -m "feat(workspace): add unified tool catalog"
 - Modify: `tests/e2e/host-monitoring.spec.ts`
 
 **Interfaces:**
+
 - `WorkspaceAgentTab` consumes current navigation/thread/project/runtime stores and renders title, workspace, and non-idle phase.
 - `WorkspaceDockGroupActions` consumes Dockview header params plus Dock UI context and renders three group controls followed by the separate tool-sidebar toggle.
 
@@ -342,12 +369,14 @@ git commit -m "feat(ui): make agent primary and tools secondary"
 ### Task 5: Viewport-wide pet and final verification
 
 **Files:**
+
 - Modify: `app/app.vue`
 - Modify: `app/components/chat/AgentWorkspacePane.vue`
 - Modify: `app/components/pet/GatewayPet.vue`
 - Modify: `tests/e2e/pet.spec.ts`
 
 **Interfaces:**
+
 - `GatewayPet` remains driven by the existing gateway-pet and config stores.
 - Its boundary changes from Agent pane geometry to authenticated viewport geometry.
 

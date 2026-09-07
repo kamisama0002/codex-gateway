@@ -45,15 +45,15 @@
 
 所有目录动作复用已有真实 store/composable，不生成假面板或假运行状态。
 
-| 工具 | 打开行为 | 可用条件 | 关闭行为 |
-| --- | --- | --- | --- |
-| 文件 | 标记当前 scope 的 Files 面板为打开并激活 | 已选择会话 | 只关闭面板，文件 store 保留未保存状态和冲突保护 |
-| Git 审查 | 调用现有 review panel store 并激活 | 已选择会话且有工作区根目录 | 调用现有 review close |
-| 终端 | 调用现有 PTY 启动入口 | 当前主机支持远端终端 | 调用现有 terminal close |
-| 浏览器 | 打开真实 URL 输入对话框，提交后创建 preview panel | 当前主机支持浏览器 preview | 调用现有 browser close，并关闭 preview session |
-| 子 Agent | 激活一个已存在的真实子 Agent 面板 | 当前会话已有可见子 Agent | 调用现有 sub-agent close |
-| Tmux | 调用现有 Tmux monitor launcher | 已存在可扫描主机 | 调用现有 tmux close |
-| 运行时监控 | 调用现有 host metrics store | 已选择主机 | 调用现有 metrics close |
+| 工具       | 打开行为                                          | 可用条件                   | 关闭行为                                        |
+| ---------- | ------------------------------------------------- | -------------------------- | ----------------------------------------------- |
+| 文件       | 标记当前 scope 的 Files 面板为打开并激活          | 已选择会话                 | 只关闭面板，文件 store 保留未保存状态和冲突保护 |
+| Git 审查   | 调用现有 review panel store 并激活                | 已选择会话且有工作区根目录 | 调用现有 review close                           |
+| 终端       | 调用现有 PTY 启动入口                             | 当前主机支持远端终端       | 调用现有 terminal close                         |
+| 浏览器     | 打开真实 URL 输入对话框，提交后创建 preview panel | 当前主机支持浏览器 preview | 调用现有 browser close，并关闭 preview session  |
+| 子 Agent   | 激活一个已存在的真实子 Agent 面板                 | 当前会话已有可见子 Agent   | 调用现有 sub-agent close                        |
+| Tmux       | 调用现有 Tmux monitor launcher                    | 已存在可扫描主机           | 调用现有 tmux close                             |
+| 运行时监控 | 调用现有 host metrics store                       | 已选择主机                 | 调用现有 metrics close                          |
 
 不可用工具显示禁用态和简短原因。工具目录不承担创建假的子 Agent、终端或浏览器会话。
 
