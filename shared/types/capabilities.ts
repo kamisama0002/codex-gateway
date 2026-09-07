@@ -264,3 +264,43 @@ export interface CapabilitySyncResult {
   remainingChanges: CapabilityChange[];
   skipped: boolean;
 }
+
+export type CapabilityDeploymentStatus = "unknown" | "syncing" | "ready" | "failed";
+export type CapabilityCredentialStatus = "notRequired" | "missing" | "configured" | "expired";
+
+export interface CapabilityDeploymentDescriptor {
+  userId: number;
+  projectId: number | null;
+  status: CapabilityDeploymentStatus;
+  safeError: string | null;
+  updatedAt: string;
+}
+
+export interface AdminCapabilityCatalogItem extends CapabilityDefinition {
+  assignments: CapabilityAssignment[];
+  credentials: import("./credentials").CredentialDescriptor[];
+  deployments: CapabilityDeploymentDescriptor[];
+}
+
+export interface CapabilityAdminUser {
+  id: number;
+  username: string;
+  role: "admin" | "user";
+}
+
+export interface AdminCapabilityCatalog {
+  capabilities: AdminCapabilityCatalogItem[];
+  users: CapabilityAdminUser[];
+}
+
+export interface UserCapabilityCatalogItem extends CapabilityDefinition {
+  credentials: import("./credentials").CredentialDescriptor[];
+  credentialStatus: CapabilityCredentialStatus;
+  deploymentStatus: CapabilityDeploymentStatus;
+  safeError: string | null;
+}
+
+export interface UserCapabilityCatalog {
+  capabilities: UserCapabilityCatalogItem[];
+  projectId: number | null;
+}

@@ -10,6 +10,10 @@ export const settingsPanelRegistry = {
     component: "SettingsDockAppearancePanel",
     titleKey: "app.appearanceSettings",
   },
+  capabilities: {
+    component: "SettingsDockCapabilityPanel",
+    titleKey: "app.agentCapabilities",
+  },
   config: {
     component: "SettingsDockConfigPanel",
     titleKey: "app.configJson",
@@ -30,6 +34,7 @@ export const settingsPanelRegistry = {
 
 export const settingsPanelKinds = [
   "appearance",
+  "capabilities",
   "config",
   "hosts",
   "notifications",

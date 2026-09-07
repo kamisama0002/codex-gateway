@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   BellIcon,
+  BlocksIcon,
   BotIcon,
   BracesIcon,
   ContainerIcon,
@@ -18,6 +19,7 @@ import HostSettingsTab from "./HostSettingsTab.vue";
 import NotificationSettingsTab from "./NotificationSettingsTab.vue";
 import PetSettingsTab from "./PetSettingsTab.vue";
 import ProviderSettingsTab from "./ProviderSettingsTab.vue";
+import CapabilitySettingsTab from "./CapabilitySettingsTab.vue";
 import RuntimeSettingsTab from "./RuntimeSettingsTab.vue";
 
 const emit = defineEmits<{ close: [] }>();
@@ -27,6 +29,7 @@ const panelDefinitions = [
   { id: "appearance", labelKey: "app.appearanceSettings", icon: PaletteIcon },
   { id: "pet", labelKey: "app.petSettings", icon: SparklesIcon },
   { id: "providers", labelKey: "app.modelProviders", icon: BotIcon },
+  { id: "capabilities", labelKey: "app.agentCapabilities", icon: BlocksIcon },
   { id: "runtime", labelKey: "app.runtimeSettings", icon: ContainerIcon },
   { id: "hosts", labelKey: "app.hosts", icon: ServerIcon },
   { id: "notifications", labelKey: "app.notificationSettings", icon: BellIcon },
@@ -45,6 +48,7 @@ const activeComponent = computed(() => {
     appearance: AppearanceSettingsTab,
     pet: PetSettingsTab,
     providers: ProviderSettingsTab,
+    capabilities: CapabilitySettingsTab,
     runtime: RuntimeSettingsTab,
     hosts: HostSettingsTab,
     notifications: NotificationSettingsTab,

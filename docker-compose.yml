@@ -75,6 +75,8 @@ services:
     depends_on:
       database-migrate:
         condition: service_completed_successfully
+    volumes:
+      - capability-data:/data/capabilities
     # Keep liveness probes side-effect free. Nitro owns periodic GC so probe retries or Docker
     # daemon pauses cannot change application memory lifecycle.
     healthcheck:
@@ -254,5 +256,6 @@ networks:
     internal: true
 
 volumes:
+  capability-data:
   mysql-data:
   runtime-manager-data:

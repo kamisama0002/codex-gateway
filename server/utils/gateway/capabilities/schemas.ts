@@ -146,6 +146,14 @@ const capabilityUpdateInputSchema = z
   })
   .strict();
 
+export const capabilityAssignmentMutationSchema = z
+  .object({
+    userId: z.number().int().positive(),
+    projectId: z.number().int().positive().nullable(),
+    assigned: z.boolean(),
+  })
+  .strict();
+
 export const capabilityArtifactInputSchema = z
   .object({
     capabilityId: capabilityIdSchema,

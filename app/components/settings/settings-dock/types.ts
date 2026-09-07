@@ -1,4 +1,10 @@
-export type SettingsPanelKind = "appearance" | "config" | "hosts" | "notifications" | "runtime";
+export type SettingsPanelKind =
+  | "appearance"
+  | "capabilities"
+  | "config"
+  | "hosts"
+  | "notifications"
+  | "runtime";
 
 export interface SettingsDockPanelParams {
   kind: SettingsPanelKind;

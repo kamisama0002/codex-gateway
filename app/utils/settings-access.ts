@@ -4,6 +4,7 @@ export const ALL_SETTINGS_PANELS = [
   "appearance",
   "pet",
   "providers",
+  "capabilities",
   "runtime",
   "hosts",
   "notifications",
@@ -15,6 +16,7 @@ export type SettingsPanelKind = (typeof ALL_SETTINGS_PANELS)[number];
 const PERSONAL_SETTINGS_PANELS: SettingsPanelKind[] = [
   "appearance",
   "pet",
+  "capabilities",
   "runtime",
   "notifications",
 ];

@@ -120,6 +120,12 @@ export type {
   CapabilitySyncStatus,
   CapabilityCreateInput,
   CapabilityDefinition,
+  CapabilityDeploymentDescriptor,
+  CapabilityDeploymentStatus,
+  CapabilityCredentialStatus,
+  CapabilityAdminUser,
+  AdminCapabilityCatalog,
+  AdminCapabilityCatalogItem,
   CapabilityKind,
   CapabilitySource,
   CapabilityUpdateInput,
@@ -129,6 +135,8 @@ export type {
   PluginCapabilityConfig,
   SkillCapabilityConfig,
   StdioMcpCapabilityConfig,
+  UserCapabilityCatalog,
+  UserCapabilityCatalogItem,
 } from "./types/capabilities";
 export type {
   CredentialCreateInput,

@@ -5,6 +5,7 @@ const allPanels = [
   "appearance",
   "pet",
   "providers",
+  "capabilities",
   "runtime",
   "hosts",
   "notifications",
@@ -27,7 +28,7 @@ describe("settingsPanelsForUser", () => {
           authzVersion: 1,
         },
       }),
-    ).toEqual(["appearance", "pet", "runtime", "notifications"]);
+    ).toEqual(["appearance", "pet", "capabilities", "runtime", "notifications"]);
   });
 
   it("keeps all settings for DataOps administrators and standalone users", () => {
