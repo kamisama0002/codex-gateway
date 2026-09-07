@@ -1,6 +1,8 @@
 import WorkspaceDockAgentPanel from "@/components/chat/workspace-dock/WorkspaceDockAgentPanel.vue";
 import WorkspaceDockGroupActions from "@/components/chat/workspace-dock/WorkspaceDockGroupActions.vue";
 import WorkspaceDockTab from "@/components/chat/workspace-dock/WorkspaceDockTab.vue";
+import WorkspaceDockToolHeaderActions from "@/components/chat/workspace-dock/WorkspaceDockToolHeaderActions.vue";
+import WorkspaceDockToolHomePanel from "@/components/chat/workspace-dock/WorkspaceDockToolHomePanel.vue";
 import { defineAsyncComponent } from "vue";
 
 const asyncPanels = {
@@ -30,6 +32,8 @@ const asyncPanels = {
 export default defineNuxtPlugin((nuxtApp) => {
   nuxtApp.vueApp.component("WorkspaceDockAgentPanel", WorkspaceDockAgentPanel);
   nuxtApp.vueApp.component("WorkspaceDockGroupActions", WorkspaceDockGroupActions);
+  nuxtApp.vueApp.component("WorkspaceDockToolHeaderActions", WorkspaceDockToolHeaderActions);
+  nuxtApp.vueApp.component("WorkspaceDockToolHomePanel", WorkspaceDockToolHomePanel);
   nuxtApp.vueApp.component("WorkspaceDockTab", WorkspaceDockTab);
   for (const [name, component] of Object.entries(asyncPanels)) {
     nuxtApp.vueApp.component(name, component);

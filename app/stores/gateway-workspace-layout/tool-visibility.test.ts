@@ -7,11 +7,11 @@ const storage = vi.hoisted(() => new Map<string, Ref<unknown>>());
 vi.mock("@/composables/storage/useAccountLocalStorage", async () => {
   const { ref } = await import("vue");
   return {
-    useAccountLocalStorage<T>(suffix: string, initialValue: T) {
+    useAccountLocalStorage(suffix: string, initialValue: unknown) {
       const existing = storage.get(suffix);
-      if (existing !== undefined) return existing as Ref<T>;
-      const value = ref(initialValue) as Ref<T>;
-      storage.set(suffix, value as Ref<unknown>);
+      if (existing !== undefined) return existing;
+      const value = ref(initialValue);
+      storage.set(suffix, value);
       return value;
     },
   };

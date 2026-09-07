@@ -3,13 +3,17 @@ import { DockviewVue, themeDark, themeLight } from "dockview-vue";
 import { computed, provide, ref, toRefs } from "vue";
 import { useTerminalTheme } from "@/composables/terminal/useTerminalTheme";
 import { useWorkspaceLaunchActions } from "@/composables/workspace/useWorkspaceLaunchActions";
+import { useTmuxMonitorLauncher } from "@/composables/workspace/useTmuxMonitorLauncher";
 import { useChatWorkspaceState } from "../chat-workspace-state";
+import BrowserOpenDialog from "@/components/browser/BrowserOpenDialog.vue";
 import { fileWorkspaceScopeKey } from "@/stores/file-workspace";
 import {
   useGatewayWorkspaceLayoutStore,
   workspaceLayoutScopeKey,
 } from "@/stores/gateway-workspace-layout";
 import { AGENT_WORKSPACE_PANEL_ID } from "@/stores/gateway/workspace-panels";
+import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
+import { createWorkspaceToolCatalog } from "@/components/chat/workspace-tools/tool-catalog";
 import MobileWorkspaceHeader from "../MobileWorkspaceHeader.vue";
 import { WORKSPACE_DOCK_UI_CONTEXT, WORKSPACE_FILES_PANEL_CONTEXT } from "./context";
 import type { WorkspaceDockProps } from "./types";
@@ -22,6 +26,7 @@ const props = defineProps<WorkspaceDockProps>();
 const refs = toRefs(props);
 const workspace = useChatWorkspaceState();
 const workspaceLayout = useGatewayWorkspaceLayoutStore();
+const threadView = useGatewayThreadViewStore();
 const { isDark } = useTerminalTheme();
 const scopeKey = computed(() =>
   workspaceLayoutScopeKey(
@@ -72,12 +77,49 @@ const panelIds = computed(() => [
 ]);
 const dockviewHost = ref<HTMLElement | null>(null);
 const workspaceActions = useWorkspaceLaunchActions();
+const tmuxLauncher = useTmuxMonitorLauncher();
+const browserDialogOpen = ref(false);
 const toolSidebarOpen = computed(() => workspaceLayout.isToolSidebarOpen(scopeKey.value));
+const toolCatalog = computed(() =>
+  createWorkspaceToolCatalog({
+    canOpenThreadTools:
+      workspaceActions.canOpenThreadTools.value && fileWorkspaceRoot.value.trim() !== "",
+    canLaunchRemoteTools: workspaceActions.canLaunch.value,
+    canOpenTmux: tmuxLauncher.canOpen.value,
+    canMonitorHost: workspaceActions.canMonitorHost.value,
+    subAgents: subAgentPanels.value.map(({ hostId, threadId, title }) => ({
+      hostId,
+      threadId,
+      title,
+    })),
+    actions: {
+      openFiles: workspaceActions.openFiles,
+      openGitReview: workspaceActions.openGitReview,
+      openTerminal: workspaceActions.openTerminal,
+      openBrowser: () => {
+        browserDialogOpen.value = true;
+      },
+      openSubAgent: (subAgent) => {
+        void threadView.openSubAgentPanel({
+          ...subAgent,
+          parentHostId: workspace.selectedHostId.value,
+          parentThreadId: workspace.selectedThreadId.value,
+        });
+      },
+      openTmux: tmuxLauncher.open,
+      openHostMetrics: workspaceActions.openHostMonitor,
+    },
+  }),
+);
 
 function showPanel(panelId: string) {
   if (panelId !== AGENT_WORKSPACE_PANEL_ID) {
     workspaceLayout.setToolSidebarOpen(scopeKey.value, true);
   }
+}
+
+function toggleToolSidebar() {
+  workspaceLayout.setToolSidebarOpen(scopeKey.value, !toolSidebarOpen.value);
 }
 
 const lifecycle = useWorkspaceDockLifecycle({
@@ -102,6 +144,9 @@ provide(WORKSPACE_FILES_PANEL_CONTEXT, {
 });
 provide(WORKSPACE_DOCK_UI_CONTEXT, {
   layout: refs.layout,
+  toolCatalog,
+  toolSidebarOpen,
+  toggleToolSidebar,
   closePanel: panels.closeDynamic,
 });
 </script>
@@ -128,6 +173,7 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
         :right-header-actions-component="
           layout === 'desktop' ? 'WorkspaceDockGroupActions' : undefined
         "
+        left-header-actions-component="WorkspaceDockToolHeaderActions"
         :theme="dockTheme"
         floating-group-bounds="boundedWithinViewport"
         :disable-floating-groups="layout === 'mobile'"
@@ -135,6 +181,10 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
         @ready="lifecycle.ready"
       />
     </div>
+    <BrowserOpenDialog
+      v-model:open="browserDialogOpen"
+      :open-target="workspaceActions.openBrowser"
+    />
   </div>
 </template>
 
@@ -161,5 +211,9 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
 .gateway-dockview :deep(.dv-tab) {
   margin: 0;
   padding-inline: 0.125rem;
+}
+
+.gateway-dockview :deep(.dv-tab:has([data-panel-kind="toolHome"])) {
+  display: none;
 }
 </style>
