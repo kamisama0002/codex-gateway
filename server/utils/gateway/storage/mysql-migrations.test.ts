@@ -36,7 +36,7 @@ describe("MySQL gateway migrations", () => {
     );
     expect(
       await db.one("SELECT version, checksum FROM schema_migrations ORDER BY version DESC"),
-    ).toEqual(expect.objectContaining({ version: 11 }));
+    ).toEqual(expect.objectContaining({ version: 12 }));
   });
 
   it("rejects a changed checksum for an applied migration", async () => {
@@ -264,6 +264,33 @@ describe("MySQL gateway migrations", () => {
       { version: 9, count: 1 },
       { version: 10, count: 1 },
       { version: 11, count: 1 },
+      { version: 12, count: 1 },
     ]);
+  });
+
+  it("assigns the default web search capability to users that predate migration 12", async () => {
+    const db = await freshMysqlTestDatabase();
+    await migrateMysqlGatewayDatabase(db);
+    await db.execute("DELETE FROM schema_migrations WHERE version = ?", [12]);
+    await db.execute("DELETE FROM capability_assignments WHERE capability_id = ?", [
+      "org__web_search",
+    ]);
+    await db.execute("DELETE FROM capability_definitions WHERE id = ?", ["org__web_search"]);
+    await db.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", [
+      "existing-user",
+      "password-hash",
+    ]);
+
+    await migrateMysqlGatewayDatabase(db);
+
+    await expect(
+      db.one(
+        `SELECT a.capability_id
+         FROM capability_assignments a
+         JOIN users u ON u.id = a.user_id
+         WHERE u.username = ?`,
+        ["existing-user"],
+      ),
+    ).resolves.toEqual({ capability_id: "org__web_search" });
   });
 });

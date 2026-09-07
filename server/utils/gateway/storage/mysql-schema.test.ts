@@ -28,4 +28,12 @@ describe("MySQL capability schema", () => {
     expect(sql).toContain("PRIMARY KEY (state_hash)");
     expect(sql).toContain("consumed_at VARCHAR(32) NULL");
   });
+
+  it("seeds the default web search capability in migration 12", () => {
+    const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 12);
+    const sql = migration?.statements.join("\n") ?? "";
+    expect(sql).toContain("org__web_search");
+    expect(sql).toContain("http://search-mcp:8788/mcp");
+    expect(sql).toContain("INSERT IGNORE INTO capability_assignments");
+  });
 });

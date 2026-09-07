@@ -95,6 +95,107 @@ services:
       - runtime-manager
       - agent-runtime
 
+  searxng:
+    image: ${SEARXNG_IMAGE:?SEARXNG_IMAGE must be a pinned tag or digest}
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${SEARXNG_MEM_LIMIT:-1g}
+    memswap_limit: ${SEARXNG_MEMSWAP_LIMIT:-1g}
+    pids_limit: ${SEARXNG_PIDS_LIMIT:-256}
+    cpus: ${SEARXNG_CPU_LIMIT:-2.0}
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?SEARXNG_SECRET is required}
+    expose:
+      - "8080"
+    volumes:
+      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - agent-egress
+      - search-backend
+
+  search-mcp:
+    image: ${SEARCH_MCP_IMAGE:-codex-search-mcp:0.153.4}
+    build:
+      context: .
+      dockerfile: docker/search-mcp.Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${SEARCH_MCP_MEM_LIMIT:-256m}
+    memswap_limit: ${SEARCH_MCP_MEMSWAP_LIMIT:-256m}
+    pids_limit: ${SEARCH_MCP_PIDS_LIMIT:-64}
+    cpus: ${SEARCH_MCP_CPU_LIMIT:-0.5}
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8788
+      SEARXNG_URL: http://searxng:8080
+    expose:
+      - "8788"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m
+    depends_on:
+      - searxng
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8788,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - agent-runtime
+      - agent-egress
+      - search-backend
+
+  test-business-mcp:
+    profiles: ["test-business-mcp"]
+    image: ${TEST_BUSINESS_MCP_IMAGE:-codex-test-business-mcp:0.153.4}
+    build:
+      context: .
+      dockerfile: docker/test-business-mcp.Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    memswap_limit: 128m
+    pids_limit: 32
+    cpus: 0.25
+    environment:
+      BUSINESS_MCP_STATE_DIR: /tmp/test-business-mcp
+      HOST: 0.0.0.0
+      PORT: 8789
+    expose:
+      - "8789"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10003,gid=10003,mode=0700
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8789,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - agent-runtime
+
   agent-runtime-manager:
     build:
       context: .
@@ -149,6 +250,8 @@ networks:
     ipam:
       config:
         - subnet: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK_SUBNET:-10.254.252.0/24}
+  search-backend:
+    internal: true
 
 volumes:
   mysql-data:

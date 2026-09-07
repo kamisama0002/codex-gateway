@@ -1,4 +1,5 @@
 import { MANAGED_RUNTIME_HOST_ID } from "../../../../shared/runtime/managed-runtime.ts";
+import { DEFAULT_WEB_SEARCH_CAPABILITY_ID } from "../../../../shared/types/capabilities.ts";
 
 export interface MysqlSchemaMigration {
   version: number;
@@ -417,6 +418,44 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
           CONSTRAINT fk_credential_oauth_states_user
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
+      `,
+    ],
+  },
+  {
+    version: 12,
+    statements: [
+      `
+        INSERT IGNORE INTO capability_definitions (
+          id, kind, display_name, description, version, source_json, config_json,
+          sensitive_fields_json, enabled, created_by_user_id, created_at, updated_at
+        ) VALUES (
+          '${DEFAULT_WEB_SEARCH_CAPABILITY_ID}',
+          'search',
+          'Web search',
+          'Search and fetch public web content through the managed Search MCP service.',
+          '1.0.0',
+          JSON_OBJECT('type', 'internal', 'locator', 'search-mcp'),
+          JSON_OBJECT(
+            'transport', 'streamable_http',
+            'url', 'http://search-mcp:8788/mcp'
+          ),
+          JSON_ARRAY(),
+          1,
+          NULL,
+          DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ'),
+          DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')
+        )
+      `,
+      `
+        INSERT IGNORE INTO capability_assignments (
+          capability_id, user_id, project_id, created_at
+        )
+        SELECT
+          '${DEFAULT_WEB_SEARCH_CAPABILITY_ID}',
+          id,
+          NULL,
+          DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')
+        FROM users
       `,
     ],
   },

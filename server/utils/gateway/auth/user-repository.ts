@@ -1,4 +1,5 @@
 import type { DbRow, GatewayDb } from "../storage/contracts";
+import { DEFAULT_WEB_SEARCH_CAPABILITY_ID } from "~~/shared/types/capabilities";
 
 export type UserRole = "admin" | "user";
 
@@ -65,6 +66,15 @@ export class UserRepository {
         VALUES (?, ?, 1, ?, ?, ?)
       `,
       [username, input.passwordHash, input.role, input.now, input.now],
+    );
+    await this.db.execute(
+      `INSERT IGNORE INTO capability_assignments (
+         capability_id, user_id, project_id, created_at
+       )
+       SELECT id, ?, NULL, ?
+       FROM capability_definitions
+       WHERE id = ?`,
+      [result.insertId, input.now, DEFAULT_WEB_SEARCH_CAPABILITY_ID],
     );
     const user = await this.findById(result.insertId);
     if (user === null) throw new Error("Created user could not be loaded");

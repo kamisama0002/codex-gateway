@@ -73,4 +73,23 @@ describe("UserRepository", () => {
     await db.execute("UPDATE users SET is_active = 0 WHERE id = ?", [created.id]);
     await expect(store.login("login-user", "correct-password")).resolves.toBeNull();
   });
+
+  it("assigns the default web search capability to every new user", async () => {
+    const repository = new UserRepository(db);
+    await db.execute("UPDATE capability_definitions SET enabled = 0 WHERE id = ?", [
+      "org__web_search",
+    ]);
+    const user = await repository.createWithAutomaticRole({
+      username: "search-user",
+      passwordHash: "stored-password-hash",
+      now: "2026-09-07T00:00:00.000Z",
+    });
+
+    await expect(
+      db.one(
+        "SELECT capability_id FROM capability_assignments WHERE user_id = ? AND project_id IS NULL",
+        [user.id],
+      ),
+    ).resolves.toEqual({ capability_id: "org__web_search" });
+  });
 });
