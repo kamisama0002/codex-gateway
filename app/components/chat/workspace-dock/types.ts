@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export type WorkspacePanelKind =
   | "agent"
+  | "toolHome"
   | "files"
   | "gitReview"
   | "terminal"
@@ -13,6 +14,7 @@ export type WorkspacePanelKind =
 
 export const workspaceDockPanelParamsSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("agent") }),
+  z.object({ kind: z.literal("toolHome") }),
   z.object({ kind: z.literal("files") }),
   z.object({ kind: z.literal("gitReview") }),
   z.object({ kind: z.literal("terminal"), sessionId: z.string().min(1) }),

@@ -5,7 +5,11 @@ import { useTerminalTheme } from "@/composables/terminal/useTerminalTheme";
 import { useWorkspaceLaunchActions } from "@/composables/workspace/useWorkspaceLaunchActions";
 import { useChatWorkspaceState } from "../chat-workspace-state";
 import { fileWorkspaceScopeKey } from "@/stores/file-workspace";
-import { workspaceLayoutScopeKey } from "@/stores/gateway-workspace-layout";
+import {
+  useGatewayWorkspaceLayoutStore,
+  workspaceLayoutScopeKey,
+} from "@/stores/gateway-workspace-layout";
+import { AGENT_WORKSPACE_PANEL_ID } from "@/stores/gateway/workspace-panels";
 import MobileWorkspaceHeader from "../MobileWorkspaceHeader.vue";
 import { WORKSPACE_DOCK_UI_CONTEXT, WORKSPACE_FILES_PANEL_CONTEXT } from "./context";
 import type { WorkspaceDockProps } from "./types";
@@ -17,6 +21,7 @@ import "dockview-vue/dist/styles/dockview.css";
 const props = defineProps<WorkspaceDockProps>();
 const refs = toRefs(props);
 const workspace = useChatWorkspaceState();
+const workspaceLayout = useGatewayWorkspaceLayoutStore();
 const { isDark } = useTerminalTheme();
 const scopeKey = computed(() =>
   workspaceLayoutScopeKey(
@@ -39,7 +44,10 @@ const {
   selectedThreadId: workspace.selectedThreadId,
 });
 const panels = useWorkspaceDockPanels({
+  layout: refs.layout,
   selectedThreadId: workspace.selectedThreadId,
+  filesPanelOpen: computed(() => workspaceLayout.isFilesPanelOpen(scopeKey.value)),
+  toolSidebarOpen: computed(() => workspaceLayout.isToolSidebarOpen(scopeKey.value)),
   terminalPanels,
   subAgentPanels,
   browserPanels,
@@ -54,6 +62,7 @@ const fileRequestScopeKey = computed(() =>
     : null,
 );
 const panelIds = computed(() => [
+  workspaceLayout.isFilesPanelOpen(scopeKey.value),
   terminalPanels.value.map(({ id }) => id),
   subAgentPanels.value.map(({ id }) => id),
   browserPanels.value.map(({ id }) => id),
@@ -63,12 +72,23 @@ const panelIds = computed(() => [
 ]);
 const dockviewHost = ref<HTMLElement | null>(null);
 const workspaceActions = useWorkspaceLaunchActions();
+const toolSidebarOpen = computed(() => workspaceLayout.isToolSidebarOpen(scopeKey.value));
+
+function showPanel(panelId: string) {
+  if (panelId !== AGENT_WORKSPACE_PANEL_ID) {
+    workspaceLayout.setToolSidebarOpen(scopeKey.value, true);
+  }
+}
+
 const lifecycle = useWorkspaceDockLifecycle({
   scopeKey,
   host: dockviewHost,
   fileRequestScopeKey,
   reconcile: panels.reconcile,
   defaultLayout: panels.defaultLayout,
+  syncGroupVisibility: panels.syncGroupVisibility,
+  showPanel,
+  toolSidebarOpen,
   panelIds,
 });
 const dockTheme = computed(() => (isDark.value ? themeDark : themeLight));

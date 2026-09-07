@@ -1,4 +1,5 @@
 export const AGENT_WORKSPACE_PANEL_ID = "agent";
+export const TOOL_HOME_WORKSPACE_PANEL_ID = "tool-home";
 export const FILES_WORKSPACE_PANEL_ID = "files";
 export const GIT_REVIEW_WORKSPACE_PANEL_ID = "git-review";
 export const TMUX_WORKSPACE_PANEL_ID = "tmux";

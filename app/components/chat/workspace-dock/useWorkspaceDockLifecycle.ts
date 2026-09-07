@@ -18,6 +18,9 @@ export function useWorkspaceDockLifecycle(options: {
   fileRequestScopeKey: ComputedRef<string | null>;
   reconcile: (api: DockviewApi) => void;
   defaultLayout: (api: DockviewApi) => SerializedDockview;
+  syncGroupVisibility: (api: DockviewApi) => void;
+  showPanel: (panelId: string) => void;
+  toolSidebarOpen: ComputedRef<boolean>;
   panelIds: ComputedRef<unknown>;
 }) {
   const { t } = useI18n();
@@ -33,6 +36,7 @@ export function useWorkspaceDockLifecycle(options: {
     activeScopeKey: () => activeScopeKey,
   });
   function activate(panelId: string) {
+    options.showPanel(panelId);
     const panel = api.value?.getPanel(panelId);
     if (!panel) return;
     panel.api.setActive();
@@ -181,10 +185,16 @@ export function useWorkspaceDockLifecycle(options: {
   watch(
     () => fileWorkspace.workspaceOpenRequest,
     (request) => {
-      if (request?.scopeKey === options.fileRequestScopeKey.value)
+      if (request?.scopeKey === options.fileRequestScopeKey.value) {
+        workspaceLayout.setFilesPanelOpen(activeScopeKey, true);
+        if (api.value) options.reconcile(api.value);
         activate(FILES_WORKSPACE_PANEL_ID);
+      }
     },
   );
+  watch(options.toolSidebarOpen, () => {
+    if (api.value) options.syncGroupVisibility(api.value);
+  });
 
   onBeforeUnmount(() => {
     persistence.persistLayout(activeScopeKey);
