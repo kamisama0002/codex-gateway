@@ -18,6 +18,7 @@ import {
 import {
   provisionRuntimeRequestSchema,
   runtimeActionRequestSchema,
+  runtimeResourceActionRequestSchema,
   execRuntimeRequestSchema,
   type RuntimeLifecycleResult,
   runtimeManagerPolicySchema,
@@ -99,13 +100,13 @@ async function handleRequest(
         result = await options.service.provision(provisionRuntimeRequestSchema.parse(payload));
         break;
       case "start":
-        result = await options.service.start(runtimeActionRequestSchema.parse(payload));
+        result = await options.service.start(runtimeResourceActionRequestSchema.parse(payload));
         break;
       case "stop":
         result = await options.service.stop(runtimeActionRequestSchema.parse(payload));
         break;
       case "restart":
-        result = await options.service.restart(runtimeActionRequestSchema.parse(payload));
+        result = await options.service.restart(runtimeResourceActionRequestSchema.parse(payload));
         break;
       case "upgrade":
         result = await options.service.upgrade(upgradeRuntimeRequestSchema.parse(payload));

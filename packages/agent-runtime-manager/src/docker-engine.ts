@@ -59,7 +59,9 @@ export interface EngineContainerState {
   runtimeType: RuntimeType;
   serviceToken: string;
   userHash: string;
+  memoryBytes: number;
   nanoCpus: number;
+  pidsLimit: number;
 }
 
 export interface DockerEngine {
@@ -78,7 +80,7 @@ export interface DockerEngine {
   updateContainerResources(
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
-  ): Promise<void>;
+  ): Promise<EngineContainerState>;
 }
 
 export class DockerodeEngine implements DockerEngine {
@@ -181,12 +183,13 @@ export class DockerodeEngine implements DockerEngine {
   async updateContainerResources(
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
-  ): Promise<void> {
+  ): Promise<EngineContainerState> {
     await this.docker.getContainer(containerId).update({
       Memory: resources.Memory,
       NanoCPUs: resources.NanoCpus,
       PidsLimit: resources.PidsLimit,
     });
+    return this.inspectContainer(containerId);
   }
 
   private async ensureManagedVolume(spec: DockerManagedVolumeSpec): Promise<void> {
@@ -242,7 +245,9 @@ export class DockerodeEngine implements DockerEngine {
       runtimeType: runtimeTypeSchema.parse(required(labels[runtimeResourceLabels.runtimeType])),
       serviceToken: required(environment.get("CODEX_REMOTE_TOKEN")),
       userHash: required(labels[runtimeResourceLabels.userHash]),
+      memoryBytes: Math.max(0, inspected.HostConfig.Memory ?? 0),
       nanoCpus: Math.max(0, inspected.HostConfig.NanoCpus ?? 0),
+      pidsLimit: Math.max(0, inspected.HostConfig.PidsLimit ?? 0),
     };
   }
 }

@@ -23,6 +23,11 @@ import {
 
 const userHash = "ab".repeat(32);
 const now = 1_788_115_200_000;
+const requestedResources = {
+  memoryBytes: 1024 * 1024 * 1024,
+  nanoCpus: 1_500_000_000,
+  pidsLimit: 128,
+};
 const testPolicy: RuntimeManagerPolicy = {
   images: {
     stable: {
@@ -99,7 +104,9 @@ class RecordingDockerEngine implements DockerEngine {
         runtimeType: "codex-app-server",
         serviceToken: "existing-service-token",
         userHash,
+        memoryBytes: 2 * 1024 * 1024 * 1024,
         nanoCpus: 0,
+        pidsLimit: 256,
       });
     }
   }
@@ -117,7 +124,9 @@ class RecordingDockerEngine implements DockerEngine {
       runtimeType: spec.runtimeType,
       serviceToken: spec.serviceToken,
       userHash: spec.userHash,
+      memoryBytes: spec.security.Memory,
       nanoCpus: spec.security.NanoCpus,
+      pidsLimit: spec.security.PidsLimit,
     };
     this.containers.set(spec.runtimeId, state);
     return state;
@@ -177,8 +186,21 @@ class RecordingDockerEngine implements DockerEngine {
   async updateContainerResources(
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
-  ): Promise<void> {
+  ): Promise<EngineContainerState> {
     this.updateCalls.push({ containerId, ...resources });
+    for (const [runtimeId, container] of this.containers) {
+      if (container.containerId === containerId) {
+        const updated = {
+          ...container,
+          memoryBytes: resources.Memory,
+          nanoCpus: resources.NanoCpus,
+          pidsLimit: resources.PidsLimit,
+        };
+        this.containers.set(runtimeId, updated);
+        return updated;
+      }
+    }
+    throw new Error("container not found");
   }
 
   private setRunning(containerId: string, running: boolean): void {
@@ -191,6 +213,97 @@ class RecordingDockerEngine implements DockerEngine {
 }
 
 describe("RuntimeLifecycleService", () => {
+  it("applies requested runtime resources and reports the inspected values", async () => {
+    const engine = new RecordingDockerEngine({ existingContainerId: "container-a" });
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+
+    await expect(
+      service.provision({ ...requestFor("runtime-requested"), resources: requestedResources }),
+    ).resolves.toMatchObject({ actualResources: requestedResources });
+    await expect(
+      service.start({ runtimeId: "runtime-a", resources: requestedResources }),
+    ).resolves.toMatchObject({ actualResources: requestedResources });
+    await expect(
+      service.restart({ runtimeId: "runtime-a", resources: requestedResources }),
+    ).resolves.toMatchObject({ actualResources: requestedResources });
+
+    expect(engine.createCalls[0]?.security).toMatchObject({
+      Memory: requestedResources.memoryBytes,
+      NanoCpus: requestedResources.nanoCpus,
+      PidsLimit: requestedResources.pidsLimit,
+    });
+    expect(engine.updateCalls).toEqual([
+      {
+        containerId: "container-a",
+        Memory: requestedResources.memoryBytes,
+        NanoCpus: requestedResources.nanoCpus,
+        PidsLimit: requestedResources.pidsLimit,
+      },
+      {
+        containerId: "container-a",
+        Memory: requestedResources.memoryBytes,
+        NanoCpus: requestedResources.nanoCpus,
+        PidsLimit: requestedResources.pidsLimit,
+      },
+    ]);
+  });
+
+  it("rejects requested resources above the deployment ceiling", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, {
+      ...testPolicy,
+      agentMemoryBytes: 1024 * 1024 * 1024,
+    });
+
+    await expect(
+      service.provision({
+        ...requestFor("runtime-too-large"),
+        resources: { ...requestedResources, memoryBytes: 2 * 1024 * 1024 * 1024 },
+      }),
+    ).rejects.toMatchObject({ code: "runtime_policy_exceeds_platform_limit" });
+    expect(engine.createCalls).toHaveLength(0);
+  });
+
+  it("rejects over-limit start and restart requests before changing container state", async () => {
+    const engine = new RecordingDockerEngine({ existingContainerId: "container-a" });
+    const service = new RuntimeLifecycleService(engine, {
+      ...testPolicy,
+      agentMemoryBytes: 1024 * 1024 * 1024,
+    });
+    const overLimitResources = {
+      ...requestedResources,
+      memoryBytes: 2 * 1024 * 1024 * 1024,
+    };
+
+    await expect(
+      service.start({ runtimeId: "runtime-a", resources: overLimitResources }),
+    ).rejects.toMatchObject({ code: "runtime_policy_exceeds_platform_limit" });
+    await expect(
+      service.restart({ runtimeId: "runtime-a", resources: overLimitResources }),
+    ).rejects.toMatchObject({ code: "runtime_policy_exceeds_platform_limit" });
+    expect(engine.startCalls).toEqual([]);
+    expect(engine.restartCalls).toEqual([]);
+    expect(engine.updateCalls).toEqual([]);
+  });
+
+  it("uses deployment resource defaults when a request omits resources", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+
+    await expect(service.provision(requestFor("runtime-defaults"))).resolves.toMatchObject({
+      actualResources: {
+        memoryBytes: 2 * 1024 * 1024 * 1024,
+        nanoCpus: 2_000_000_000,
+        pidsLimit: 256,
+      },
+    });
+    expect(engine.createCalls[0]?.security).toMatchObject({
+      Memory: 2 * 1024 * 1024 * 1024,
+      NanoCpus: 2_000_000_000,
+      PidsLimit: 256,
+    });
+  });
+
   it("executes a command in a running managed container", async () => {
     const engine = new RecordingDockerEngine();
     engine.execResult = { code: 0, stdout: "git version 2.45.0\n", stderr: "" };
