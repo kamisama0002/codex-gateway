@@ -248,17 +248,10 @@ export class ManagedRuntimeService {
       let restarted: RuntimeLifecycleResult;
       try {
         this.options.closeConnections?.(targetUserId);
-        const removed = await this.options.manager.remove(identity.runtimeId);
-        this.assertRuntimeResult(identity.runtimeId, removed, "absent");
-        const provisioned = await this.options.manager.provision(
-          await this.provisionRequest(targetUserId, identity, policy),
-        );
-        this.assertRuntimeResult(identity.runtimeId, provisioned);
-        requiredImageVersion(provisioned);
         restarted =
           resources === undefined
-            ? await this.options.manager.start(identity.runtimeId)
-            : await this.options.manager.start(identity.runtimeId, resources);
+            ? await this.options.manager.restart(identity.runtimeId)
+            : await this.options.manager.restart(identity.runtimeId, resources);
         endpoint = this.runningEndpoint(identity.runtimeId, restarted);
         requiredImageVersion(restarted);
       } catch (error) {

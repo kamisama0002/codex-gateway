@@ -149,27 +149,45 @@ describe("ManagedRuntimeService", () => {
     expect(await fixture.store.getByUserId(7)).toBeNull();
   });
 
-  it("reprovisions a managed container on restart so current runtime configuration is applied", async () => {
+  it("restarts the existing container without provisioning when no policy snapshot exists", async () => {
     const fixture = runtimeFixture();
     await fixture.service.start(7);
+    fixture.policyStore.getByUserId.mockClear();
     fixture.manager.remove.mockClear();
     fixture.manager.provision.mockClear();
     fixture.manager.start.mockClear();
     fixture.manager.restart.mockClear();
+    fixture.manager.restart.mockImplementationOnce(async (runtimeId) => ({
+      runtimeId,
+      containerId: "container-01",
+      imageAlias: "stable",
+      imageVersion: "0.151.1",
+      status: "running" as const,
+      endpoint: {
+        runtimeId,
+        websocketUrl: "ws://runtime-01:4500",
+        serviceToken: "runtime-token",
+      },
+      actualResources: {
+        memoryBytes: 2 * 1024 * 1024 * 1024,
+        nanoCpus: 2_000_000_000,
+        pidsLimit: 256,
+      },
+    }));
 
     await expect(fixture.service.restart(7, 1)).resolves.toMatchObject({ status: "ready" });
 
-    expect(fixture.manager.remove).toHaveBeenCalledOnce();
-    expect(fixture.manager.remove.mock.calls[0]?.[0]).toMatch(/^codex_[a-f0-9]{32}$/);
-    expect(fixture.manager.provision).toHaveBeenCalledOnce();
-    const provisionRequest = fixture.manager.provision.mock.calls[0]?.[0];
-    expect(provisionRequest).toMatchObject({
-      imageAlias: "stable",
-      runtimeType: "codex-app-server",
+    expect(fixture.policyStore.getByUserId).toHaveBeenCalledOnce();
+    expect(fixture.manager.restart).toHaveBeenCalledOnce();
+    expect(fixture.manager.restart.mock.calls[0]).toHaveLength(1);
+    expect(fixture.manager.restart.mock.calls[0]?.[0]).toMatch(/^codex_[a-f0-9]{32}$/);
+    expect(fixture.manager.remove).not.toHaveBeenCalled();
+    expect(fixture.manager.provision).not.toHaveBeenCalled();
+    expect(fixture.manager.start).not.toHaveBeenCalled();
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
+      containerId: "container-01",
+      imageVersion: "0.151.1",
     });
-    expect(provisionRequest?.userHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(fixture.manager.start).toHaveBeenCalledOnce();
-    expect(fixture.manager.restart).not.toHaveBeenCalled();
   });
 
   it("applies the assigned image and all resource fields when starting a runtime", async () => {
@@ -206,11 +224,14 @@ describe("ManagedRuntimeService", () => {
     expect(fixture.manager.start).toHaveBeenCalledWith(expect.any(String));
   });
 
-  it("uses the latest assigned policy when reprovisioning on restart", async () => {
-    const fixture = runtimeFixture();
+  it("applies resource drift on restart while leaving assigned image drift pending", async () => {
+    const fixture = runtimeFixture({ assignedPolicy: assignedPolicy() });
     await fixture.service.start(7);
+    fixture.policyStore.getByUserId.mockClear();
+    fixture.manager.remove.mockClear();
     fixture.manager.provision.mockClear();
     fixture.manager.start.mockClear();
+    fixture.manager.restart.mockClear();
     fixture.policyStore.getByUserId.mockResolvedValue(
       assignedPolicy({
         imageAlias: "tenant-next",
@@ -219,18 +240,56 @@ describe("ManagedRuntimeService", () => {
         pidsLimit: 256,
       }),
     );
-
-    await fixture.service.restart(7, 1);
-
     const resources = {
       memoryBytes: 2 * 1024 * 1024 * 1024,
       nanoCpus: 2_500_000_000,
       pidsLimit: 256,
     };
-    expect(fixture.manager.provision).toHaveBeenCalledWith(
-      expect.objectContaining({ imageAlias: "tenant-next", resources }),
-    );
-    expect(fixture.manager.start).toHaveBeenCalledWith(expect.any(String), resources);
+    fixture.manager.restart.mockImplementationOnce(async (runtimeId) => ({
+      runtimeId,
+      containerId: "container-01",
+      imageAlias: "tenant-stable",
+      imageVersion: "0.151.1",
+      status: "running" as const,
+      endpoint: {
+        runtimeId,
+        websocketUrl: "ws://runtime-01:4500",
+        serviceToken: "runtime-token",
+      },
+      actualResources: resources,
+    }));
+    fixture.manager.inspect.mockImplementation(async (runtimeId) => ({
+      runtimeId,
+      containerId: "container-01",
+      imageAlias: "tenant-stable",
+      imageVersion: "0.151.1",
+      status: "running" as const,
+      endpoint: {
+        runtimeId,
+        websocketUrl: "ws://runtime-01:4500",
+        serviceToken: "runtime-token",
+      },
+      actualResources: resources,
+    }));
+
+    await fixture.service.restart(7, 1);
+
+    expect(fixture.policyStore.getByUserId).toHaveBeenCalledOnce();
+    expect(fixture.manager.restart).toHaveBeenCalledWith(expect.any(String), resources);
+    expect(fixture.manager.remove).not.toHaveBeenCalled();
+    expect(fixture.manager.provision).not.toHaveBeenCalled();
+    expect(fixture.manager.start).not.toHaveBeenCalled();
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
+      containerId: "container-01",
+      imageVersion: "0.151.1",
+    });
+
+    await expect(fixture.service.getStatusView(7)).resolves.toMatchObject({
+      actualResources: resources,
+      currentImageAlias: "tenant-stable",
+      requiresRestart: false,
+      requiresUpgrade: true,
+    });
   });
 
   it("preserves the Runtime Manager policy ceiling error as a safe public code", async () => {

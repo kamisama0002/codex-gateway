@@ -115,8 +115,7 @@ export class RuntimeLifecycleService {
   async start(request: RuntimeResourceActionRequest): Promise<RuntimeLifecycleResult> {
     const resources = this.resources(request.resources);
     const container = await this.requireContainer(request.runtimeId);
-    if (!container.running) await this.engine.startContainer(container.containerId);
-    return toResult(await this.applyResourceLimits(container.containerId, resources));
+    return toResult(await this.startWithResources(container, resources));
   }
 
   async stop(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
@@ -128,8 +127,7 @@ export class RuntimeLifecycleService {
   async restart(request: RuntimeResourceActionRequest): Promise<RuntimeLifecycleResult> {
     const resources = this.resources(request.resources);
     const container = await this.requireContainer(request.runtimeId);
-    await this.engine.restartContainer(container.containerId);
-    return toResult(await this.applyResourceLimits(container.containerId, resources));
+    return toResult(await this.startWithResources(container, resources));
   }
 
   async upgrade(request: UpgradeRuntimeRequest): Promise<RuntimeLifecycleResult> {
@@ -145,12 +143,15 @@ export class RuntimeLifecycleService {
     if (existing.running) await this.engine.stopContainer(existing.containerId);
     await this.engine.removeContainer(existing.containerId);
     return toResult(
-      await this.createContainer({
-        imageAlias: request.imageAlias,
-        runtimeId: existing.runtimeId,
-        runtimeType: existing.runtimeType,
-        userHash: existing.userHash,
-      }, resources),
+      await this.createContainer(
+        {
+          imageAlias: request.imageAlias,
+          runtimeId: existing.runtimeId,
+          runtimeType: existing.runtimeType,
+          userHash: existing.userHash,
+        },
+        resources,
+      ),
     );
   }
 
@@ -227,6 +228,18 @@ export class RuntimeLifecycleService {
       NanoCpus: resources.nanoCpus,
       PidsLimit: resources.pidsLimit,
     });
+  }
+
+  private async startWithResources(
+    container: EngineContainerState,
+    resources: RuntimeResourcePolicy,
+  ): Promise<EngineContainerState> {
+    if (container.running) await this.engine.stopContainer(container.containerId);
+    await this.applyResourceLimits(container.containerId, resources);
+    await this.engine.startContainer(container.containerId);
+    const running = await this.requireContainer(container.runtimeId);
+    if (!running.running) throw new Error("Agent runtime did not start");
+    return running;
   }
 
   private resources(requested?: RuntimeResourcePolicy): RuntimeResourcePolicy {

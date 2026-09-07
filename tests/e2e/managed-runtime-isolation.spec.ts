@@ -83,15 +83,16 @@ test("two Gateway users keep isolated Agent containers, tokens, history, and str
     expect(threadsBAfterAgentRestart).not.toContainEqual(expect.objectContaining({ id: threadA }));
 
     const restartedRuntimeA = await inspectManagedRuntime(userA);
-    expect(restartedRuntimeA.containerId).not.toBe(runtimeA.containerId);
-    expect(restartedRuntimeA.endpoint.serviceToken).not.toBe(runtimeA.endpoint.serviceToken);
+    expect(restartedRuntimeA.containerId).toBe(runtimeA.containerId);
+    expect(restartedRuntimeA.endpoint.websocketUrl).toBe(runtimeA.endpoint.websocketUrl);
+    expect(restartedRuntimeA.endpoint.serviceToken).toBe(runtimeA.endpoint.serviceToken);
     expect(
       await isManagedRuntimeTokenRejected(
         userA.user.id,
         restartedRuntimeA.endpoint,
         runtimeA.endpoint.serviceToken,
       ),
-    ).toBe(true);
+    ).toBe(false);
     const recoveredRpcA = new ManagedRuntimeRpcSession(userA.user.id, restartedRuntimeA.endpoint);
     try {
       await recoveredRpcA.connect();

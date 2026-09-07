@@ -53,6 +53,7 @@ interface E2eRuntimeInspector {
 export function createRuntimeManagerRequestHandler(options: {
   authenticator: HmacRequestAuthenticator;
   service: RuntimeLifecycleService;
+  environment?: NodeJS.ProcessEnv;
   e2eInspector?: E2eRuntimeInspector;
 }): RequestListener {
   return (request, response) => {
@@ -66,6 +67,7 @@ async function handleRequest(
   options: {
     authenticator: HmacRequestAuthenticator;
     service: RuntimeLifecycleService;
+    environment?: NodeJS.ProcessEnv;
     e2eInspector?: E2eRuntimeInspector;
   },
 ): Promise<void> {
@@ -78,7 +80,10 @@ async function handleRequest(
     if (request.method === "GET") {
       const e2eInspectMatch = /^\/v1\/e2e\/runtimes\/([^/]+)\/docker$/.exec(url.pathname);
       if (e2eInspectMatch) {
-        if (options.e2eInspector === undefined) {
+        if (
+          options.e2eInspector === undefined ||
+          !e2eInspectionEnabled(options.environment ?? process.env)
+        ) {
           return sendJson(response, 404, { error: "not_found" });
         }
         const requestData = runtimeActionRequestSchema.parse({
@@ -227,18 +232,23 @@ export function startRuntimeManager(environment: NodeJS.ProcessEnv = process.env
   });
   const engine = new DockerodeEngine();
   const service = new RuntimeLifecycleService(engine, loadRuntimeManagerPolicy(environment));
-  const e2eInspector =
-    environment.RUNTIME_MANAGER_E2E_INSPECTION === "1"
-      ? { inspectRuntime: (runtimeId: string) => engine.inspectRuntimeForE2e(runtimeId) }
-      : undefined;
+  const e2eInspector = e2eInspectionEnabled(environment)
+    ? { inspectRuntime: (runtimeId: string) => engine.inspectRuntimeForE2e(runtimeId) }
+    : undefined;
   const server = createServer(
-    createRuntimeManagerRequestHandler({ authenticator, service, e2eInspector }),
+    createRuntimeManagerRequestHandler({ authenticator, service, environment, e2eInspector }),
   );
   const port = Number(environment.RUNTIME_MANAGER_PORT ?? "8787");
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error("RUNTIME_MANAGER_PORT must be a valid TCP port");
   }
   server.listen(port, environment.RUNTIME_MANAGER_HOST ?? "0.0.0.0");
+}
+
+function e2eInspectionEnabled(environment: NodeJS.ProcessEnv): boolean {
+  return (
+    environment.RUNTIME_MANAGER_E2E_INSPECTION === "1" && environment.NODE_ENV !== "production"
+  );
 }
 
 function requiredEnvironment(environment: NodeJS.ProcessEnv, key: string): string {
