@@ -5,6 +5,11 @@ export type RuntimePolicyView = Pick<
   "assignedPolicy" | "actualResources" | "currentImageAlias" | "requiresRestart" | "requiresUpgrade"
 >;
 
+export type RuntimePolicyPanelView = Pick<
+  ManagedRuntimeStatusView,
+  "runtime" | "assignedPolicy" | "actualResources"
+>;
+
 export type RuntimePolicyBadge = "restart" | "upgrade";
 
 interface ResourceSummary {
@@ -40,6 +45,10 @@ export function policyBadges(
     ...(view.requiresRestart ? (["restart"] as const) : []),
     ...(view.requiresUpgrade ? (["upgrade"] as const) : []),
   ];
+}
+
+export function shouldShowRuntimePolicy(view: RuntimePolicyPanelView) {
+  return view.assignedPolicy !== null || view.actualResources !== null;
 }
 
 export function runtimePolicySummary(view: RuntimePolicyView): RuntimePolicySummary {

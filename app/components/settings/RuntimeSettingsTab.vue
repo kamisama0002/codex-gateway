@@ -6,7 +6,11 @@ import { Badge } from "@codex-gateway/ui/badge";
 import { Button } from "@codex-gateway/ui/button";
 import type { ManagedRuntimeStatusView } from "@codex-gateway/agent-runtime-contracts";
 import { gatewayApi } from "@/utils/gateway-api";
-import { runtimePolicySummary, type RuntimePolicyBadge } from "@/utils/runtime-policy-view";
+import {
+  runtimePolicySummary,
+  shouldShowRuntimePolicy,
+  type RuntimePolicyBadge,
+} from "@/utils/runtime-policy-view";
 import { errorMessageLabels, messageFromError } from "@/stores/gateway/thread-utils/identity";
 
 type RuntimeStatusView = ManagedRuntimeStatusView;
@@ -22,6 +26,7 @@ const mine = ref<RuntimeStatusView | null>(null);
 const runtimes = ref<RuntimeStatusView[]>([]);
 const canAdminister = ref(false);
 const minePolicy = computed(() => (mine.value === null ? null : runtimePolicySummary(mine.value)));
+const mineHasPolicy = computed(() => mine.value !== null && shouldShowRuntimePolicy(mine.value));
 
 function statusVariant(status: string) {
   if (status === "ready") return "default" as const;
@@ -163,79 +168,87 @@ function formatUpdatedAt(value: string) {
             <Loader2Icon class="size-4 animate-spin" />
             {{ t("app.runtimeLoading") }}
           </div>
-          <div v-else-if="mine?.runtime" class="space-y-2 text-sm">
-            <div class="flex flex-wrap items-center gap-2">
-              <Badge :variant="statusVariant(mine.runtime.status)">{{
-                statusLabel(mine.runtime.status)
-              }}</Badge>
-              <span class="text-ink-muted">{{ mine.runtime.runtimeVersion }}</span>
-            </div>
-            <div v-if="minePolicy?.badges.length" class="flex flex-wrap gap-2">
-              <Badge
-                v-for="badge in minePolicy.badges"
-                :key="badge"
-                :variant="policyBadgeVariant(badge)"
-              >
-                {{ policyBadgeLabel(badge) }}
-              </Badge>
-            </div>
-            <div v-if="minePolicy?.assigned" class="space-y-1 border-t border-hairline pt-2">
-              <div class="text-xs font-medium text-ink-secondary">
-                {{ t("app.runtimeAssignedPolicy") }}
+          <div v-else class="space-y-2 text-sm">
+            <template v-if="mine?.runtime">
+              <div class="flex flex-wrap items-center gap-2">
+                <Badge :variant="statusVariant(mine.runtime.status)">{{
+                  statusLabel(mine.runtime.status)
+                }}</Badge>
+                <span class="text-ink-muted">{{ mine.runtime.runtimeVersion }}</span>
               </div>
-              <div class="grid gap-x-4 gap-y-1 sm:grid-cols-2">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-ink-muted">{{ t("app.runtimeMemory") }}</span>
-                  <span>{{ minePolicy.assigned.memory }}</span>
-                </div>
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-ink-muted">{{ t("app.runtimeCpu") }}</span>
-                  <span>{{ minePolicy.assigned.cpu }}</span>
-                </div>
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-ink-muted">{{ t("app.runtimePids") }}</span>
-                  <span>{{ minePolicy.assigned.pids }}</span>
-                </div>
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-ink-muted">{{ t("app.runtimeImageAlias") }}</span>
-                  <span>{{ minePolicy.assigned.imageAlias }}</span>
-                </div>
-              </div>
-            </div>
-            <div v-if="minePolicy?.actual" class="space-y-1 border-t border-hairline pt-2">
-              <div class="text-xs font-medium text-ink-secondary">
-                {{ t("app.runtimeActualResources") }}
-              </div>
-              <div class="grid gap-x-4 gap-y-1 sm:grid-cols-2">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-ink-muted">{{ t("app.runtimeMemory") }}</span>
-                  <span>{{ minePolicy.actual.memory }}</span>
-                </div>
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-ink-muted">{{ t("app.runtimeCpu") }}</span>
-                  <span>{{ minePolicy.actual.cpu }}</span>
-                </div>
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-ink-muted">{{ t("app.runtimePids") }}</span>
-                  <span>{{ minePolicy.actual.pids }}</span>
-                </div>
-                <div
-                  v-if="minePolicy.actual.imageAlias"
-                  class="flex items-center justify-between gap-2"
+              <div v-if="minePolicy?.badges.length" class="flex flex-wrap gap-2">
+                <Badge
+                  v-for="badge in minePolicy.badges"
+                  :key="badge"
+                  :variant="policyBadgeVariant(badge)"
                 >
-                  <span class="text-ink-muted">{{ t("app.runtimeImageAlias") }}</span>
-                  <span>{{ minePolicy.actual.imageAlias }}</span>
+                  {{ policyBadgeLabel(badge) }}
+                </Badge>
+              </div>
+            </template>
+            <div v-if="mineHasPolicy" class="space-y-2">
+              <div v-if="minePolicy?.assigned" class="space-y-1 border-t border-hairline pt-2">
+                <div class="text-xs font-medium text-ink-secondary">
+                  {{ t("app.runtimeAssignedPolicy") }}
+                </div>
+                <div class="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeMemory") }}</span>
+                    <span>{{ minePolicy.assigned.memory }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeCpu") }}</span>
+                    <span>{{ minePolicy.assigned.cpu }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimePids") }}</span>
+                    <span>{{ minePolicy.assigned.pids }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeImageAlias") }}</span>
+                    <span>{{ minePolicy.assigned.imageAlias }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="minePolicy?.actual" class="space-y-1 border-t border-hairline pt-2">
+                <div class="text-xs font-medium text-ink-secondary">
+                  {{ t("app.runtimeActualResources") }}
+                </div>
+                <div class="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeMemory") }}</span>
+                    <span>{{ minePolicy.actual.memory }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeCpu") }}</span>
+                    <span>{{ minePolicy.actual.cpu }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimePids") }}</span>
+                    <span>{{ minePolicy.actual.pids }}</span>
+                  </div>
+                  <div
+                    v-if="minePolicy.actual.imageAlias"
+                    class="flex items-center justify-between gap-2"
+                  >
+                    <span class="text-ink-muted">{{ t("app.runtimeImageAlias") }}</span>
+                    <span>{{ minePolicy.actual.imageAlias }}</span>
+                  </div>
                 </div>
               </div>
             </div>
-            <p v-if="mine.runtime.lastError" class="text-destructive">
-              {{ mine.runtime.lastError }}
-            </p>
-            <p class="text-ink-muted">
-              {{ t("app.runtimeUpdatedAt", { time: formatUpdatedAt(mine.runtime.updatedAt) }) }}
+            <template v-if="mine?.runtime">
+              <p v-if="mine.runtime.lastError" class="text-destructive">
+                {{ mine.runtime.lastError }}
+              </p>
+              <p class="text-ink-muted">
+                {{ t("app.runtimeUpdatedAt", { time: formatUpdatedAt(mine.runtime.updatedAt) }) }}
+              </p>
+            </template>
+            <p v-if="!mine?.runtime && !mineHasPolicy" class="text-sm text-ink-secondary">
+              {{ t("app.runtimeMineAbsent") }}
             </p>
           </div>
-          <p v-else class="text-sm text-ink-secondary">{{ t("app.runtimeMineAbsent") }}</p>
         </div>
         <Button
           v-if="mine?.runtime"

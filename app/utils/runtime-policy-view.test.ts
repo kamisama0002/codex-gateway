@@ -5,6 +5,7 @@ import {
   formatPidsLimit,
   policyBadges,
   runtimePolicySummary,
+  shouldShowRuntimePolicy,
   type RuntimePolicyView,
 } from "./runtime-policy-view";
 
@@ -55,6 +56,21 @@ describe("runtime policy presentation", () => {
       "restart",
       "upgrade",
     ]);
+  });
+
+  it("shows assigned policy before the runtime has started", () => {
+    expect(
+      shouldShowRuntimePolicy({
+        runtime: null,
+        assignedPolicy: {
+          imageAlias: "tenant-stable",
+          memoryMiB: 2048,
+          cpuCores: 1.5,
+          pidsLimit: 256,
+        },
+        actualResources: null,
+      }),
+    ).toBe(true);
   });
 
   it("does not include internal runtime details in the presentation", () => {
