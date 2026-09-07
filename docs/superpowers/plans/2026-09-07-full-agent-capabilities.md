@@ -264,7 +264,7 @@ Commit: `feat(runtime): add egress and full resource policy`
 - Produces: `CapabilityStore.create/update/delete/assign/unassign/listDesiredForContext`.
 - Creates: `capability_definitions`, `capability_assignments`, `capability_artifacts`, `capability_syncs`.
 
-- [ ] **Step 1: Write failing migration, CRUD and isolation tests**
+- [x] **Step 1: Write failing migration, CRUD and isolation tests**
 
 Use literal desired-state fixtures and assert project grants do not leak across projects:
 
@@ -277,17 +277,17 @@ expect(store.listDesiredForContext({ userId: 7, projectId: 11 }).map(x => x.id))
 ]);
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pnpm exec vitest run server/utils/gateway/capabilities/store.test.ts server/utils/gateway/storage/migrations.test.ts`
 
 Expected: FAIL because migration and capability store do not exist.
 
-- [ ] **Step 3: Implement strict schemas and storage**
+- [x] **Step 3: Implement strict schemas and storage**
 
 Store normalized non-secret configuration JSON, content hashes and audit-safe metadata. Reject capability IDs without `org__`, unsupported URLs, STDIO executables absent from the administrator allowlist, and assignment targets that do not exist.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run focused tests, `pnpm typecheck`, `pnpm exec oxlint server shared` and `git diff --check`.
 

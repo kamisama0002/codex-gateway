@@ -229,6 +229,69 @@ const migrations: DatabaseMigration[] = [
       `);
     },
   },
+  {
+    version: 9,
+    up(db) {
+      db.exec(`
+        CREATE TABLE capability_definitions (
+          id TEXT PRIMARY KEY NOT NULL CHECK (id GLOB 'org__*'),
+          kind TEXT NOT NULL CHECK (kind IN ('skill', 'plugin', 'app', 'mcp', 'search')),
+          display_name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          version TEXT NOT NULL,
+          source_json TEXT NOT NULL,
+          config_json TEXT NOT NULL,
+          sensitive_fields_json TEXT NOT NULL DEFAULT '[]',
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE TABLE capability_artifacts (
+          capability_id TEXT NOT NULL REFERENCES capability_definitions(id) ON DELETE CASCADE,
+          version TEXT NOT NULL,
+          sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+          storage_path TEXT NOT NULL,
+          size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (capability_id, version)
+        ) STRICT;
+
+        CREATE TABLE capability_assignments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          capability_id TEXT NOT NULL REFERENCES capability_definitions(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          project_id INTEGER CHECK (project_id IS NULL OR project_id > 0),
+          created_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE UNIQUE INDEX idx_capability_assignments_scope
+          ON capability_assignments(capability_id, user_id, COALESCE(project_id, -1));
+        CREATE INDEX idx_capability_assignments_context
+          ON capability_assignments(user_id, project_id, capability_id);
+
+        CREATE TABLE capability_syncs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          project_id INTEGER CHECK (project_id IS NULL OR project_id > 0),
+          desired_hash TEXT NOT NULL,
+          actual_hash TEXT,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'succeeded', 'failed')),
+          results_json TEXT NOT NULL DEFAULT '[]',
+          safe_error TEXT,
+          attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE UNIQUE INDEX idx_capability_syncs_scope
+          ON capability_syncs(user_id, COALESCE(project_id, -1));
+        CREATE INDEX idx_capability_syncs_status
+          ON capability_syncs(status, updated_at);
+      `);
+    },
+  },
 ];
 
 export function migrateGatewayDatabase(db: DatabaseSync): void {

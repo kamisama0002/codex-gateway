@@ -99,6 +99,25 @@ export type {
   PinnedThreadRecord,
 } from "./types/config";
 export type {
+  AppCapabilityConfig,
+  CapabilityArtifact,
+  CapabilityArtifactInput,
+  CapabilityAssignment,
+  CapabilityAssignmentInput,
+  CapabilityConfig,
+  CapabilityContext,
+  CapabilityCreateInput,
+  CapabilityDefinition,
+  CapabilityKind,
+  CapabilitySource,
+  CapabilityUpdateInput,
+  HttpMcpCapabilityConfig,
+  McpCapabilityConfig,
+  PluginCapabilityConfig,
+  SkillCapabilityConfig,
+  StdioMcpCapabilityConfig,
+} from "./types/capabilities";
+export type {
   FilePreviewDocument,
   ProjectFileSearchResult,
   RemoteFileConflict,
