@@ -64,6 +64,14 @@ export interface EngineContainerState {
   pidsLimit: number;
 }
 
+export interface E2eDockerInspection {
+  containerId: string;
+  memoryBytes: number;
+  nanoCpus: number;
+  pidsLimit: number;
+  workspaceVolume: string;
+}
+
 export interface DockerEngine {
   findManagedContainer(runtimeId: string): Promise<EngineContainerState | null>;
   createManagedContainer(spec: DockerContainerCreateSpec): Promise<EngineContainerState>;
@@ -190,6 +198,30 @@ export class DockerodeEngine implements DockerEngine {
       PidsLimit: resources.PidsLimit,
     });
     return this.inspectContainer(containerId);
+  }
+
+  async inspectRuntimeForE2e(runtimeId: string): Promise<E2eDockerInspection> {
+    const state = await this.findManagedContainer(runtimeId);
+    if (state === null) throw new Error("managed runtime is missing");
+    const inspected = await this.docker.getContainer(state.containerId).inspect();
+    const workspaceVolumes = inspected.Mounts.flatMap((mount) =>
+      mount.Type === "volume" &&
+      mount.Destination === "/workspace" &&
+      typeof mount.Name === "string" &&
+      mount.Name.length > 0
+        ? [mount.Name]
+        : [],
+    );
+    if (workspaceVolumes.length !== 1) {
+      throw new Error("managed runtime workspace volume is invalid");
+    }
+    return {
+      containerId: state.containerId,
+      memoryBytes: state.memoryBytes,
+      nanoCpus: state.nanoCpus,
+      pidsLimit: state.pidsLimit,
+      workspaceVolume: workspaceVolumes[0],
+    };
   }
 
   private async ensureManagedVolume(spec: DockerManagedVolumeSpec): Promise<void> {

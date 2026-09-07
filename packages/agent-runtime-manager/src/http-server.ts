@@ -7,7 +7,7 @@ import {
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 
 import {
   HmacRequestAuthenticator,
@@ -25,6 +25,7 @@ import {
   upgradeRuntimeRequestSchema,
 } from "./contracts.js";
 import { DockerodeEngine } from "./docker-engine.js";
+import type { E2eDockerInspection } from "./docker-engine.js";
 import { RuntimeLifecycleError, RuntimeLifecycleService } from "./lifecycle-service.js";
 import {
   parseAgentMemoryBytes,
@@ -35,9 +36,24 @@ import {
 const MAX_BODY_BYTES = 64 * 1024;
 export const CODEX_APP_SERVER_PORT = 4500;
 
+const e2eDockerInspectionSchema = z
+  .object({
+    containerId: z.string().min(1),
+    memoryBytes: z.number().int().nonnegative(),
+    nanoCpus: z.number().int().nonnegative(),
+    pidsLimit: z.number().int().nonnegative(),
+    workspaceVolume: z.string().min(1),
+  })
+  .strict();
+
+interface E2eRuntimeInspector {
+  inspectRuntime(runtimeId: string): Promise<E2eDockerInspection>;
+}
+
 export function createRuntimeManagerRequestHandler(options: {
   authenticator: HmacRequestAuthenticator;
   service: RuntimeLifecycleService;
+  e2eInspector?: E2eRuntimeInspector;
 }): RequestListener {
   return (request, response) => {
     void handleRequest(request, response, options);
@@ -50,6 +66,7 @@ async function handleRequest(
   options: {
     authenticator: HmacRequestAuthenticator;
     service: RuntimeLifecycleService;
+    e2eInspector?: E2eRuntimeInspector;
   },
 ): Promise<void> {
   try {
@@ -59,6 +76,19 @@ async function handleRequest(
     if (url.search) return sendJson(response, 404, { error: "not_found" });
 
     if (request.method === "GET") {
+      const e2eInspectMatch = /^\/v1\/e2e\/runtimes\/([^/]+)\/docker$/.exec(url.pathname);
+      if (e2eInspectMatch) {
+        if (options.e2eInspector === undefined) {
+          return sendJson(response, 404, { error: "not_found" });
+        }
+        const requestData = runtimeActionRequestSchema.parse({
+          runtimeId: decodeURIComponent(e2eInspectMatch[1] ?? ""),
+        });
+        const result = e2eDockerInspectionSchema.parse(
+          await options.e2eInspector.inspectRuntime(requestData.runtimeId),
+        );
+        return sendJson(response, 200, result);
+      }
       const statsMatch = /^\/v1\/runtimes\/([^/]+)\/stats$/.exec(url.pathname);
       if (statsMatch) {
         const result = await options.service.stats(
@@ -195,11 +225,15 @@ export function startRuntimeManager(environment: NodeJS.ProcessEnv = process.env
     nonceStore: new SqliteNonceStore(resolveRuntimeManagerNonceStorePath(environment)),
     secret,
   });
-  const service = new RuntimeLifecycleService(
-    new DockerodeEngine(),
-    loadRuntimeManagerPolicy(environment),
+  const engine = new DockerodeEngine();
+  const service = new RuntimeLifecycleService(engine, loadRuntimeManagerPolicy(environment));
+  const e2eInspector =
+    environment.RUNTIME_MANAGER_E2E_INSPECTION === "1"
+      ? { inspectRuntime: (runtimeId: string) => engine.inspectRuntimeForE2e(runtimeId) }
+      : undefined;
+  const server = createServer(
+    createRuntimeManagerRequestHandler({ authenticator, service, e2eInspector }),
   );
-  const server = createServer(createRuntimeManagerRequestHandler({ authenticator, service }));
   const port = Number(environment.RUNTIME_MANAGER_PORT ?? "8787");
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error("RUNTIME_MANAGER_PORT must be a valid TCP port");

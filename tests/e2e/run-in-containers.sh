@@ -6,7 +6,9 @@ project_dir="$(cd "$script_dir/../.." && pwd)"
 compose_file="$script_dir/docker-compose.yml"
 project_name="${E2E_COMPOSE_PROJECT_NAME:-codex-gateway-e2e}-$$"
 database_name="codex_gateway_e2e_$$"
-agent_image="codex-agent-runtime:0.151.0"
+agent_image="${E2E_AGENT_IMAGE:-codex-agent-runtime:$project_name}"
+runtime_manager_image="${E2E_RUNTIME_MANAGER_IMAGE:-codex-runtime-manager-e2e:$project_name}"
+runner_image="${E2E_RUNNER_IMAGE:-codex-gateway-e2e-runner:$project_name}"
 e2e_managed_label="com.codex-gateway.e2e-managed=$project_name"
 
 if [ "${1:-}" = "--turn" ]; then
@@ -30,7 +32,10 @@ if [ -z "${E2E_CODEX_PROVIDER_KEY_FILE:-}" ]; then
   fi
 fi
 export E2E_AGENT_NETWORK_NAME="${E2E_AGENT_NETWORK_NAME:-$project_name-agent-runtime}"
+export E2E_AGENT_IMAGE="$agent_image"
 export E2E_RUNTIME_MANAGER_NETWORK_NAME="${E2E_RUNTIME_MANAGER_NETWORK_NAME:-$project_name-runtime-manager}"
+export E2E_RUNTIME_MANAGER_IMAGE="$runtime_manager_image"
+export E2E_RUNNER_IMAGE="$runner_image"
 export E2E_MANAGED_LABEL_VALUE="$project_name"
 export RUNTIME_MANAGER_SHARED_SECRET="${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}"
 
@@ -73,6 +78,21 @@ assert_no_port_bindings() {
   fi
 }
 
+assert_managed_agent_resources() {
+  local container_id="$1"
+  local memory nano_cpus pids_limit
+  memory="$(docker inspect --format '{{.HostConfig.Memory}}' "$container_id")"
+  nano_cpus="$(docker inspect --format '{{.HostConfig.NanoCpus}}' "$container_id")"
+  pids_limit="$(docker inspect --format '{{.HostConfig.PidsLimit}}' "$container_id")"
+  case "$memory:$nano_cpus:$pids_limit" in
+    2147483648:2000000000:256 | 1342177280:1250000000:160 | 1610612736:1500000000:192)
+      return 0
+      ;;
+  esac
+  printf 'E2E assertion failed: managed Agent has an unexpected resource policy\n' >&2
+  return 1
+}
+
 wait_for_agent_health() {
   local container_id="$1"
   local health=""
@@ -107,6 +127,18 @@ process.stdin.on("end", () => {
   if (mysql.healthcheck === undefined) throw new Error("E2E MySQL healthcheck is missing");
   if (!(mysql.volumes ?? []).some((mount) => mount.target === "/var/lib/mysql")) {
     throw new Error("E2E MySQL persistent data mount is missing");
+  }
+  if (services["agent-runtime-manager"]?.image !== process.env.E2E_RUNTIME_MANAGER_IMAGE) {
+    throw new Error("Runtime Manager must use the exact generated E2E tag");
+  }
+  const aliases = JSON.parse(services["agent-runtime-manager"]?.environment?.RUNTIME_MANAGER_IMAGE_ALIASES ?? "{}");
+  if (aliases.stable?.image !== process.env.E2E_AGENT_IMAGE) {
+    throw new Error("Runtime Manager must provision the exact generated Agent image tag");
+  }
+  for (const name of ["build-runner", "gateway-under-test", "test-runner"]) {
+    if (services[name]?.image !== process.env.E2E_RUNNER_IMAGE) {
+      throw new Error(`${name} must use the exact generated E2E runner tag`);
+    }
   }
   for (const name of ["build-runner", "gateway-under-test", "test-runner"]) {
     const databaseUrl = new URL(services[name]?.environment?.DATABASE_URL ?? "");
@@ -302,12 +334,7 @@ verify_managed_runtime_docker_state() {
       "$(docker inspect --format '{{json .HostConfig.CapDrop}}' "$container_id")"
     assert_equal "managed Agent no-new-privileges" '["no-new-privileges:true"]' \
       "$(docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$container_id")"
-    assert_equal "managed Agent PID limit" "256" \
-      "$(docker inspect --format '{{.HostConfig.PidsLimit}}' "$container_id")"
-    assert_equal "managed Agent memory limit" "2147483648" \
-      "$(docker inspect --format '{{.HostConfig.Memory}}' "$container_id")"
-    assert_equal "managed Agent CPU limit" "2000000000" \
-      "$(docker inspect --format '{{.HostConfig.NanoCpus}}' "$container_id")"
+    assert_managed_agent_resources "$container_id"
     assert_equal "managed Agent tmpfs policy" \
       '{"/tmp":"rw,nosuid,nodev,noexec,size=64m"}' \
       "$(docker inspect --format '{{json .HostConfig.Tmpfs}}' "$container_id")"

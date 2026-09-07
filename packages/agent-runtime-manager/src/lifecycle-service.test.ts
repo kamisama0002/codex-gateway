@@ -403,9 +403,9 @@ describe("RuntimeLifecycleService", () => {
     const service = new RuntimeLifecycleService(engine, testPolicy);
 
     const running = await service.stats({ runtimeId: "runtime-a" });
-    const stopped = await service.stop({ runtimeId: "runtime-a" }).then(() =>
-      service.stats({ runtimeId: "runtime-a" }),
-    );
+    const stopped = await service
+      .stop({ runtimeId: "runtime-a" })
+      .then(() => service.stats({ runtimeId: "runtime-a" }));
     const absent = await service.stats({ runtimeId: "missing" });
 
     expect(running).toEqual({
@@ -822,6 +822,78 @@ describe("Runtime Manager HTTP API", () => {
       runtimeId: "runtime-http",
       status: "stopped",
     });
+  });
+
+  it("serves only sanitized Docker state from the explicitly enabled E2E inspection route", async () => {
+    const service = new RuntimeLifecycleService(new RecordingDockerEngine(), testPolicy);
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
+    const server = createServer(
+      createRuntimeManagerRequestHandler({
+        authenticator,
+        service,
+        e2eInspector: {
+          async inspectRuntime() {
+            return {
+              containerId: "container-policy",
+              memoryBytes: 1024 * 1024 * 1024,
+              nanoCpus: 1_000_000_000,
+              pidsLimit: 128,
+              workspaceVolume: "workspace-policy",
+            };
+          },
+        },
+      }),
+    );
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("missing test server address");
+    }
+    const path = "/v1/e2e/runtimes/runtime-policy/docker";
+    const body = Buffer.alloc(0);
+    const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
+      headers: createSignedHeaders({
+        body,
+        method: "GET",
+        path,
+        nonce: "http-e2e-inspect",
+        secret: "shared-secret",
+        timestamp: now,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      containerId: "container-policy",
+      memoryBytes: 1024 * 1024 * 1024,
+      nanoCpus: 1_000_000_000,
+      pidsLimit: 128,
+      workspaceVolume: "workspace-policy",
+    });
+  });
+
+  it("keeps the E2E Docker inspection route absent unless explicitly enabled", async () => {
+    const baseUrl = await startTestServer();
+    const path = "/v1/e2e/runtimes/runtime-policy/docker";
+    const body = Buffer.alloc(0);
+    const response = await fetch(`${baseUrl}${path}`, {
+      headers: createSignedHeaders({
+        body,
+        method: "GET",
+        path,
+        nonce: "http-e2e-disabled",
+        secret: "shared-secret",
+        timestamp: now,
+      }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "not_found" });
   });
 
   it("serves signed container stats without a container id", async () => {

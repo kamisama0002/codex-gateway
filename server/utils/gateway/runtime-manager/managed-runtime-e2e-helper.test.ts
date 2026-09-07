@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  inspectManagedRuntimeDocker,
   loginGatewayUser,
   listManagedRuntimeThreads,
   materializeManagedRuntimeThread,
@@ -26,6 +27,18 @@ const readyRuntimeStatus = {
   lastError: null,
   createdAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:01.000Z",
+};
+const readyRuntimeView = {
+  runtime: readyRuntimeStatus,
+  assignedPolicy: null,
+  actualResources: {
+    memoryBytes: 2 * 1024 * 1024 * 1024,
+    nanoCpus: 2_000_000_000,
+    pidsLimit: 256,
+  },
+  currentImageAlias: "stable",
+  requiresRestart: false,
+  requiresUpgrade: false,
 };
 
 describe("managed Runtime E2E helper", () => {
@@ -137,7 +150,7 @@ describe("managed Runtime E2E helper", () => {
     const request = {
       async get(url: string) {
         urls.push(url);
-        if (url.endsWith("/api/runtime/me")) return response(readyRuntimeStatus);
+        if (url.endsWith("/api/runtime/me")) return response(readyRuntimeView);
         if (url.endsWith("/api/e2e/gateway-process")) {
           bootReadCount += 1;
           return response({
@@ -158,9 +171,9 @@ describe("managed Runtime E2E helper", () => {
             user: { id: 7, username: "runtime-a", role: "admin" },
           });
         }
-        if (url.endsWith("/api/runtime/start")) return response(readyRuntimeStatus);
+        if (url.endsWith("/api/runtime/start")) return response(readyRuntimeView);
         if (url.endsWith("/api/admin/runtimes/7/restart")) {
-          return response(readyRuntimeStatus);
+          return response(readyRuntimeView);
         }
         if (url.endsWith("/api/e2e/gateway-restart")) return response({}, 202);
         throw new Error(`Unexpected POST ${url}`);
@@ -183,5 +196,53 @@ describe("managed Runtime E2E helper", () => {
       "http://gateway-under-test:3100/api/e2e/gateway-restart",
       "http://gateway-under-test:3100/api/e2e/gateway-process",
     ]);
+  });
+
+  it("parses only sanitized Docker inspection fields from the test-only Runtime Manager route", async () => {
+    vi.stubEnv("RUNTIME_MANAGER_BASE_URL", "http://runtime-manager:8787");
+    vi.stubEnv("RUNTIME_MANAGER_SHARED_SECRET", "shared-secret");
+    const inspected = await inspectManagedRuntimeDocker(
+      {
+        token: "gateway-session-token",
+        expiresAt: "2026-10-01T00:00:00.000Z",
+        user: { id: 7, username: "runtime-a", role: "user" },
+      },
+      async () =>
+        new Response(
+          JSON.stringify({
+            containerId: "container-policy",
+            memoryBytes: 1024 * 1024 * 1024,
+            nanoCpus: 1_000_000_000,
+            pidsLimit: 128,
+            workspaceVolume: "workspace-policy",
+          }),
+          { status: 200 },
+        ),
+    );
+
+    expect(inspected).toEqual({
+      containerId: "container-policy",
+      memoryBytes: 1024 * 1024 * 1024,
+      nanoCpus: 1_000_000_000,
+      pidsLimit: 128,
+      workspaceVolume: "workspace-policy",
+    });
+    await expect(
+      inspectManagedRuntimeDocker(
+        {
+          token: "gateway-session-token",
+          expiresAt: "2026-10-01T00:00:00.000Z",
+          user: { id: 7, username: "runtime-a", role: "user" },
+        },
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...inspected,
+              serviceToken: "must-not-cross-the-test-boundary",
+            }),
+            { status: 200 },
+          ),
+      ),
+    ).rejects.toMatchObject({ name: "ZodError" });
   });
 });

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { freshMysqlTestDatabase } from "../../../../tests/mysql/helpers";
 import { createRuntimePolicyStore } from "../runtime-manager/runtime-policy-store";
 import type { GatewayDb } from "../storage/contracts";
-import { verifyPassword } from "../storage/crypto";
+import { hashToken, verifyPassword } from "../storage/crypto";
 import { migrateMysqlGatewayDatabase } from "../storage/mysql-migrations";
 import { createExternalIdentityStore } from "./external-identities";
 import type { DataOpsClaims } from "./dataops-claims";
@@ -168,32 +168,41 @@ describe("external DataOps identities", () => {
     });
   });
 
-  it("rolls back identity and session writes when policy persistence fails", async () => {
-    await db.execute(`
-      CREATE TRIGGER reject_runtime_policy
-      BEFORE INSERT ON user_runtime_policies
-      FOR EACH ROW
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'reject runtime policy'
-    `);
+  it("rolls back identity and policy writes when the later session insert fails", async () => {
+    await db.execute("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)", [
+      999,
+      "existing-session-user",
+      "hash",
+      "user",
+    ]);
+    await db.execute("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)", [
+      999,
+      hashToken("token-rejected"),
+      "2026-10-01T00:00:00.000Z",
+    ]);
     const store = createExternalIdentityStore(db, {
       token: () => "token-rejected",
       now: () => new Date("2026-09-04T00:01:00.000Z"),
     });
 
-    await expect(store.loginDataOps(claims({ runtimePolicy }))).rejects.toThrow(
-      "reject runtime policy",
-    );
+    await expect(store.loginDataOps(claims({ runtimePolicy }))).rejects.toThrow();
 
     for (const table of [
-      "users",
       "external_identities",
       "user_runtime_policies",
-      "sessions",
       "external_session_contexts",
     ]) {
       expect(
         (await db.one<{ count: number }>(`SELECT COUNT(*) AS count FROM ${table}`))?.count,
       ).toBe(0);
     }
+    await expect(db.one<{ count: number }>("SELECT COUNT(*) AS count FROM users")).resolves.toEqual(
+      {
+        count: 1,
+      },
+    );
+    await expect(
+      db.one<{ count: number }>("SELECT COUNT(*) AS count FROM sessions"),
+    ).resolves.toEqual({ count: 1 });
   });
 });

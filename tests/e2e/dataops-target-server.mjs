@@ -2,6 +2,92 @@ import { createServer } from "node:http";
 
 const port = Number(process.env.DATAOPS_TARGET_PORT ?? "8080");
 const sharedSecret = process.env.DATAOPS_TARGET_SHARED_SECRET ?? "";
+const baseClaims = {
+  audience: "codex-gateway",
+  contextType: "PROJECT",
+  runtimeProfile: "DEVELOPMENT",
+  platformAdmin: false,
+  canDevelopAgents: false,
+  canManageAgentStatus: false,
+  canManageAgentRuntimeConfig: false,
+  permissions: ["agent-center:view"],
+  ticket: null,
+};
+const claimsByTicket = new Map([
+  [
+    "one-time",
+    {
+      ...baseClaims,
+      tenantId: 1,
+      userId: 9,
+      username: "dataops-e2e",
+      externalSubject: "dataops:1:9",
+      projectId: 4,
+      authzVersion: 1,
+      issuedAt: "2026-09-04T00:00:00.000Z",
+    },
+  ],
+  [
+    "runtime-policy-first-v1",
+    {
+      ...baseClaims,
+      tenantId: 11,
+      userId: 101,
+      username: "runtime-policy-first",
+      externalSubject: "dataops:11:101",
+      projectId: 41,
+      authzVersion: 1,
+      issuedAt: "2026-09-07T00:00:00.000Z",
+      runtimePolicy: {
+        version: 1,
+        imageAlias: "stable",
+        memoryMiB: 1024,
+        cpuCores: 1,
+        pidsLimit: 128,
+      },
+    },
+  ],
+  [
+    "runtime-policy-first-v2",
+    {
+      ...baseClaims,
+      tenantId: 11,
+      userId: 101,
+      username: "runtime-policy-first",
+      externalSubject: "dataops:11:101",
+      projectId: 41,
+      authzVersion: 2,
+      issuedAt: "2026-09-07T00:01:00.000Z",
+      runtimePolicy: {
+        version: 1,
+        imageAlias: "stable",
+        memoryMiB: 1280,
+        cpuCores: 1.25,
+        pidsLimit: 160,
+      },
+    },
+  ],
+  [
+    "runtime-policy-second-v1",
+    {
+      ...baseClaims,
+      tenantId: 12,
+      userId: 202,
+      username: "runtime-policy-second",
+      externalSubject: "dataops:12:202",
+      projectId: 42,
+      authzVersion: 1,
+      issuedAt: "2026-09-07T00:00:00.000Z",
+      runtimePolicy: {
+        version: 1,
+        imageAlias: "stable",
+        memoryMiB: 1536,
+        cpuCores: 1.5,
+        pidsLimit: 192,
+      },
+    },
+  ],
+]);
 
 const server = createServer((request, response) => {
   void handleRequest(request, response);
@@ -25,7 +111,8 @@ async function handleRequest(request, response) {
     return;
   }
   const body = await readJson(request);
-  if (!isOneTimeTicket(body)) {
+  const claims = claimsFor(body);
+  if (claims === null) {
     json(response, 200, { success: false, code: 1, msg: "ticket rejected", data: null });
     return;
   }
@@ -33,24 +120,7 @@ async function handleRequest(request, response) {
     success: true,
     code: 0,
     msg: "success",
-    data: {
-      audience: "codex-gateway",
-      tenantId: 1,
-      userId: 9,
-      username: "dataops-e2e",
-      externalSubject: "dataops:1:9",
-      contextType: "PROJECT",
-      projectId: 4,
-      runtimeProfile: "DEVELOPMENT",
-      platformAdmin: false,
-      canDevelopAgents: false,
-      canManageAgentStatus: false,
-      canManageAgentRuntimeConfig: false,
-      permissions: ["agent-center:view"],
-      authzVersion: 1,
-      issuedAt: "2026-09-04T00:00:00.000Z",
-      ticket: null,
-    },
+    data: claims,
   });
 }
 
@@ -70,10 +140,9 @@ async function readJson(request) {
 }
 
 /** @param {unknown} value */
-function isOneTimeTicket(value) {
-  return (
-    typeof value === "object" && value !== null && "ticket" in value && value.ticket === "one-time"
-  );
+function claimsFor(value) {
+  if (typeof value !== "object" || value === null || !("ticket" in value)) return null;
+  return typeof value.ticket === "string" ? (claimsByTicket.get(value.ticket) ?? null) : null;
 }
 
 /**
