@@ -5,10 +5,10 @@ import { runtimeService } from "../../../utils/gateway/runtime-manager/runtime-s
 
 export async function listRuntimesForEvent(
   event: H3Event,
-  service: { listStatuses(): Promise<unknown> } = runtimeService,
+  service: { listStatusViews(): Promise<unknown> } = runtimeService,
 ) {
   requireAdminUser(event);
-  return await service.listStatuses();
+  return await service.listStatusViews();
 }
 
 export default defineGatewayEventHandler(async (event) => await listRuntimesForEvent(event));
