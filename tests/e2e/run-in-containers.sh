@@ -6,9 +6,28 @@ project_dir="$(cd "$script_dir/../.." && pwd)"
 compose_file="$script_dir/docker-compose.yml"
 project_name="${E2E_COMPOSE_PROJECT_NAME:-codex-gateway-e2e}-$$"
 database_name="codex_gateway_e2e_$$"
-agent_image="${E2E_AGENT_IMAGE:-codex-agent-runtime:$project_name}"
-runtime_manager_image="${E2E_RUNTIME_MANAGER_IMAGE:-codex-runtime-manager-e2e:$project_name}"
-runner_image="${E2E_RUNNER_IMAGE:-codex-gateway-e2e-runner:$project_name}"
+resource_expectations_file="$project_dir/test-results/managed-runtime-resource-expectations.json"
+agent_image_is_generated=0
+runtime_manager_image_is_generated=0
+runner_image_is_generated=0
+if [ -n "${E2E_AGENT_IMAGE:-}" ]; then
+  agent_image="$E2E_AGENT_IMAGE"
+else
+  agent_image="codex-agent-runtime:$project_name"
+  agent_image_is_generated=1
+fi
+if [ -n "${E2E_RUNTIME_MANAGER_IMAGE:-}" ]; then
+  runtime_manager_image="$E2E_RUNTIME_MANAGER_IMAGE"
+else
+  runtime_manager_image="codex-runtime-manager-e2e:$project_name"
+  runtime_manager_image_is_generated=1
+fi
+if [ -n "${E2E_RUNNER_IMAGE:-}" ]; then
+  runner_image="$E2E_RUNNER_IMAGE"
+else
+  runner_image="codex-gateway-e2e-runner:$project_name"
+  runner_image_is_generated=1
+fi
 e2e_managed_label="com.codex-gateway.e2e-managed=$project_name"
 
 if [ "${1:-}" = "--turn" ]; then
@@ -36,6 +55,7 @@ export E2E_AGENT_IMAGE="$agent_image"
 export E2E_RUNTIME_MANAGER_NETWORK_NAME="${E2E_RUNTIME_MANAGER_NETWORK_NAME:-$project_name-runtime-manager}"
 export E2E_RUNTIME_MANAGER_IMAGE="$runtime_manager_image"
 export E2E_RUNNER_IMAGE="$runner_image"
+export E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE="/workspace/codex-gateway/test-results/managed-runtime-resource-expectations.json"
 export E2E_MANAGED_LABEL_VALUE="$project_name"
 export RUNTIME_MANAGER_SHARED_SECRET="${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}"
 
@@ -53,6 +73,16 @@ cleanup_managed_resources() {
   done < <(docker volume ls --quiet --filter "label=$e2e_managed_label" 2>/dev/null || true)
   if [ "${#volume_names[@]}" -gt 0 ]; then
     docker volume rm "${volume_names[@]}" >/dev/null 2>&1 || true
+  fi
+}
+
+cleanup_generated_images() {
+  local image_names=()
+  [ "$agent_image_is_generated" -eq 1 ] && image_names+=("$agent_image")
+  [ "$runtime_manager_image_is_generated" -eq 1 ] && image_names+=("$runtime_manager_image")
+  [ "$runner_image_is_generated" -eq 1 ] && image_names+=("$runner_image")
+  if [ "${#image_names[@]}" -gt 0 ]; then
+    docker image rm "${image_names[@]}" >/dev/null 2>&1 || true
   fi
 }
 
@@ -76,21 +106,6 @@ assert_no_port_bindings() {
     printf 'E2E assertion failed: %s publishes host ports\n' "$description" >&2
     return 1
   fi
-}
-
-assert_managed_agent_resources() {
-  local container_id="$1"
-  local memory nano_cpus pids_limit
-  memory="$(docker inspect --format '{{.HostConfig.Memory}}' "$container_id")"
-  nano_cpus="$(docker inspect --format '{{.HostConfig.NanoCpus}}' "$container_id")"
-  pids_limit="$(docker inspect --format '{{.HostConfig.PidsLimit}}' "$container_id")"
-  case "$memory:$nano_cpus:$pids_limit" in
-    2147483648:2000000000:256 | 1342177280:1250000000:160 | 1610612736:1500000000:192)
-      return 0
-      ;;
-  esac
-  printf 'E2E assertion failed: managed Agent has an unexpected resource policy\n' >&2
-  return 1
 }
 
 wait_for_agent_health() {
@@ -284,9 +299,12 @@ verify_agent_image() {
 }
 
 verify_managed_runtime_docker_state() {
-  local manager_id gateway_id user_hash expected_runtime_count expected_volume_count
+  local manager_id gateway_id user_hash runtime_id expected_runtime_count expected_volume_count
+  local expected_tuple expected_memory expected_nano_cpus expected_pids_limit
+  local expected_resource_lines=""
   local agent_ids=()
   local volume_names=()
+  local -A expected_resources=()
   local -A user_hashes=()
   manager_id="$(docker compose -p "$project_name" -f "$compose_file" ps --quiet agent-runtime-manager)"
   gateway_id="$(docker compose -p "$project_name" -f "$compose_file" ps --quiet gateway-under-test)"
@@ -309,11 +327,38 @@ verify_managed_runtime_docker_state() {
   esac
   expected_volume_count=$((expected_runtime_count * 2))
 
+  if [ -f "$resource_expectations_file" ]; then
+    expected_resource_lines="$(
+      node -e '
+const fs = require("node:fs");
+const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid Runtime resource expectation artifact");
+for (const [runtimeId, resources] of Object.entries(value)) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(runtimeId)) throw new Error("invalid expected Runtime id");
+  const keys = Object.keys(resources ?? {}).sort().join(",");
+  if (keys !== "memoryBytes,nanoCpus,pidsLimit") throw new Error("invalid expected Runtime resource shape");
+  const values = [resources.memoryBytes, resources.nanoCpus, resources.pidsLimit];
+  if (!values.every((item) => Number.isSafeInteger(item) && item > 0)) throw new Error("invalid expected Runtime resources");
+  process.stdout.write(`${runtimeId}\t${values.join("\t")}\n`);
+}
+' "$resource_expectations_file"
+    )"
+    while IFS=$'\t' read -r runtime_id expected_memory expected_nano_cpus expected_pids_limit; do
+      [ -z "$runtime_id" ] && continue
+      expected_resources["$runtime_id"]="$expected_memory:$expected_nano_cpus:$expected_pids_limit"
+    done <<< "$expected_resource_lines"
+  fi
+
   while IFS= read -r container_id; do
     [ -n "$container_id" ] && agent_ids+=("$container_id")
   done < <(docker ps --all --quiet --filter "label=$e2e_managed_label")
   assert_equal "managed Agent container count" "$expected_runtime_count" "${#agent_ids[@]}"
   for container_id in "${agent_ids[@]}"; do
+    runtime_id="$(docker inspect --format '{{index .Config.Labels "com.codex-gateway.runtime-id"}}' "$container_id")"
+    if [ -z "$runtime_id" ]; then
+      printf 'E2E assertion failed: managed Agent is missing its Runtime identity label\n' >&2
+      return 1
+    fi
     user_hash="$(docker inspect --format '{{index .Config.Labels "com.codex-gateway.user-hash"}}' "$container_id")"
     if [ -z "$user_hash" ]; then
       printf 'E2E assertion failed: managed Agent is missing its user identity label\n' >&2
@@ -334,7 +379,19 @@ verify_managed_runtime_docker_state() {
       "$(docker inspect --format '{{json .HostConfig.CapDrop}}' "$container_id")"
     assert_equal "managed Agent no-new-privileges" '["no-new-privileges:true"]' \
       "$(docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$container_id")"
-    assert_managed_agent_resources "$container_id"
+    if [ -n "${expected_resources[$runtime_id]+set}" ]; then
+      expected_tuple="${expected_resources[$runtime_id]}"
+      unset 'expected_resources[$runtime_id]'
+    else
+      expected_tuple="2147483648:2000000000:256"
+    fi
+    IFS=: read -r expected_memory expected_nano_cpus expected_pids_limit <<< "$expected_tuple"
+    assert_equal "managed Agent memory limit" "$expected_memory" \
+      "$(docker inspect --format '{{.HostConfig.Memory}}' "$container_id")"
+    assert_equal "managed Agent CPU limit" "$expected_nano_cpus" \
+      "$(docker inspect --format '{{.HostConfig.NanoCpus}}' "$container_id")"
+    assert_equal "managed Agent PID limit" "$expected_pids_limit" \
+      "$(docker inspect --format '{{.HostConfig.PidsLimit}}' "$container_id")"
     assert_equal "managed Agent tmpfs policy" \
       '{"/tmp":"rw,nosuid,nodev,noexec,size=64m"}' \
       "$(docker inspect --format '{{json .HostConfig.Tmpfs}}' "$container_id")"
@@ -345,6 +402,7 @@ verify_managed_runtime_docker_state() {
     assert_equal "managed Agent named volume mount markers" "11" \
       "$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}1{{end}}{{end}}' "$container_id")"
   done
+  assert_equal "expected policy Runtime count not observed" "0" "${#expected_resources[@]}"
   assert_equal "managed Agent isolated user count" "$expected_runtime_count" "${#user_hashes[@]}"
 
   while IFS= read -r volume_name; do
@@ -361,6 +419,8 @@ cleanup() {
   fi
   cleanup_managed_resources
   docker compose -p "$project_name" -f "$compose_file" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  cleanup_generated_images
+  rm -f "$resource_expectations_file"
 }
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -370,6 +430,8 @@ fi
 trap cleanup EXIT
 
 cleanup_managed_resources
+mkdir -p "$project_dir/test-results"
+rm -f "$resource_expectations_file"
 verify_production_database_modes
 export E2E_EXPECTED_COMPOSE_PROJECT_NAME="$project_name"
 verify_compose_security_boundary

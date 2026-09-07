@@ -28,7 +28,7 @@ const claimsByTicket = new Map([
     },
   ],
   [
-    "runtime-policy-first-v1",
+    "runtime-policy-first-v1-login",
     {
       ...baseClaims,
       tenantId: 11,
@@ -48,7 +48,7 @@ const claimsByTicket = new Map([
     },
   ],
   [
-    "runtime-policy-first-v2",
+    "runtime-policy-first-v2-api",
     {
       ...baseClaims,
       tenantId: 11,
@@ -68,7 +68,27 @@ const claimsByTicket = new Map([
     },
   ],
   [
-    "runtime-policy-second-v1",
+    "runtime-policy-first-v2-browser",
+    {
+      ...baseClaims,
+      tenantId: 11,
+      userId: 101,
+      username: "runtime-policy-first",
+      externalSubject: "dataops:11:101",
+      projectId: 41,
+      authzVersion: 2,
+      issuedAt: "2026-09-07T00:01:00.000Z",
+      runtimePolicy: {
+        version: 1,
+        imageAlias: "stable",
+        memoryMiB: 1280,
+        cpuCores: 1.25,
+        pidsLimit: 160,
+      },
+    },
+  ],
+  [
+    "runtime-policy-second-v1-login",
     {
       ...baseClaims,
       tenantId: 12,
@@ -142,7 +162,10 @@ async function readJson(request) {
 /** @param {unknown} value */
 function claimsFor(value) {
   if (typeof value !== "object" || value === null || !("ticket" in value)) return null;
-  return typeof value.ticket === "string" ? (claimsByTicket.get(value.ticket) ?? null) : null;
+  if (typeof value.ticket !== "string") return null;
+  const claims = claimsByTicket.get(value.ticket) ?? null;
+  if (claims !== null) claimsByTicket.delete(value.ticket);
+  return claims;
 }
 
 /**

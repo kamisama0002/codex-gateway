@@ -1,8 +1,10 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 
 import type { APIRequestContext } from "@playwright/test";
 import {
   managedRuntimeStatusViewSchema,
+  runtimeResourcePolicySchema,
   type ManagedRuntimeEndpoint,
 } from "@codex-gateway/agent-runtime-contracts";
 import { z } from "zod";
@@ -79,6 +81,9 @@ const BUILT_IN_PINNED_SECTION_NAME = "Pinned";
 // but Compose service DNS resolves the restarted container's current address on the default network.
 const MANAGED_RUNTIME_GATEWAY_ORIGIN =
   process.env.E2E_MANAGED_RUNTIME_GATEWAY_URL ?? "http://gateway-under-test:3100";
+const MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE =
+  process.env.E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE ??
+  "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations.json";
 const ALL_THREAD_SOURCE_KINDS = [
   "cli",
   "vscode",
@@ -237,6 +242,40 @@ export async function loginDataOpsUser(request: ManagedGatewayRequestContext, ti
     data: { ticket },
   });
   return authSessionSchema.parse(await successfulJson(response, "DataOps login"));
+}
+
+export async function expectDataOpsTicketRejected(
+  request: ManagedGatewayRequestContext,
+  ticket: string,
+) {
+  const response = await request.post(managedRuntimeGatewayUrl("/api/auth/dataops"), {
+    data: { ticket },
+  });
+  if (response.status() !== 401) {
+    throw new Error(`DataOps Ticket replay returned ${response.status()}`);
+  }
+}
+
+export async function recordManagedRuntimeResourceExpectations(
+  expectations: Array<{
+    session: GatewaySession;
+    resources: z.infer<typeof runtimeResourcePolicySchema>;
+  }>,
+  writer: typeof writeFile = writeFile,
+) {
+  const secret = requiredEnvironment("RUNTIME_MANAGER_SHARED_SECRET");
+  const artifact = Object.fromEntries(
+    expectations.map(({ session, resources }) => [
+      runtimeIdForSession(session, secret),
+      runtimeResourcePolicySchema.parse(resources),
+    ]),
+  );
+  await writer(
+    MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE,
+    `${JSON.stringify(artifact, null, 2)}\n`,
+    "utf8",
+  );
+  return artifact;
 }
 
 export async function startManagedRuntime(

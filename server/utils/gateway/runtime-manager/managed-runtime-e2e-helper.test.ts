@@ -1,11 +1,15 @@
+import { createHmac } from "node:crypto";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  expectDataOpsTicketRejected,
   inspectManagedRuntimeDocker,
   loginGatewayUser,
   listManagedRuntimeThreads,
   materializeManagedRuntimeThread,
   readManagedRuntimeStatus,
+  recordManagedRuntimeResourceExpectations,
   restartGateway,
   restartManagedRuntimeAsAdmin,
   startManagedRuntime,
@@ -244,5 +248,73 @@ describe("managed Runtime E2E helper", () => {
           ),
       ),
     ).rejects.toMatchObject({ name: "ZodError" });
+  });
+
+  it("requires DataOps Ticket replays to be rejected through the Gateway", async () => {
+    const calls: Array<{ url: string; data: unknown }> = [];
+    await expectDataOpsTicketRejected(
+      {
+        async get() {
+          throw new Error("Unexpected GET");
+        },
+        async post(url, options) {
+          calls.push({ url, data: options?.data });
+          return { ok: () => false, status: () => 401, json: async () => ({}) };
+        },
+      },
+      "one-time-ticket",
+    );
+
+    expect(calls).toEqual([
+      {
+        url: "http://gateway-under-test:3100/api/auth/dataops",
+        data: { ticket: "one-time-ticket" },
+      },
+    ]);
+  });
+
+  it("records only runtime ids and exact policy resources for the Docker postcondition", async () => {
+    vi.stubEnv("RUNTIME_MANAGER_SHARED_SECRET", "shared-secret");
+    const writes: Array<{ path: unknown; data: unknown; encoding: unknown }> = [];
+    const session = {
+      token: "gateway-session-token",
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      user: { id: 7, username: "runtime-a", role: "user" as const },
+    };
+    const artifact = await recordManagedRuntimeResourceExpectations(
+      [
+        {
+          session,
+          resources: {
+            memoryBytes: 1280 * 1024 * 1024,
+            nanoCpus: 1_250_000_000,
+            pidsLimit: 160,
+          },
+        },
+      ],
+      async (path, data, encoding) => {
+        writes.push({ path, data, encoding });
+      },
+    );
+    const runtimeId = `codex_${createHmac("sha256", "shared-secret")
+      .update("codex-runtime-user:7")
+      .digest("hex")
+      .slice(0, 32)}`;
+
+    expect(artifact).toEqual({
+      [runtimeId]: {
+        memoryBytes: 1280 * 1024 * 1024,
+        nanoCpus: 1_250_000_000,
+        pidsLimit: 160,
+      },
+    });
+    expect(writes).toEqual([
+      {
+        path: "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations.json",
+        data: `${JSON.stringify(artifact, null, 2)}\n`,
+        encoding: "utf8",
+      },
+    ]);
+    expect(JSON.stringify(artifact)).not.toContain(session.token);
   });
 });

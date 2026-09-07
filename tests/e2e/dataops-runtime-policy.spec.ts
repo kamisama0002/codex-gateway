@@ -2,16 +2,19 @@ import { expect, test } from "@playwright/test";
 
 import {
   execManagedRuntime,
+  expectDataOpsTicketRejected,
   inspectManagedRuntimeDocker,
   loginDataOpsUser,
+  recordManagedRuntimeResourceExpectations,
   readManagedRuntimeStatusView,
   restartManagedRuntime,
   startManagedRuntime,
 } from "./helpers/managed-runtime";
 
-const FIRST_POLICY_TICKET = "runtime-policy-first-v1";
-const FIRST_POLICY_REFRESH_TICKET = "runtime-policy-first-v2";
-const SECOND_POLICY_TICKET = "runtime-policy-second-v1";
+const FIRST_POLICY_TICKET = "runtime-policy-first-v1-login";
+const FIRST_POLICY_REFRESH_API_TICKET = "runtime-policy-first-v2-api";
+const FIRST_POLICY_REFRESH_BROWSER_TICKET = "runtime-policy-first-v2-browser";
+const SECOND_POLICY_TICKET = "runtime-policy-second-v1-login";
 const MARKER_PATH = "/workspace/runtime-policy-marker.txt";
 const MARKER_CONTENT = "runtime-policy-workspace-survives";
 
@@ -22,6 +25,25 @@ test("applies DataOps tenant policies to isolated runtimes and preserves workspa
   const [firstSession, secondSession] = await Promise.all([
     loginDataOpsUser(request, FIRST_POLICY_TICKET),
     loginDataOpsUser(request, SECOND_POLICY_TICKET),
+  ]);
+  await expectDataOpsTicketRejected(request, FIRST_POLICY_TICKET);
+  await recordManagedRuntimeResourceExpectations([
+    {
+      session: firstSession,
+      resources: {
+        memoryBytes: 1280 * 1024 * 1024,
+        nanoCpus: 1_250_000_000,
+        pidsLimit: 160,
+      },
+    },
+    {
+      session: secondSession,
+      resources: {
+        memoryBytes: 1536 * 1024 * 1024,
+        nanoCpus: 1_500_000_000,
+        pidsLimit: 192,
+      },
+    },
   ]);
 
   await Promise.all([
@@ -44,7 +66,8 @@ test("applies DataOps tenant policies to isolated runtimes and preserves workspa
 
   await execManagedRuntime(firstSession, `printf '%s' '${MARKER_CONTENT}' > '${MARKER_PATH}'`);
 
-  const refreshedSession = await loginDataOpsUser(request, FIRST_POLICY_REFRESH_TICKET);
+  const refreshedSession = await loginDataOpsUser(request, FIRST_POLICY_REFRESH_API_TICKET);
+  await expectDataOpsTicketRejected(request, FIRST_POLICY_REFRESH_API_TICKET);
   const drifted = await readManagedRuntimeStatusView(request, refreshedSession);
   expect(drifted).toMatchObject({
     assignedPolicy: {
@@ -63,7 +86,7 @@ test("applies DataOps tenant policies to isolated runtimes and preserves workspa
   });
 
   await page.goto(
-    `http://codex.127.0.0.1.nip.io:3100/?embedded=1#dataops_ticket=${FIRST_POLICY_REFRESH_TICKET}`,
+    `http://codex.127.0.0.1.nip.io:3100/?embedded=1#dataops_ticket=${FIRST_POLICY_REFRESH_BROWSER_TICKET}`,
     { waitUntil: "domcontentloaded" },
   );
   await expect(page.getByTestId("desktop-layout")).toBeVisible();
@@ -73,7 +96,7 @@ test("applies DataOps tenant policies to isolated runtimes and preserves workspa
   await expect(settings.getByText("1280 MiB")).toBeVisible();
   await expect(settings.getByText("1.25 CPU")).toBeVisible();
   await expect(settings.getByText("160", { exact: true })).toBeVisible();
-  await expect(settings.locator('[data-slot="badge"]')).toHaveCount(2);
+  await expect(settings.getByText("重启后生效", { exact: true })).toBeVisible();
   await expect(settings.getByTestId("runtime-admin-row")).toHaveCount(0);
 
   await restartManagedRuntime(request, refreshedSession);
