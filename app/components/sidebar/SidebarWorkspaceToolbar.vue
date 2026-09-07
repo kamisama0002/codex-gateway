@@ -10,7 +10,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="flex h-10 shrink-0 items-center gap-1 border-b border-hairline px-3">
+  <div class="flex h-10 shrink-0 items-center gap-1 px-3">
     <span class="min-w-0 flex-1 truncate text-sm" :title="title">{{ title }}</span>
     <Button
       data-testid="open-host-monitor-button"

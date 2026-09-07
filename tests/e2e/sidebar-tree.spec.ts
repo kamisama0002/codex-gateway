@@ -19,6 +19,10 @@ test("desktop workspace toolbar exposes only runtime monitoring and sidebar coll
 
   await expect(page.getByTestId("open-host-monitor-button")).toBeVisible();
   await expect(page.getByTestId("desktop-sidebar-collapse")).toBeVisible();
+  await expect(page.getByTestId("desktop-sidebar-collapse").locator("..")).toHaveCSS(
+    "border-bottom-width",
+    "0px",
+  );
   await expect(page.getByTestId("open-tmux-button")).toHaveCount(0);
   await expect(page.getByTestId("open-terminal-button")).toHaveCount(0);
   await expect(page.getByTestId("open-browser-button")).toHaveCount(0);
