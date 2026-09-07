@@ -27,7 +27,10 @@ export function createRuntimePolicyStore(db: GatewayDb) {
           [assigned.userId],
         );
         const current = currentRow === null ? null : rowToRuntimePolicy(currentRow);
-        if (current !== null && current.sourceIssuedAt >= assigned.sourceIssuedAt) {
+        if (
+          current !== null &&
+          Date.parse(current.sourceIssuedAt) >= Date.parse(assigned.sourceIssuedAt)
+        ) {
           return current;
         }
 

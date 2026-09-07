@@ -62,6 +62,14 @@ describe("DataOps SSO client", () => {
     expect(dataOpsClaimsSchema.parse(claims)).not.toHaveProperty("runtimePolicy");
   });
 
+  it("accepts an offset-form issuedAt for a runtime policy before persistence normalizes it", () => {
+    const issuedAt = "2026-09-04T02:00:00.000+02:00";
+
+    expect(dataOpsClaimsSchema.parse({ ...claims, issuedAt, runtimePolicy }).issuedAt).toBe(
+      issuedAt,
+    );
+  });
+
   it.each([
     ["unknown fields", { ...runtimePolicy, containerId: "container-private" }],
     ["unsupported versions", { ...runtimePolicy, version: 2 }],

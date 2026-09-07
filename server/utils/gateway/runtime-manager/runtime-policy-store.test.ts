@@ -90,6 +90,51 @@ describe("runtimePolicyStore", () => {
     await expect(store.getByUserId(1)).resolves.toEqual(newer);
   });
 
+  it("ignores an offset-form timestamp that is chronologically older but sorts later", async () => {
+    const current = await store.upsertIfNewer(policyInput(1));
+
+    const result = await store.upsertIfNewer(
+      policyInput(1, {
+        policy: policy({ imageAlias: "older-offset" }),
+        sourceIssuedAt: "2026-09-04T01:00:00.000+02:00",
+        now: "2026-09-04T00:02:00.000Z",
+      }),
+    );
+
+    expect(result).toEqual(current);
+  });
+
+  it("stores an offset-form newer timestamp in canonical UTC", async () => {
+    await store.upsertIfNewer(policyInput(1));
+
+    const result = await store.upsertIfNewer(
+      policyInput(1, {
+        policy: policy({ imageAlias: "newer-offset" }),
+        sourceIssuedAt: "2026-09-04T03:00:00.000+02:00",
+        now: "2026-09-04T01:01:00.000Z",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      imageAlias: "newer-offset",
+      sourceIssuedAt: "2026-09-04T01:00:00.000Z",
+    });
+  });
+
+  it("treats offset-form representations of the same instant as idempotent", async () => {
+    const current = await store.upsertIfNewer(policyInput(1));
+
+    const result = await store.upsertIfNewer(
+      policyInput(1, {
+        policy: policy({ imageAlias: "equivalent-offset" }),
+        sourceIssuedAt: "2026-09-04T02:00:00.000+02:00",
+        now: "2026-09-04T00:02:00.000Z",
+      }),
+    );
+
+    expect(result).toEqual(current);
+  });
+
   it("never returns or changes another user's policy", async () => {
     await store.upsertIfNewer(policyInput(1));
     await store.upsertIfNewer(

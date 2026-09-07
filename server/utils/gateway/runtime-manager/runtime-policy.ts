@@ -59,7 +59,7 @@ export function assignRuntimePolicy(input: AssignRuntimePolicyInput): AssignedRu
     memoryMiB: policy.memoryMiB,
     cpuMillicores: Math.round(policy.cpuCores * 1000),
     pidsLimit: policy.pidsLimit,
-    sourceIssuedAt: input.sourceIssuedAt,
+    sourceIssuedAt: new Date(input.sourceIssuedAt).toISOString(),
     createdAt: input.now,
     updatedAt: input.now,
   });
