@@ -21,6 +21,7 @@ import {
   execRuntimeRequestSchema,
   type RuntimeLifecycleResult,
   runtimeManagerPolicySchema,
+  syncRuntimeSecretsRequestSchema,
   upgradeRuntimeRequestSchema,
 } from "./contracts.js";
 import { DockerodeEngine } from "./docker-engine.js";
@@ -31,7 +32,7 @@ import {
   parseAgentPidsLimit,
 } from "./resource-limits.js";
 
-const MAX_BODY_BYTES = 64 * 1024;
+const MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const CODEX_APP_SERVER_PORT = 4500;
 
 export function createRuntimeManagerRequestHandler(options: {
@@ -87,9 +88,8 @@ async function handleRequest(
         await options.service.exec(execRuntimeRequestSchema.parse(payload)),
       );
     }
-    const actionMatch = /^\/v1\/runtimes\/(provision|start|stop|restart|upgrade|remove)$/.exec(
-      url.pathname,
-    );
+    const actionMatch =
+      /^\/v1\/runtimes\/(provision|start|stop|restart|upgrade|remove|secrets)$/.exec(url.pathname);
     if (actionMatch === null) return sendJson(response, 404, { error: "not_found" });
     const action = actionMatch[1];
     if (!isLifecycleAction(action)) return sendJson(response, 404, { error: "not_found" });
@@ -112,6 +112,9 @@ async function handleRequest(
         break;
       case "remove":
         result = await options.service.remove(runtimeActionRequestSchema.parse(payload));
+        break;
+      case "secrets":
+        result = await options.service.syncSecrets(syncRuntimeSecretsRequestSchema.parse(payload));
         break;
     }
     return sendJson(response, 200, result);
@@ -217,14 +220,15 @@ function requiredEnvironment(environment: NodeJS.ProcessEnv, key: string): strin
 
 function isLifecycleAction(
   value: string | undefined,
-): value is "provision" | "start" | "stop" | "restart" | "upgrade" | "remove" {
+): value is "provision" | "start" | "stop" | "restart" | "upgrade" | "remove" | "secrets" {
   return (
     value === "provision" ||
     value === "start" ||
     value === "stop" ||
     value === "restart" ||
     value === "upgrade" ||
-    value === "remove"
+    value === "remove" ||
+    value === "secrets"
   );
 }
 

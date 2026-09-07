@@ -131,6 +131,15 @@ export type {
   StdioMcpCapabilityConfig,
 } from "./types/capabilities";
 export type {
+  CredentialCreateInput,
+  CredentialDescriptor,
+  CredentialKind,
+  CredentialMapping,
+  CredentialTarget,
+  DecryptedCredential,
+  ResolvedRuntimeSecret,
+} from "./types/credentials";
+export type {
   FilePreviewDocument,
   ProjectFileSearchResult,
   RemoteFileConflict,

@@ -8,7 +8,7 @@ import {
   type RuntimeStatus,
   type UserAgentRuntimeRecord,
 } from "@codex-gateway/agent-runtime-contracts";
-import type { CapabilitySyncReason, HostRecord } from "~~/shared/types";
+import type { CapabilitySyncReason, HostRecord, ResolvedRuntimeSecret } from "~~/shared/types";
 import type { AuditEventInput } from "~~/shared/types/audit";
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import { recordFromUnknown, stringFromUnknown } from "~~/shared/utils/records";
@@ -23,11 +23,15 @@ import { runtimeStore } from "./runtime-store";
 import { providerStore, type ProviderStore } from "../providers/provider-store";
 import { issueRuntimeModelToken } from "../providers/runtime-token";
 import { transitionRuntime, type RuntimeEvent } from "./runtime-state";
+import { capabilityStore } from "../capabilities/store";
+import { credentialStore } from "../credentials/store";
+import { CredentialResolver } from "../credentials/resolver";
 import {
   RuntimeManagerClient,
   type AgentRuntimeStatsResult,
   type ProvisionRuntimeRequest,
   type RuntimeLifecycleResult,
+  type SyncRuntimeSecretsRequest,
 } from "./client";
 
 interface RuntimeManagerPort {
@@ -43,6 +47,7 @@ interface RuntimeManagerPort {
   start(runtimeId: string): Promise<RuntimeLifecycleResult>;
   stop(runtimeId: string): Promise<RuntimeLifecycleResult>;
   restart(runtimeId: string): Promise<RuntimeLifecycleResult>;
+  syncSecrets(input: SyncRuntimeSecretsRequest): Promise<RuntimeLifecycleResult>;
   remove(runtimeId: string): Promise<RuntimeLifecycleResult>;
 }
 
@@ -78,8 +83,9 @@ interface ManagedRuntimeServiceOptions {
   usernameFor?(userId: number): Promise<string | null>;
   syncCapabilities?(
     host: HostRecord,
-    input: { userId: number; projectId: null; reason: CapabilitySyncReason },
+    input: { userId: number; projectId: number | null; reason: CapabilitySyncReason },
   ): Promise<{ status: "succeeded" | "failed" }>;
+  runtimeSecretsFor?(userId: number, projectId: number | null): Promise<ResolvedRuntimeSecret[]>;
 }
 
 const defaultProbeRetryOptions: RetryOptions = {
@@ -91,6 +97,7 @@ const defaultProbeRetryOptions: RetryOptions = {
 
 const safeManagerErrorCodes = new Set([
   "internal_error",
+  "invalid_project_id",
   "invalid_request",
   "runtime_identity_conflict",
   "runtime_manager_invalid_response",
@@ -102,6 +109,7 @@ const safeManagerErrorCodes = new Set([
   "unauthorized",
   "unknown_image_alias",
   "capability_sync_failed",
+  "credential_sync_failed",
 ]);
 
 export class ManagedRuntimeServiceError extends Error {
@@ -258,6 +266,66 @@ export class ManagedRuntimeService {
           "runtimeRestart",
         ),
       );
+    });
+  }
+
+  syncSecrets(
+    userId: number,
+    projectId: number | null,
+    actorUserId = userId,
+  ): Promise<ManagedRuntimeStatus> {
+    const targetUserId = positiveUserId(userId);
+    const targetProjectId = nullableProjectId(projectId);
+    const actor = positiveUserId(actorUserId);
+    return this.lockFor(targetUserId).runExclusive(async () => {
+      const runtime = await this.requiredRuntime(targetUserId);
+      if (runtime.status !== "ready") throw new ManagedRuntimeServiceError("runtime_not_ready");
+      const identity = this.identity(targetUserId);
+      try {
+        const runtimeSecrets =
+          (await this.options.runtimeSecretsFor?.(targetUserId, targetProjectId)) ?? [];
+        if (runtimeSecrets.some((secret) => secret.target.type === "env")) {
+          this.options.closeConnections?.(targetUserId);
+        }
+        const result = await this.options.manager.syncSecrets({
+          runtimeId: identity.runtimeId,
+          runtimeSecrets,
+        });
+        const endpoint = this.runningEndpoint(identity.runtimeId, result);
+        const host = createManagedRuntimeHost(targetUserId, runtime, endpoint);
+        await pRetry(() => this.options.probe(host), {
+          ...defaultProbeRetryOptions,
+          ...this.options.probeRetryOptions,
+        });
+        const sync = await this.options.syncCapabilities?.(host, {
+          userId: targetUserId,
+          projectId: targetProjectId,
+          reason: "credentialRotated",
+        });
+        if (sync?.status === "failed") throw new Error("Capability sync did not converge");
+        await this.auditSuccess(
+          "runtime.credentials.sync",
+          actor,
+          targetUserId,
+          runtime,
+          identity.runtimeId,
+        );
+        return serializeManagedRuntimeStatus(runtime);
+      } catch {
+        const code = "credential_sync_failed";
+        const degraded = await this.persistTransition(runtime, "runtimeFailed", {
+          lastError: code,
+        });
+        await this.auditFailure(
+          "runtime.credentials.sync",
+          actor,
+          targetUserId,
+          degraded,
+          identity.runtimeId,
+          code,
+        );
+        throw new ManagedRuntimeServiceError(code);
+      }
     });
   }
 
@@ -566,6 +634,8 @@ export class ManagedRuntimeService {
       this.options.providerStore ?? providerStore,
     );
     if (providerConfig !== null) request.providerConfig = providerConfig;
+    const runtimeSecrets = await this.options.runtimeSecretsFor?.(userId, null);
+    if (runtimeSecrets !== undefined) request.runtimeSecrets = runtimeSecrets;
     return request;
   }
 
@@ -664,6 +734,9 @@ export const runtimeService = {
   restart(userId: number, actorUserId = userId) {
     return defaultRuntimeService().restart(userId, actorUserId);
   },
+  syncSecrets(userId: number, projectId: number | null, actorUserId = userId) {
+    return defaultRuntimeService().syncSecrets(userId, projectId, actorUserId);
+  },
   remove(userId: number, actorUserId = userId) {
     return defaultRuntimeService().remove(userId, actorUserId);
   },
@@ -689,6 +762,16 @@ function defaultRuntimeService(): ManagedRuntimeService {
     closeConnections: (userId) =>
       runWithGatewayUser(userId, () => threadBroker.closeHost(MANAGED_RUNTIME_HOST_ID)),
     usernameFor: (userId) => userStore.findUsername(userId),
+    runtimeSecretsFor: async (userId, projectId) => {
+      const capabilities = await capabilityStore.listDesiredForContext({
+        userId,
+        projectId,
+      });
+      return await new CredentialResolver(credentialStore).resolveForRuntime(
+        { userId, projectId },
+        capabilities.map((capability) => capability.id),
+      );
+    },
     syncCapabilities: async (host, input) => {
       const { reconcileUserRuntimeWithHost } = await import("../capabilities/reconciler");
       return await reconcileUserRuntimeWithHost(host, input);
@@ -780,4 +863,12 @@ function positiveUserId(userId: number): number {
     throw new ManagedRuntimeServiceError("invalid_user_id");
   }
   return userId;
+}
+
+function nullableProjectId(value: number | null) {
+  if (value === null) return null;
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ManagedRuntimeServiceError("invalid_project_id", 400);
+  }
+  return value;
 }

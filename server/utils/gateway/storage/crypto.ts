@@ -57,14 +57,18 @@ export function encryptJson(value: unknown) {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const plaintext = Buffer.from(JSON.stringify(value), "utf8");
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return [
-    ENCRYPTION_VERSION,
-    iv.toString("base64url"),
-    tag.toString("base64url"),
-    ciphertext.toString("base64url"),
-  ].join("$");
+  try {
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return [
+      ENCRYPTION_VERSION,
+      iv.toString("base64url"),
+      tag.toString("base64url"),
+      ciphertext.toString("base64url"),
+    ].join("$");
+  } finally {
+    plaintext.fill(0);
+  }
 }
 
 export function decryptJson(encrypted: string): unknown {
@@ -90,7 +94,11 @@ export function decryptJson(encrypted: string): unknown {
     decipher.update(Buffer.from(ciphertextText, "base64url")),
     decipher.final(),
   ]);
-  return JSON.parse(plaintext.toString("utf8"));
+  try {
+    return JSON.parse(plaintext.toString("utf8")) as unknown;
+  } finally {
+    plaintext.fill(0);
+  }
 }
 
 function configEncryptionKey() {

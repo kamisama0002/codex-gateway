@@ -7,7 +7,7 @@ import type {
 import type { AuditEventInput } from "~~/shared/types/audit";
 import type { CapabilitySyncReason, HostRecord, UserProviderModel } from "~~/shared/types";
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
-import type { ProvisionRuntimeRequest } from "./client";
+import type { ProvisionRuntimeRequest, SyncRuntimeSecretsRequest } from "./client";
 import { ManagedRuntimeService, ManagedRuntimeServiceError } from "./runtime-service";
 
 describe("ManagedRuntimeService", () => {
@@ -159,6 +159,67 @@ describe("ManagedRuntimeService", () => {
       action: "runtime.capabilities",
       outcome: "failure",
       errorCode: "capability_sync_failed",
+    });
+  });
+
+  it("passes scoped runtime secrets only in the authenticated provision request", async () => {
+    const exactSecret = "gateway-scoped-runtime-secret";
+    const runtimeSecretsFor = vi.fn(async () => [
+      {
+        credentialId: "cred__business",
+        capabilityId: "org__business",
+        version: 1,
+        target: { type: "env" as const, name: "BUSINESS_TOKEN" },
+        value: exactSecret,
+      },
+    ]);
+    const fixture = runtimeFixture({ runtimeSecretsFor });
+
+    await fixture.service.start(7);
+
+    expect(runtimeSecretsFor).toHaveBeenCalledWith(7, null);
+    expect(fixture.manager.provision.mock.calls[0]?.[0].runtimeSecrets).toEqual([
+      expect.objectContaining({ value: exactSecret }),
+    ]);
+    expect(JSON.stringify(fixture.audit)).not.toContain(exactSecret);
+  });
+
+  it("syncs rotated credentials for one user and project then reconciles capabilities", async () => {
+    const exactSecret = "rotated-gateway-secret";
+    const runtimeSecretsFor = vi.fn(async () => [
+      {
+        credentialId: "cred__business",
+        capabilityId: "org__business",
+        version: 2,
+        target: { type: "env" as const, name: "BUSINESS_TOKEN" },
+        value: exactSecret,
+      },
+    ]);
+    const syncCapabilities = vi.fn(
+      async (
+        _host: HostRecord,
+        _input: { userId: number; projectId: number | null; reason: CapabilitySyncReason },
+      ) => ({ status: "succeeded" as const }),
+    );
+    const fixture = runtimeFixture({ runtimeSecretsFor, syncCapabilities });
+    await fixture.service.start(7);
+    fixture.manager.syncSecrets.mockClear();
+    syncCapabilities.mockClear();
+    fixture.closeConnections.mockClear();
+
+    await expect(fixture.service.syncSecrets(7, 10, 1)).resolves.toMatchObject({
+      status: "ready",
+    });
+
+    expect(runtimeSecretsFor).toHaveBeenLastCalledWith(7, 10);
+    const syncRequest = fixture.manager.syncSecrets.mock.calls[0]?.[0];
+    expect(syncRequest?.runtimeId).toMatch(/^codex_/);
+    expect(syncRequest?.runtimeSecrets).toEqual([expect.objectContaining({ value: exactSecret })]);
+    expect(fixture.closeConnections).toHaveBeenCalledWith(7);
+    expect(syncCapabilities.mock.calls.at(-1)?.[1]).toEqual({
+      userId: 7,
+      projectId: 10,
+      reason: "credentialRotated",
     });
   });
 
@@ -445,6 +506,7 @@ function runtimeFixture(
     };
     listProviderModels?: (userId: number) => Promise<UserProviderModel[]>;
     syncCapabilities?: ConstructorParameters<typeof ManagedRuntimeService>[0]["syncCapabilities"];
+    runtimeSecretsFor?: ConstructorParameters<typeof ManagedRuntimeService>[0]["runtimeSecretsFor"];
   } = {},
 ) {
   const endpoint: ManagedRuntimeEndpoint = {
@@ -536,6 +598,14 @@ function runtimeFixture(
       status: "running" as const,
       endpoint: { ...endpoint, runtimeId },
     })),
+    syncSecrets: vi.fn(async (input: SyncRuntimeSecretsRequest) => ({
+      runtimeId: input.runtimeId,
+      containerId: "container-01",
+      imageAlias: "stable",
+      imageVersion: "0.151.0",
+      status: "running" as const,
+      endpoint: { ...endpoint, runtimeId: input.runtimeId },
+    })),
     remove: vi.fn(async (runtimeId: string) => ({
       runtimeId,
       containerId: null,
@@ -578,6 +648,7 @@ function runtimeFixture(
     probeRetryOptions: options.probeRetryOptions,
     closeConnections,
     syncCapabilities: options.syncCapabilities,
+    runtimeSecretsFor: options.runtimeSecretsFor,
     now: () => new Date(1_788_134_400_000 + tick++).toISOString(),
     usernameFor: async (userId) => (userId === 7 ? "runtime-a" : null),
   });

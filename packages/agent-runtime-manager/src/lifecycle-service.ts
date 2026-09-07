@@ -11,13 +11,17 @@ import {
 } from "./docker-engine.js";
 import {
   agentRuntimeStatsResultSchema,
+  provisionRuntimeRequestSchema,
   runtimeManagerPolicySchema,
+  syncRuntimeSecretsRequestSchema,
   type AgentRuntimeStatsResult,
   type ExecRuntimeRequest,
   type ExecRuntimeResult,
   type ProvisionRuntimeRequest,
   type RuntimeActionRequest,
   type RuntimeLifecycleResult,
+  type RuntimeSecret,
+  type SyncRuntimeSecretsRequest,
   type UpgradeRuntimeRequest,
 } from "./contracts.js";
 import { parseDockerContainerStats } from "./container-stats.js";
@@ -61,6 +65,7 @@ const agentIsolation: Omit<DockerSecurityPolicy, "Memory" | "NanoCpus" | "PidsLi
 export class RuntimeLifecycleService {
   private readonly policy: ReturnType<typeof runtimeManagerPolicySchema.parse>;
   private readonly randomToken: () => string;
+  private readonly pendingSecrets = new Map<string, RuntimeSecret[]>();
 
   constructor(
     private readonly engine: DockerEngine,
@@ -72,13 +77,15 @@ export class RuntimeLifecycleService {
   }
 
   async provision(request: ProvisionRuntimeRequest): Promise<RuntimeLifecycleResult> {
-    this.resolveImage(request.imageAlias);
-    const existing = await this.engine.findManagedContainer(request.runtimeId);
+    const normalized = provisionRuntimeRequestSchema.parse(request);
+    this.resolveImage(normalized.imageAlias);
+    this.pendingSecrets.set(normalized.runtimeId, normalized.runtimeSecrets ?? []);
+    const existing = await this.engine.findManagedContainer(normalized.runtimeId);
     if (existing) {
-      this.assertIdentity(existing, request.userHash, request.runtimeType);
+      this.assertIdentity(existing, normalized.userHash, normalized.runtimeType);
       return toResult(existing);
     }
-    return toResult(await this.createContainer(request));
+    return toResult(await this.createContainer(normalized));
   }
 
   async inspect(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
@@ -111,7 +118,16 @@ export class RuntimeLifecycleService {
 
   async start(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
     const container = await this.requireContainer(request.runtimeId);
-    if (!container.running) await this.engine.startContainer(container.containerId);
+    const secrets = this.pendingSecrets.get(request.runtimeId);
+    if (!container.running) {
+      await this.engine.startContainer(container.containerId);
+    } else if (secrets !== undefined) {
+      await this.engine.restartContainer(container.containerId);
+    }
+    if (secrets !== undefined) {
+      await this.engine.writeRuntimeSecrets(container.containerId, secrets);
+      this.pendingSecrets.delete(request.runtimeId);
+    }
     await this.applyResourceLimits(container.containerId);
     return toResult({ ...container, running: true });
   }
@@ -125,6 +141,23 @@ export class RuntimeLifecycleService {
   async restart(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
     const container = await this.requireContainer(request.runtimeId);
     await this.engine.restartContainer(container.containerId);
+    await this.engine.writeRuntimeSecrets(
+      container.containerId,
+      this.pendingSecrets.get(request.runtimeId) ?? [],
+    );
+    this.pendingSecrets.delete(request.runtimeId);
+    await this.applyResourceLimits(container.containerId);
+    return toResult({ ...container, running: true });
+  }
+
+  async syncSecrets(request: SyncRuntimeSecretsRequest): Promise<RuntimeLifecycleResult> {
+    const normalized = syncRuntimeSecretsRequestSchema.parse(request);
+    const container = await this.requireContainer(normalized.runtimeId);
+    if (!container.running) throw new Error("Agent runtime is not running");
+    if (normalized.runtimeSecrets.some((secret) => secret.target.type === "env")) {
+      await this.engine.restartContainer(container.containerId);
+    }
+    await this.engine.writeRuntimeSecrets(container.containerId, normalized.runtimeSecrets);
     await this.applyResourceLimits(container.containerId);
     return toResult({ ...container, running: true });
   }
@@ -151,6 +184,7 @@ export class RuntimeLifecycleService {
   }
 
   async remove(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
+    this.pendingSecrets.delete(request.runtimeId);
     const container = await this.engine.findManagedContainer(request.runtimeId);
     if (!container) return absentResult(request.runtimeId);
     if (container.running) await this.engine.stopContainer(container.containerId);

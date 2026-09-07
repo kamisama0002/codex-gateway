@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -74,6 +74,31 @@ describe("Agent runtime managed Codex profile", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("Incomplete Gateway provider configuration");
     expect(readFileSync(userConfigPath, "utf8")).toBe("manual = true\n");
+  });
+
+  it("consumes environment secrets without printing them and preserves file targets", () => {
+    const codexHome = temporaryDirectory("codex-runtime-config-secret-home-");
+    const secretDirectory = temporaryDirectory("codex-runtime-config-secrets-");
+    const exactSecret = "exact-environment-secret";
+    writeFileSync(join(secretDirectory, ".env-0"), exactSecret, { mode: 0o600 });
+    writeFileSync(join(secretDirectory, "business-key"), "private-key", { mode: 0o600 });
+    writeFileSync(
+      join(secretDirectory, "manifest.json"),
+      JSON.stringify({ environment: { BUSINESS_TOKEN: ".env-0" } }),
+      { mode: 0o600 },
+    );
+    writeFileSync(join(secretDirectory, ".ready"), "", { mode: 0o600 });
+
+    const result = runConfigScript(codexHome, {
+      CODEX_RUNTIME_SECRET_DIR: secretDirectory,
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).not.toContain(exactSecret);
+    expect(existsSync(join(secretDirectory, ".env-0"))).toBe(false);
+    expect(existsSync(join(secretDirectory, "manifest.json"))).toBe(false);
+    expect(existsSync(join(secretDirectory, ".ready"))).toBe(false);
+    expect(readFileSync(join(secretDirectory, "business-key"), "utf8")).toBe("private-key");
   });
 });
 

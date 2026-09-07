@@ -1,5 +1,5 @@
 import type { RuntimeType } from "@codex-gateway/agent-runtime-contracts";
-import type { RuntimeProviderConfig } from "./contracts.js";
+import type { RuntimeProviderConfig, RuntimeSecret } from "./contracts.js";
 import { runtimeTypeSchema } from "@codex-gateway/agent-runtime-contracts";
 import { PassThrough } from "node:stream";
 import Docker from "dockerode";
@@ -79,6 +79,7 @@ export interface DockerEngine {
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
   ): Promise<void>;
+  writeRuntimeSecrets(containerId: string, secrets: RuntimeSecret[]): Promise<void>;
 }
 
 export class DockerodeEngine implements DockerEngine {
@@ -148,6 +149,28 @@ export class DockerodeEngine implements DockerEngine {
 
   async stopContainer(containerId: string): Promise<void> {
     await this.docker.getContainer(containerId).stop({ t: 30 });
+  }
+
+  async writeRuntimeSecrets(containerId: string, secrets: RuntimeSecret[]): Promise<void> {
+    const payload = Buffer.from(JSON.stringify({ runtimeSecrets: secrets }), "utf8");
+    try {
+      const exec = await this.docker.getContainer(containerId).exec({
+        AttachStderr: true,
+        AttachStdin: true,
+        AttachStdout: true,
+        Cmd: ["node", "/usr/local/lib/agent-runtime-secret-writer.mjs"],
+        User: "10001:10001",
+      });
+      const stream = await exec.start({ hijack: true, stdin: true });
+      const completion = finished(stream);
+      stream.resume();
+      stream.end(payload);
+      await completion;
+      const inspected = await exec.inspect();
+      if (inspected.ExitCode !== 0) throw new Error("Runtime secret writer failed");
+    } finally {
+      payload.fill(0);
+    }
   }
 
   async restartContainer(containerId: string): Promise<void> {

@@ -11,5 +11,15 @@ token_sha256="${token_sha256%% *}"
 unset CODEX_REMOTE_TOKEN
 
 export CODEX_REMOTE_TOKEN_SHA256="$token_sha256"
+secret_dir="${CODEX_RUNTIME_SECRET_DIR:-/run/codex-secrets}"
+attempt=0
+while [ ! -f "$secret_dir/.ready" ]; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 600 ]; then
+    echo "Runtime secret injection timed out" >&2
+    exit 1
+  fi
+  sleep 0.1
+done
 config_helper="${CODEX_RUNTIME_CONFIG_HELPER:-/usr/local/lib/agent-runtime-config.mjs}"
 exec node "$config_helper"

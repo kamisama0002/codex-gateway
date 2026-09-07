@@ -106,7 +106,9 @@ describe("RuntimeManagerClient", () => {
 
     expect(result.stats?.memoryLimitBytes).toBe(256);
     expect(result).not.toHaveProperty("containerId");
-    expect(fetch.mock.calls[0]?.[0]).toBe("http://runtime-manager:8787/v1/runtimes/runtime_01/stats");
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      "http://runtime-manager:8787/v1/runtimes/runtime_01/stats",
+    );
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({
       method: "GET",
       headers: {
@@ -116,6 +118,49 @@ describe("RuntimeManagerClient", () => {
         "x-runtime-timestamp": String(timestamp),
       },
     });
+  });
+
+  it("sends runtime secrets only in the signed synchronization body", async () => {
+    const exactSecret = "signed-runtime-secret";
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({
+        runtimeId: "runtime_01",
+        containerId: "container-01",
+        imageAlias: "stable",
+        imageVersion: "0.153.4",
+        status: "running",
+        endpoint: {
+          runtimeId: "runtime_01",
+          websocketUrl: "ws://runtime-01:4500",
+          serviceToken: "runtime-token",
+        },
+      }),
+    );
+    const client = new RuntimeManagerClient({
+      baseUrl: "http://runtime-manager:8787",
+      secret: "manager-shared-secret",
+      fetch,
+      now: () => 1_788_131_200_000,
+      nonce: () => "secret-sync-nonce",
+    });
+
+    const result = await client.syncSecrets({
+      runtimeId: "runtime_01",
+      runtimeSecrets: [
+        {
+          credentialId: "cred__business",
+          capabilityId: "org__business",
+          version: 2,
+          target: { type: "env", name: "BUSINESS_TOKEN" },
+          value: exactSecret,
+        },
+      ],
+    });
+
+    expect(result.status).toBe("running");
+    expect(fetch.mock.calls[0]?.[0]).toBe("http://runtime-manager:8787/v1/runtimes/secrets");
+    expect(fetch.mock.calls[0]?.[1]?.body).toContain(exactSecret);
+    expect(JSON.stringify(result)).not.toContain(exactSecret);
   });
 
   it("fails closed when Runtime Manager returns an invalid endpoint", async () => {

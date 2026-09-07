@@ -1,9 +1,11 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const codexHome = nonEmptyEnvironment("CODEX_HOME") ?? "/codex-home";
-const provider = providerConfiguration(process.env);
+const secretDirectory = nonEmptyEnvironment("CODEX_RUNTIME_SECRET_DIR") ?? "/run/codex-secrets";
+const runtimeSecrets = loadRuntimeSecrets(secretDirectory);
+const provider = providerConfiguration({ ...process.env, ...runtimeSecrets.environment });
 const websocketTokenSha256 = requiredSha256("CODEX_REMOTE_TOKEN_SHA256");
 
 mkdirSync(codexHome, { mode: 0o700, recursive: true });
@@ -35,11 +37,12 @@ if (process.env.CODEX_RUNTIME_CONFIG_DRY_RUN === "1") {
   }
   console.log(JSON.stringify(args));
 } else {
-  const childEnvironment = { ...process.env };
+  const childEnvironment = { ...process.env, ...runtimeSecrets.environment };
   delete childEnvironment.CODEX_REMOTE_TOKEN;
   delete childEnvironment.CODEX_REMOTE_TOKEN_SHA256;
   delete childEnvironment.CODEX_RUNTIME_CONFIG_DRY_RUN;
   delete childEnvironment.CODEX_RUNTIME_CONFIG_HELPER;
+  delete childEnvironment.CODEX_RUNTIME_SECRET_DIR;
 
   const child = spawn("codex", args, { env: childEnvironment, stdio: "inherit" });
   const forwardSignal = (signal) => child.kill(signal);
@@ -54,6 +57,39 @@ if (process.env.CODEX_RUNTIME_CONFIG_DRY_RUN === "1") {
     process.removeListener("SIGTERM", forwardSignal);
     process.exitCode = code ?? 1;
   });
+}
+
+/** @param {string} directory */
+function loadRuntimeSecrets(directory) {
+  const manifestPath = join(directory, "manifest.json");
+  if (!existsSync(manifestPath)) return { environment: {} };
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  if (!isPlainObject(manifest) || !isPlainObject(manifest.environment)) {
+    throw new Error("Runtime secret manifest is invalid");
+  }
+  /** @type {Record<string, string>} */
+  const environment = {};
+  for (const [name, fileName] of Object.entries(manifest.environment)) {
+    if (!/^[A-Z][A-Z0-9_]{0,127}$/u.test(name) || !isSafeSecretFileName(fileName)) {
+      throw new Error("Runtime secret manifest target is invalid");
+    }
+    const valuePath = join(directory, fileName);
+    environment[name] = readFileSync(valuePath, "utf8");
+    rmSync(valuePath, { force: true });
+  }
+  rmSync(manifestPath, { force: true });
+  rmSync(join(directory, ".ready"), { force: true });
+  return { environment };
+}
+
+/** @param {unknown} value */
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** @param {unknown} value */
+function isSafeSecretFileName(value) {
+  return typeof value === "string" && /^\.env-[0-9]+$/u.test(value);
 }
 
 /** @param {{ baseUrl: string, id: string, model: string }} provider */

@@ -33,6 +33,54 @@ const providerConfigSchema = z
   .strict();
 export type RuntimeProviderConfig = z.infer<typeof providerConfigSchema>;
 
+const runtimeSecretSchema = z
+  .object({
+    credentialId: z
+      .string()
+      .min(7)
+      .max(128)
+      .regex(/^cred__[a-z0-9][a-z0-9_.-]*$/u),
+    capabilityId: z
+      .string()
+      .min(6)
+      .max(128)
+      .regex(/^org__[a-z0-9][a-z0-9_.-]*$/u),
+    version: z.number().int().positive(),
+    target: z.discriminatedUnion("type", [
+      z
+        .object({
+          type: z.literal("env"),
+          name: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u),
+        })
+        .strict(),
+      z
+        .object({
+          type: z.literal("file"),
+          path: z.string().regex(/^\/run\/codex-secrets\/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/u),
+        })
+        .strict(),
+    ]),
+    value: z
+      .string()
+      .min(1)
+      .max(1024 * 1024),
+  })
+  .strict();
+export type RuntimeSecret = z.infer<typeof runtimeSecretSchema>;
+
+const runtimeSecretsSchema = z
+  .array(runtimeSecretSchema)
+  .max(64)
+  .superRefine((secrets, context) => {
+    const targets = secrets.map((secret) => JSON.stringify(secret.target));
+    if (new Set(targets).size !== targets.length) {
+      context.addIssue({ code: "custom", message: "Runtime secret targets must be unique" });
+    }
+    if (secrets.reduce((total, secret) => total + Buffer.byteLength(secret.value), 0) > 8_388_608) {
+      context.addIssue({ code: "custom", message: "Runtime secret payload is too large" });
+    }
+  });
+
 export const provisionRuntimeRequestSchema = z
   .object({
     runtimeId: runtimeIdSchema,
@@ -40,12 +88,18 @@ export const provisionRuntimeRequestSchema = z
     runtimeType: runtimeTypeSchema,
     imageAlias: imageAliasSchema,
     providerConfig: providerConfigSchema.optional(),
+    runtimeSecrets: runtimeSecretsSchema.optional(),
   })
   .strict();
 export type ProvisionRuntimeRequest = z.infer<typeof provisionRuntimeRequestSchema>;
 
 export const runtimeActionRequestSchema = z.object({ runtimeId: runtimeIdSchema }).strict();
 export type RuntimeActionRequest = z.infer<typeof runtimeActionRequestSchema>;
+
+export const syncRuntimeSecretsRequestSchema = z
+  .object({ runtimeId: runtimeIdSchema, runtimeSecrets: runtimeSecretsSchema })
+  .strict();
+export type SyncRuntimeSecretsRequest = z.infer<typeof syncRuntimeSecretsRequestSchema>;
 
 export const upgradeRuntimeRequestSchema = z
   .object({

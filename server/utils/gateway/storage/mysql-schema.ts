@@ -356,4 +356,40 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
       `,
     ],
   },
+  {
+    version: 10,
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS credentials (
+          id VARCHAR(128) NOT NULL,
+          capability_id VARCHAR(128) NOT NULL,
+          user_id INT UNSIGNED NOT NULL,
+          project_id INT UNSIGNED NULL,
+          scope_project_id INT UNSIGNED
+            GENERATED ALWAYS AS (IFNULL(project_id, 0)) STORED,
+          kind VARCHAR(32) NOT NULL,
+          encrypted_payload LONGTEXT NOT NULL,
+          mappings_json LONGTEXT NOT NULL,
+          not_before VARCHAR(32) NULL,
+          expires_at VARCHAR(32) NULL,
+          revoked_at VARCHAR(32) NULL,
+          version INT UNSIGNED NOT NULL DEFAULT 1,
+          created_at VARCHAR(32) NOT NULL,
+          updated_at VARCHAR(32) NOT NULL,
+          PRIMARY KEY (id),
+          KEY idx_credentials_context (user_id, project_id, capability_id),
+          KEY idx_credentials_expiry (revoked_at, expires_at),
+          CONSTRAINT chk_credentials_kind CHECK (
+            kind IN ('token', 'username_password', 'ssh_private_key', 'oauth', 'external_issuer')
+          ),
+          CONSTRAINT chk_credentials_project CHECK (project_id IS NULL OR project_id > 0),
+          CONSTRAINT chk_credentials_version CHECK (version > 0),
+          CONSTRAINT fk_credentials_capability
+            FOREIGN KEY (capability_id) REFERENCES capability_definitions(id) ON DELETE CASCADE,
+          CONSTRAINT fk_credentials_user
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
+      `,
+    ],
+  },
 ];

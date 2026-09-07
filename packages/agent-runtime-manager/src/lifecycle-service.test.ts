@@ -66,6 +66,16 @@ class RecordingDockerEngine implements DockerEngine {
   readonly restartCalls: string[] = [];
   readonly startCalls: string[] = [];
   readonly stopCalls: string[] = [];
+  readonly secretCalls: Array<{
+    containerId: string;
+    secrets: Array<{
+      credentialId: string;
+      capabilityId: string;
+      version: number;
+      target: { type: "env"; name: string } | { type: "file"; path: string };
+      value: string;
+    }>;
+  }> = [];
   readonly updateCalls: Array<{
     containerId: string;
     Memory: number;
@@ -147,6 +157,13 @@ class RecordingDockerEngine implements DockerEngine {
   async stopContainer(containerId: string): Promise<void> {
     this.stopCalls.push(containerId);
     this.setRunning(containerId, false);
+  }
+
+  async writeRuntimeSecrets(
+    containerId: string,
+    secrets: RecordingDockerEngine["secretCalls"][number]["secrets"],
+  ): Promise<void> {
+    this.secretCalls.push({ containerId, secrets });
   }
 
   async sampleContainerStats(containerId: string): Promise<unknown> {
@@ -369,6 +386,103 @@ describe("RuntimeLifecycleService", () => {
       serviceToken: "generated-service-token",
       userHash,
     });
+  });
+
+  it("injects runtime secrets only after container start and never in create metadata", async () => {
+    const exactSecret = "runtime-secret-must-not-be-inspectable";
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy, {
+      randomToken: () => "generated-service-token",
+    });
+
+    await service.provision({
+      ...requestFor("runtime-secret"),
+      runtimeSecrets: [
+        {
+          credentialId: "cred__business",
+          capabilityId: "org__business",
+          version: 1,
+          target: { type: "env", name: "BUSINESS_TOKEN" },
+          value: exactSecret,
+        },
+      ],
+    });
+    expect(JSON.stringify(engine.createCalls)).not.toContain(exactSecret);
+    expect(engine.secretCalls).toEqual([]);
+
+    await service.start({ runtimeId: "runtime-secret" });
+
+    expect(engine.startCalls).toEqual(["container-1"]);
+    expect(engine.secretCalls).toEqual([
+      {
+        containerId: "container-1",
+        secrets: [
+          expect.objectContaining({
+            target: { type: "env", name: "BUSINESS_TOKEN" },
+            value: exactSecret,
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it("rejects unsafe runtime secret targets before creating a container", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+
+    await expect(
+      service.provision({
+        ...requestFor("runtime-secret-invalid"),
+        runtimeSecrets: [
+          {
+            credentialId: "cred__business",
+            capabilityId: "org__business",
+            version: 1,
+            target: { type: "file", path: "/run/codex-secrets/nested/key" },
+            value: "secret",
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+    expect(engine.createCalls).toEqual([]);
+  });
+
+  it("hot-syncs file secrets and restarts only when an environment secret changes", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+    await service.provision(requestFor("runtime-rotation"));
+    await service.start({ runtimeId: "runtime-rotation" });
+    engine.secretCalls.splice(0);
+
+    await service.syncSecrets({
+      runtimeId: "runtime-rotation",
+      runtimeSecrets: [
+        {
+          credentialId: "cred__file",
+          capabilityId: "org__business",
+          version: 2,
+          target: { type: "file", path: "/run/codex-secrets/business-key" },
+          value: "rotated-file",
+        },
+      ],
+    });
+    expect(engine.restartCalls).toEqual([]);
+    expect(engine.secretCalls.at(-1)?.secrets[0]?.value).toBe("rotated-file");
+
+    await service.syncSecrets({
+      runtimeId: "runtime-rotation",
+      runtimeSecrets: [
+        {
+          credentialId: "cred__env",
+          capabilityId: "org__business",
+          version: 3,
+          target: { type: "env", name: "BUSINESS_TOKEN" },
+          value: "rotated-env",
+        },
+      ],
+    });
+    expect(engine.restartCalls).toEqual(["container-1"]);
+    expect(engine.secretCalls.at(-1)?.secrets[0]?.value).toBe("rotated-env");
   });
 
   it("uses operator-configured agent CPU, memory, and PID limits", async () => {
@@ -789,6 +903,58 @@ describe("Runtime Manager HTTP API", () => {
       stats: { memoryUsageBytes: 64, memoryLimitBytes: 128 },
     });
     expect(JSON.stringify(payload)).not.toContain("container-");
+  });
+
+  it("serves authenticated runtime secret synchronization without echoing values", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+    await service.provision(requestFor("runtime-secret-http"));
+    await service.start({ runtimeId: "runtime-secret-http" });
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
+    const server = createServer(createRuntimeManagerRequestHandler({ authenticator, service }));
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("missing test server");
+    const exactSecret = "http-runtime-secret";
+    const body = Buffer.from(
+      JSON.stringify({
+        runtimeId: "runtime-secret-http",
+        runtimeSecrets: [
+          {
+            credentialId: "cred__business",
+            capabilityId: "org__business",
+            version: 2,
+            target: { type: "file", path: "/run/codex-secrets/business" },
+            value: exactSecret,
+          },
+        ],
+      }),
+    );
+    const path = "/v1/runtimes/secrets";
+    const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
+      method: "POST",
+      body,
+      headers: {
+        "content-type": "application/json",
+        ...createSignedHeaders({
+          body,
+          method: "POST",
+          path,
+          nonce: "http-secrets",
+          secret: "shared-secret",
+          timestamp: now,
+        }),
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(await response.json())).not.toContain(exactSecret);
+    expect(engine.secretCalls.at(-1)?.secrets[0]?.value).toBe(exactSecret);
   });
 
   it("rejects unauthenticated requests with a safe fixed response", async () => {

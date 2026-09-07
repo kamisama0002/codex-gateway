@@ -5,6 +5,7 @@ import {
   type ManagedRuntimeEndpoint,
   type RuntimeType,
 } from "@codex-gateway/agent-runtime-contracts";
+import type { ResolvedRuntimeSecret } from "~~/shared/types";
 import { z } from "zod";
 
 const runtimeIdSchema = z
@@ -17,7 +18,11 @@ const imageAliasSchema = z
   .min(1)
   .max(64)
   .regex(/^[a-z0-9][a-z0-9._-]*$/);
-const providerIdSchema = z.string().min(1).max(128).regex(/^[a-z0-9][a-z0-9_-]*$/);
+const providerIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-z0-9][a-z0-9_-]*$/);
 const runtimeActionRequestSchema = z.object({ runtimeId: runtimeIdSchema }).strict();
 const provisionRuntimeRequestSchema = z
   .object({
@@ -34,6 +39,38 @@ const provisionRuntimeRequestSchema = z
         token: z.string().min(1).max(4096),
       })
       .strict()
+      .optional(),
+    runtimeSecrets: z
+      .array(
+        z
+          .object({
+            credentialId: z.string().regex(/^cred__[a-z0-9][a-z0-9_.-]*$/u),
+            capabilityId: z.string().regex(/^org__[a-z0-9][a-z0-9_.-]*$/u),
+            version: z.number().int().positive(),
+            target: z.discriminatedUnion("type", [
+              z
+                .object({
+                  type: z.literal("env"),
+                  name: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u),
+                })
+                .strict(),
+              z
+                .object({
+                  type: z.literal("file"),
+                  path: z
+                    .string()
+                    .regex(/^\/run\/codex-secrets\/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/u),
+                })
+                .strict(),
+            ]),
+            value: z
+              .string()
+              .min(1)
+              .max(1024 * 1024),
+          })
+          .strict(),
+      )
+      .max(64)
       .optional(),
   })
   .strict();
@@ -86,9 +123,16 @@ const agentRuntimeStatsResultSchema = z
 const execRuntimeRequestSchema = z
   .object({
     runtimeId: runtimeIdSchema,
-    command: z.string().min(1).max(64 * 1024),
+    command: z
+      .string()
+      .min(1)
+      .max(64 * 1024),
     timeoutMs: z.number().int().positive().max(60_000),
-    maxOutputBytes: z.number().int().positive().max(4 * 1024 * 1024),
+    maxOutputBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(4 * 1024 * 1024),
   })
   .strict();
 const execRuntimeResultSchema = z
@@ -113,6 +157,12 @@ export interface ProvisionRuntimeRequest {
     wireApi: "responses";
     token: string;
   };
+  runtimeSecrets?: ResolvedRuntimeSecret[];
+}
+
+export interface SyncRuntimeSecretsRequest {
+  runtimeId: string;
+  runtimeSecrets: ResolvedRuntimeSecret[];
 }
 
 export interface RuntimeLifecycleResult {
@@ -204,6 +254,17 @@ export class RuntimeManagerClient {
       "POST",
       "/v1/runtimes/provision",
       provisionRuntimeRequestSchema.parse(input),
+    );
+  }
+
+  syncSecrets(input: SyncRuntimeSecretsRequest): Promise<RuntimeLifecycleResult> {
+    return this.request(
+      "POST",
+      "/v1/runtimes/secrets",
+      provisionRuntimeRequestSchema
+        .pick({ runtimeId: true, runtimeSecrets: true })
+        .required({ runtimeSecrets: true })
+        .parse(input),
     );
   }
 
