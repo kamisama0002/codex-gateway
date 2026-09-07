@@ -1,0 +1,11 @@
+{
+  "packages": {
+    "@openai/codex": "0.153.4",
+    "@playwright/mcp": "0.0.80",
+    "@playwright/test": "1.63.0",
+    "bun": "1.4.2",
+    "pnpm": "12.3.4",
+    "typescript": "7.0.2",
+    "yarn": "1.22.22"
+  }
+}

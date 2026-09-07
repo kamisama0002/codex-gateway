@@ -92,7 +92,7 @@ Commit: `build(runtime): upgrade Codex to 0.153.4`
 - Produces: Docker target `full` and command `node scripts/smoke-agent-runtime.mjs`.
 - Produces: machine-readable manifest `{ command, versionCommand }[]` used by tests and runtime diagnostics.
 
-- [ ] **Step 1: Add failing manifest and Dockerfile policy tests**
+- [x] **Step 1: Add failing manifest and Dockerfile policy tests**
 
 Assert representative commands from every required group:
 
@@ -105,17 +105,17 @@ expect(commandNames).toEqual(expect.arrayContaining([
 ]));
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pnpm exec vitest run packages/agent-runtime-manager/src/image-policy.test.ts`
 
 Expected: FAIL because the full target and manifests do not exist.
 
-- [ ] **Step 3: Add pinned package inputs and layered image stages**
+- [x] **Step 3: Add pinned package inputs and layered image stages**
 
 Use Debian packages for system tools, Corepack for pnpm/Yarn, official pinned installers for Bun/uv/Rust, a pinned Go archive, pinned npm packages, and a committed Python requirements file. Cache apt, npm, uv/pip and Playwright downloads with BuildKit mounts. Keep all package installation before copying mutable application files.
 
-- [ ] **Step 4: Implement the smoke script**
+- [x] **Step 4: Implement the smoke script**
 
 The script executes every manifest command, imports these Python modules, and exits nonzero on any missing capability:
 
@@ -129,11 +129,11 @@ const pythonImports = [
 
 It also launches Chromium headless against a local HTML fixture and checks rendered text.
 
-- [ ] **Step 5: Build once and run the smoke container on CentOS 10**
+- [x] **Step 5: Build once and run the smoke container on CentOS 10**
 
 Build `codex-agent-runtime:0.153.4-full` on CentOS 10, record its immutable image digest, then run the smoke script with temporary volumes. Reuse this image digest in later tasks.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run the image policy test, manifest smoke, `pnpm typecheck` and `git diff --check`.
 

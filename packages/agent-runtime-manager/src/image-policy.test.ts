@@ -6,9 +6,22 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 const policyPath = fileURLToPath(
   new URL("../../../docker/agent-runtime-policy.json", import.meta.url),
+);
+const agentDockerfilePath = fileURLToPath(
+  new URL("../../../docker/agent-runtime.Dockerfile", import.meta.url),
+);
+const toolManifestPath = fileURLToPath(
+  new URL("../../../docker/agent-runtime-tool-manifest.json", import.meta.url),
+);
+const nodeToolsPath = fileURLToPath(
+  new URL("../../../docker/agent-runtime-node-tools.json", import.meta.url),
+);
+const pythonRequirementsPath = fileURLToPath(
+  new URL("../../../docker/agent-runtime-python-requirements.txt", import.meta.url),
 );
 const managerDockerfilePath = fileURLToPath(
   new URL("../../../docker/runtime-manager.Dockerfile", import.meta.url),
@@ -62,6 +75,128 @@ describe("Agent runtime image policy", () => {
         },
       },
     });
+  });
+
+  it("declares an executable full-runtime tool manifest with pinned dependencies", () => {
+    expect(existsSync(toolManifestPath)).toBe(true);
+    expect(existsSync(nodeToolsPath)).toBe(true);
+    expect(existsSync(pythonRequirementsPath)).toBe(true);
+    if (
+      !existsSync(toolManifestPath) ||
+      !existsSync(nodeToolsPath) ||
+      !existsSync(pythonRequirementsPath)
+    ) {
+      return;
+    }
+
+    const toolManifest = z
+      .object({
+        commands: z.array(
+          z
+            .object({
+              acceptedExitCodes: z.array(z.number().int()).default([0]),
+              command: z.string().min(1),
+              versionArgs: z.array(z.string()),
+            })
+            .strict(),
+        ),
+        pythonImports: z.array(z.string().min(1)),
+      })
+      .strict()
+      .parse(JSON.parse(readFileSync(toolManifestPath, "utf8")));
+    const commandNames = toolManifest.commands.map(({ command }) => command);
+    expect(commandNames).toEqual(
+      expect.arrayContaining([
+        "git",
+        "git-lfs",
+        "gh",
+        "ssh",
+        "curl",
+        "jq",
+        "rg",
+        "fd",
+        "rsync",
+        "python3",
+        "uv",
+        "node",
+        "npm",
+        "pnpm",
+        "yarn",
+        "bun",
+        "tsc",
+        "gcc",
+        "clang",
+        "cmake",
+        "ninja",
+        "go",
+        "cargo",
+        "java",
+        "mvn",
+        "gradle",
+        "sqlite3",
+        "psql",
+        "mysql",
+        "redis-cli",
+        "libreoffice",
+        "pandoc",
+        "pdftotext",
+        "gs",
+        "convert",
+        "ffmpeg",
+        "tesseract",
+        "chromium",
+        "chromedriver",
+        "playwright",
+        "playwright-mcp",
+        "docker",
+        "codex",
+      ]),
+    );
+    expect(
+      toolManifest.commands.find(({ command }) => command === "nc")?.acceptedExitCodes,
+    ).toEqual([0, 1]);
+    expect(toolManifest.pythonImports).toEqual(
+      expect.arrayContaining([
+        "numpy",
+        "pandas",
+        "polars",
+        "pyarrow",
+        "scipy",
+        "sklearn",
+        "matplotlib",
+        "seaborn",
+        "requests",
+        "httpx",
+        "sqlalchemy",
+        "openpyxl",
+        "docx",
+        "pptx",
+        "pypdf",
+        "pdfplumber",
+        "PIL",
+      ]),
+    );
+
+    const nodeTools = z
+      .object({ packages: z.record(z.string().min(1), z.string().regex(/^\d+\.\d+\.\d+/)) })
+      .strict()
+      .parse(JSON.parse(readFileSync(nodeToolsPath, "utf8")));
+    expect(nodeTools.packages).toMatchObject({
+      "@openai/codex": "0.153.4",
+      "@playwright/mcp": "0.0.80",
+      "@playwright/test": "1.63.0",
+      bun: "1.4.2",
+      typescript: "7.0.2",
+      yarn: "1.22.22",
+    });
+
+    const requirements = readFileSync(pythonRequirementsPath, "utf8")
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#"));
+    expect(requirements.length).toBeGreaterThan(10);
+    expect(requirements.every((line) => /^[A-Za-z0-9_.-]+==[^=\s]+$/u.test(line))).toBe(true);
+    expect(readFileSync(agentDockerfilePath, "utf8")).toContain(" AS full");
   });
 
   it("builds only the Runtime Manager package graph after suppressing root lifecycle scripts", () => {
