@@ -28,6 +28,7 @@ if [ -z "${E2E_CODEX_PROVIDER_KEY_FILE:-}" ]; then
   fi
 fi
 export E2E_AGENT_NETWORK_NAME="${E2E_AGENT_NETWORK_NAME:-$project_name-agent-runtime}"
+export E2E_AGENT_EGRESS_NETWORK_NAME="${E2E_AGENT_EGRESS_NETWORK_NAME:-$project_name-agent-egress}"
 export E2E_RUNTIME_MANAGER_NETWORK_NAME="${E2E_RUNTIME_MANAGER_NETWORK_NAME:-$project_name-runtime-manager}"
 export E2E_MANAGED_LABEL_VALUE="$project_name"
 export RUNTIME_MANAGER_SHARED_SECRET="${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}"
@@ -115,6 +116,9 @@ process.stdin.on("end", () => {
   for (const name of ["runtime-manager", "agent-runtime"]) {
     if (config.networks?.[name]?.internal !== true) throw new Error(`${name} must be internal`);
   }
+  if (config.networks?.["agent-egress"]?.internal === true) {
+    throw new Error("agent-egress must provide outbound connectivity");
+  }
 });
 '
 }
@@ -175,17 +179,21 @@ verify_managed_runtime_docker_state() {
       "$(docker inspect --format '{{json .HostConfig.CapDrop}}' "$container_id")"
     assert_equal "managed Agent no-new-privileges" '["no-new-privileges:true"]' \
       "$(docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$container_id")"
-    assert_equal "managed Agent PID limit" "256" \
+    assert_equal "managed Agent PID limit" "1024" \
       "$(docker inspect --format '{{.HostConfig.PidsLimit}}' "$container_id")"
-    assert_equal "managed Agent memory limit" "2147483648" \
+    assert_equal "managed Agent memory limit" "8589934592" \
       "$(docker inspect --format '{{.HostConfig.Memory}}' "$container_id")"
-    assert_equal "managed Agent CPU limit" "2000000000" \
+    assert_equal "managed Agent CPU limit" "4000000000" \
       "$(docker inspect --format '{{.HostConfig.NanoCpus}}' "$container_id")"
     assert_equal "managed Agent tmpfs policy" \
-      '{"/tmp":"rw,nosuid,nodev,noexec,size=64m"}' \
+      '{"/dev/shm":"rw,nosuid,nodev,noexec,size=1073741824","/run/codex-secrets":"rw,nosuid,nodev,noexec,size=16777216,mode=0700,uid=10001,gid=10001","/tmp":"rw,nosuid,nodev,size=2147483648"}' \
       "$(docker inspect --format '{{json .HostConfig.Tmpfs}}' "$container_id")"
     assert_equal "managed Agent private network" "$E2E_AGENT_NETWORK_NAME" \
       "$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$container_id")"
+    assert_equal "managed Agent private network attachment" "present" \
+      "$(docker inspect --format "{{if index .NetworkSettings.Networks \"$E2E_AGENT_NETWORK_NAME\"}}present{{end}}" "$container_id")"
+    assert_equal "managed Agent egress network attachment" "present" \
+      "$(docker inspect --format "{{if index .NetworkSettings.Networks \"$E2E_AGENT_EGRESS_NETWORK_NAME\"}}present{{end}}" "$container_id")"
     assert_equal "managed Agent image version" "0.153.4" \
       "$(docker inspect --format '{{index .Config.Labels "com.codex-gateway.image-version"}}' "$container_id")"
     assert_equal "managed Agent named volume mount markers" "11" \

@@ -17,7 +17,7 @@ export interface DockerSecurityPolicy {
   ReadonlyRootfs: true;
   CapDrop: ["ALL"];
   SecurityOpt: ["no-new-privileges:true"];
-  Tmpfs: Record<"/tmp", string>;
+  Tmpfs: Record<"/dev/shm" | "/run/codex-secrets" | "/tmp", string>;
   PidsLimit: number;
   Memory: number;
   NanoCpus: number;
@@ -39,7 +39,7 @@ export interface DockerContainerCreateSpec {
   internalPort: number;
   labels: Record<string, string>;
   mounts: DockerManagedVolumeSpec[];
-  networkName: string;
+  networkNames: [string, string];
   runtimeId: string;
   runtimeType: RuntimeType;
   security: DockerSecurityPolicy;
@@ -128,14 +128,16 @@ export class DockerodeEngine implements DockerEngine {
         CapDrop: spec.security.CapDrop,
         Memory: spec.security.Memory,
         NanoCpus: spec.security.NanoCpus,
-        NetworkMode: spec.networkName,
+        NetworkMode: spec.networkNames[0],
         PidsLimit: spec.security.PidsLimit,
         Privileged: spec.security.Privileged,
         ReadonlyRootfs: spec.security.ReadonlyRootfs,
         SecurityOpt: spec.security.SecurityOpt,
         Tmpfs: spec.security.Tmpfs,
       },
-      NetworkingConfig: { EndpointsConfig: { [spec.networkName]: {} } },
+      NetworkingConfig: {
+        EndpointsConfig: Object.fromEntries(spec.networkNames.map((name) => [name, {}])),
+      },
     });
     return this.inspectContainer(container.id);
   }

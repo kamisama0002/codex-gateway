@@ -35,7 +35,7 @@ const testPolicy: RuntimeManagerPolicy = {
     },
   },
   internalPort: 4_555,
-  networkName: "agent-runtime",
+  networkNames: ["agent-runtime", "agent-egress"],
 };
 
 function requestFor(runtimeId: string) {
@@ -234,6 +234,7 @@ describe("RuntimeLifecycleService", () => {
   it("uses the fixed 4500 endpoint when production environment attempts to override it", async () => {
     const policy = loadRuntimeManagerPolicy({
       RUNTIME_MANAGER_AGENT_NETWORK: "agent-runtime",
+      RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: "agent-egress",
       RUNTIME_MANAGER_AGENT_PORT: "1234",
       RUNTIME_MANAGER_IMAGE_ALIASES: JSON.stringify(testPolicy.images),
       RUNTIME_MANAGER_RESOURCE_LABELS: JSON.stringify({
@@ -248,9 +249,10 @@ describe("RuntimeLifecycleService", () => {
     const result = await service.provision(requestFor("runtime-fixed-port"));
 
     expect(policy.internalPort).toBe(4500);
-    expect(policy.agentMemoryBytes).toBe(2_147_483_648);
-    expect(policy.agentNanoCpus).toBe(2_000_000_000);
-    expect(policy.agentPidsLimit).toBe(256);
+    expect(policy.agentMemoryBytes).toBe(8_589_934_592);
+    expect(policy.agentNanoCpus).toBe(4_000_000_000);
+    expect(policy.agentPidsLimit).toBe(1_024);
+    expect(policy.networkNames).toEqual(["agent-runtime", "agent-egress"]);
     expect(policy.resourceLabels).toEqual({
       "com.codex-gateway.e2e-managed": "isolated-test-run",
     });
@@ -290,9 +292,9 @@ describe("RuntimeLifecycleService", () => {
     const service = new RuntimeLifecycleService(engine, testPolicy);
 
     const running = await service.stats({ runtimeId: "runtime-a" });
-    const stopped = await service.stop({ runtimeId: "runtime-a" }).then(() =>
-      service.stats({ runtimeId: "runtime-a" }),
-    );
+    const stopped = await service
+      .stop({ runtimeId: "runtime-a" })
+      .then(() => service.stats({ runtimeId: "runtime-a" }));
     const absent = await service.stats({ runtimeId: "missing" });
 
     expect(running).toEqual({
@@ -346,17 +348,22 @@ describe("RuntimeLifecycleService", () => {
         expect.objectContaining({ containerPath: "/codex-home", kind: "codex-home" }),
         expect.objectContaining({ containerPath: "/workspace", kind: "workspace" }),
       ],
-      networkName: "agent-runtime",
+      networkNames: ["agent-runtime", "agent-egress"],
       runtimeId: "runtime-new",
       security: {
         CapDrop: ["ALL"],
-        Memory: 2_147_483_648,
-        NanoCpus: 2_000_000_000,
-        PidsLimit: 256,
+        Memory: 8_589_934_592,
+        NanoCpus: 4_000_000_000,
+        PidsLimit: 1_024,
         Privileged: false,
         ReadonlyRootfs: true,
         SecurityOpt: ["no-new-privileges:true"],
-        Tmpfs: { "/tmp": "rw,nosuid,nodev,noexec,size=64m" },
+        Tmpfs: {
+          "/dev/shm": "rw,nosuid,nodev,noexec,size=1073741824",
+          "/run/codex-secrets":
+            "rw,nosuid,nodev,noexec,size=16777216,mode=0700,uid=10001,gid=10001",
+          "/tmp": "rw,nosuid,nodev,size=2147483648",
+        },
         User: "10001:10001",
       },
       serviceToken: "generated-service-token",
@@ -389,6 +396,7 @@ describe("RuntimeLifecycleService", () => {
   it("loads agent resource limits from runtime-manager environment", () => {
     const policy = loadRuntimeManagerPolicy({
       RUNTIME_MANAGER_AGENT_NETWORK: "agent-runtime",
+      RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: "agent-egress",
       RUNTIME_MANAGER_IMAGE_ALIASES: JSON.stringify(testPolicy.images),
       RUNTIME_AGENT_MEMORY: "4g",
       RUNTIME_AGENT_CPUS: "1",
@@ -397,6 +405,22 @@ describe("RuntimeLifecycleService", () => {
     expect(policy.agentMemoryBytes).toBe(4_294_967_296);
     expect(policy.agentNanoCpus).toBe(1_000_000_000);
     expect(policy.agentPidsLimit).toBe(128);
+    expect(policy.networkNames).toEqual(["agent-runtime", "agent-egress"]);
+  });
+
+  it("rejects duplicate and Docker-reserved Agent networks", () => {
+    const environment = {
+      RUNTIME_MANAGER_AGENT_NETWORK: "agent-runtime",
+      RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: "agent-runtime",
+      RUNTIME_MANAGER_IMAGE_ALIASES: JSON.stringify(testPolicy.images),
+    };
+    expect(() => loadRuntimeManagerPolicy(environment)).toThrow(/different networks/i);
+    expect(() =>
+      loadRuntimeManagerPolicy({
+        ...environment,
+        RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: "host",
+      }),
+    ).toThrow(/reserved Docker network/i);
   });
 
   it("adds configured deployment labels to each managed container and volume", async () => {
@@ -456,21 +480,21 @@ describe("RuntimeLifecycleService", () => {
     expect(engine.updateCalls).toEqual([
       {
         containerId: "container-a",
-        Memory: 2_147_483_648,
-        NanoCpus: 2_000_000_000,
-        PidsLimit: 256,
+        Memory: 8_589_934_592,
+        NanoCpus: 4_000_000_000,
+        PidsLimit: 1_024,
       },
       {
         containerId: "container-a",
-        Memory: 2_147_483_648,
-        NanoCpus: 2_000_000_000,
-        PidsLimit: 256,
+        Memory: 8_589_934_592,
+        NanoCpus: 4_000_000_000,
+        PidsLimit: 1_024,
       },
       {
         containerId: "container-a",
-        Memory: 2_147_483_648,
-        NanoCpus: 2_000_000_000,
-        PidsLimit: 256,
+        Memory: 8_589_934_592,
+        NanoCpus: 4_000_000_000,
+        PidsLimit: 1_024,
       },
     ]);
     expect(removed.status).toBe("absent");

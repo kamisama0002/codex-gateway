@@ -67,8 +67,14 @@ describe("Agent runtime image policy", () => {
           ],
         },
         capDrop: ["ALL"],
+        networks: ["agent-runtime", "agent-egress"],
         publishedPorts: [],
         readOnlyRootFilesystem: true,
+        resourceLimits: {
+          cpus: 4,
+          memoryBytes: 8_589_934_592,
+          pids: 1_024,
+        },
         user: "10001:10001",
         labels: {
           "com.qiancheng.codex.version": "0.153.4",
@@ -109,6 +115,7 @@ describe("Agent runtime image policy", () => {
       expect.arrayContaining([
         "git",
         "git-lfs",
+        "bwrap",
         "gh",
         "ssh",
         "curl",

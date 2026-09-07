@@ -2,6 +2,7 @@
   "commands": [
     { "command": "git", "versionArgs": ["--version"] },
     { "command": "git-lfs", "versionArgs": ["version"] },
+    { "command": "bwrap", "versionArgs": ["--version"] },
     { "command": "gh", "versionArgs": ["--version"] },
     { "command": "ssh", "versionArgs": ["-V"] },
     { "command": "curl", "versionArgs": ["--version"] },

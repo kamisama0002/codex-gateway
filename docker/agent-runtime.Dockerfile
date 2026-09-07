@@ -82,6 +82,10 @@ RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
     && mkdir --parents /workspace /tmp /usr/local/share/codex-agent-runtime \
     && chown --recursive codex:codex /codex-home /workspace /tmp
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bubblewrap \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY docker/agent-runtime-node-tools.json /tmp/agent-runtime-node-tools.json
 COPY docker/agent-runtime-python-requirements.txt /tmp/agent-runtime-python-requirements.txt

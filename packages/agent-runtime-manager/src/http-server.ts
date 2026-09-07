@@ -180,7 +180,10 @@ export function loadRuntimeManagerPolicy(
   return runtimeManagerPolicySchema.parse({
     images,
     internalPort: CODEX_APP_SERVER_PORT,
-    networkName: requiredEnvironment(environment, "RUNTIME_MANAGER_AGENT_NETWORK"),
+    networkNames: [
+      requiredEnvironment(environment, "RUNTIME_MANAGER_AGENT_NETWORK"),
+      requiredEnvironment(environment, "RUNTIME_MANAGER_AGENT_EGRESS_NETWORK"),
+    ],
     resourceLabels,
     agentMemoryBytes: parseAgentMemoryBytes(environment.RUNTIME_AGENT_MEMORY),
     agentNanoCpus: parseAgentNanoCpus(environment.RUNTIME_AGENT_CPUS),

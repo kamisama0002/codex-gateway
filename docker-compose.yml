@@ -11,8 +11,6 @@ services:
       dockerfile: Dockerfile
       args:
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
-        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
-        PYPI_INDEX_URL: ${PYPI_INDEX_URL:-https://pypi.org/simple}
         NPM_REGISTRY: ${NPM_REGISTRY:-}
     container_name: codex-gateway
     restart: unless-stopped
@@ -74,12 +72,13 @@ services:
     environment:
       NODE_ENV: production
       RUNTIME_MANAGER_AGENT_NETWORK: ${RUNTIME_MANAGER_AGENT_NETWORK:-agent-runtime}
+      RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK:-agent-egress}
       RUNTIME_MANAGER_IMAGE_ALIASES: ${RUNTIME_MANAGER_IMAGE_ALIASES:?RUNTIME_MANAGER_IMAGE_ALIASES is required}
       RUNTIME_MANAGER_PORT: 8787
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:?RUNTIME_MANAGER_SHARED_SECRET is required}
-      RUNTIME_AGENT_MEMORY: ${RUNTIME_AGENT_MEMORY:-2g}
-      RUNTIME_AGENT_CPUS: ${RUNTIME_AGENT_CPUS:-2}
-      RUNTIME_AGENT_PIDS: ${RUNTIME_AGENT_PIDS:-256}
+      RUNTIME_AGENT_MEMORY: ${RUNTIME_AGENT_MEMORY:-8g}
+      RUNTIME_AGENT_CPUS: ${RUNTIME_AGENT_CPUS:-4}
+      RUNTIME_AGENT_PIDS: ${RUNTIME_AGENT_PIDS:-1024}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - runtime-manager-data:/data
@@ -101,6 +100,11 @@ networks:
     ipam:
       config:
         - subnet: ${RUNTIME_MANAGER_AGENT_NETWORK_SUBNET:-10.254.251.0/24}
+  agent-egress:
+    name: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK:-agent-egress}
+    ipam:
+      config:
+        - subnet: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK_SUBNET:-10.254.252.0/24}
 
 volumes:
   runtime-manager-data:

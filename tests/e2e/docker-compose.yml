@@ -29,6 +29,7 @@ services:
     environment:
       NODE_ENV: test
       RUNTIME_MANAGER_AGENT_NETWORK: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
+      RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: ${E2E_AGENT_EGRESS_NETWORK_NAME:-codex-gateway-e2e-agent-egress}
       RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"codex-agent-runtime:0.153.4","imageVersion":"0.153.4"}}'
       RUNTIME_MANAGER_PORT: "8787"
       RUNTIME_MANAGER_RESOURCE_LABELS: '{"com.codex-gateway.e2e-managed":"${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}"}'
@@ -275,3 +276,5 @@ networks:
   agent-runtime:
     name: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
     internal: true
+  agent-egress:
+    name: ${E2E_AGENT_EGRESS_NETWORK_NAME:-codex-gateway-e2e-agent-egress}

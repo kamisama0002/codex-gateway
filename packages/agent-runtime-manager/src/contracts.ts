@@ -20,7 +20,11 @@ const imageAliasSchema = z
 
 const providerConfigSchema = z
   .object({
-    providerId: z.string().min(1).max(128).regex(/^[a-z0-9][a-z0-9_-]*$/),
+    providerId: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[a-z0-9][a-z0-9_-]*$/),
     modelId: z.string().min(1).max(256),
     baseUrl: z.url(),
     wireApi: z.literal("responses"),
@@ -98,9 +102,16 @@ export type AgentRuntimeStatsResult = z.infer<typeof agentRuntimeStatsResultSche
 export const execRuntimeRequestSchema = z
   .object({
     runtimeId: runtimeIdSchema,
-    command: z.string().min(1).max(64 * 1024),
+    command: z
+      .string()
+      .min(1)
+      .max(64 * 1024),
     timeoutMs: z.number().int().positive().max(60_000),
-    maxOutputBytes: z.number().int().positive().max(4 * 1024 * 1024),
+    maxOutputBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(4 * 1024 * 1024),
   })
   .strict();
 export type ExecRuntimeRequest = z.infer<typeof execRuntimeRequestSchema>;
@@ -121,25 +132,33 @@ export const runtimeImagePolicySchema = z
   })
   .strict();
 
+const dockerNetworkNameSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u)
+  .refine((value) => !["bridge", "host", "none"].includes(value), {
+    message: "Reserved Docker network names are not allowed",
+  });
+
 export const runtimeManagerPolicySchema = z
   .object({
     images: z.record(imageAliasSchema, runtimeImagePolicySchema),
     internalPort: z.number().int().min(1).max(65_535),
-    networkName: z.string().min(1),
+    networkNames: z
+      .tuple([dockerNetworkNameSchema, dockerNetworkNameSchema])
+      .refine(([internal, egress]) => internal !== egress, {
+        message: "Agent runtime requires two different networks",
+      }),
     resourceLabels: z.record(z.string().min(1).max(128), z.string().max(256)).default({}),
     agentMemoryBytes: z
       .number()
       .int()
       .min(128 * 1024 * 1024)
       .max(16 * 1024 * 1024 * 1024)
-      .default(2 * 1024 * 1024 * 1024),
-    agentNanoCpus: z
-      .number()
-      .int()
-      .min(250_000_000)
-      .max(8_000_000_000)
-      .default(2_000_000_000),
-    agentPidsLimit: z.number().int().min(32).max(4_096).default(256),
+      .default(8 * 1024 * 1024 * 1024),
+    agentNanoCpus: z.number().int().min(250_000_000).max(8_000_000_000).default(4_000_000_000),
+    agentPidsLimit: z.number().int().min(32).max(4_096).default(1_024),
   })
   .strict()
   .refine(

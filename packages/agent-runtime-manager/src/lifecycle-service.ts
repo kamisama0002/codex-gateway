@@ -25,7 +25,7 @@ import { parseDockerContainerStats } from "./container-stats.js";
 export interface RuntimeManagerPolicy {
   images: Record<string, { image: string; imageVersion: string }>;
   internalPort: number;
-  networkName: string;
+  networkNames: [string, string];
   resourceLabels?: Record<string, string>;
   agentMemoryBytes?: number;
   agentNanoCpus?: number;
@@ -50,7 +50,11 @@ const agentIsolation: Omit<DockerSecurityPolicy, "Memory" | "NanoCpus" | "PidsLi
   ReadonlyRootfs: true,
   CapDrop: ["ALL"],
   SecurityOpt: ["no-new-privileges:true"],
-  Tmpfs: { "/tmp": "rw,nosuid,nodev,noexec,size=64m" },
+  Tmpfs: {
+    "/dev/shm": "rw,nosuid,nodev,noexec,size=1073741824",
+    "/run/codex-secrets": "rw,nosuid,nodev,noexec,size=16777216,mode=0700,uid=10001,gid=10001",
+    "/tmp": "rw,nosuid,nodev,size=2147483648",
+  },
   Privileged: false,
 };
 
@@ -187,7 +191,7 @@ export class RuntimeLifecycleService {
           volumeName: `workspace-${userHashPrefix}-${runtimeHash}`,
         },
       ],
-      networkName: this.policy.networkName,
+      networkNames: this.policy.networkNames,
       runtimeId: request.runtimeId,
       runtimeType: request.runtimeType,
       security: this.agentSecurityPolicy(),

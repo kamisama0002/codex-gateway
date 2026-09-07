@@ -208,7 +208,7 @@ Commit: `fix(runtime): preserve Codex configuration`
 - Produces: fixed networks `agent-runtime` and `agent-egress`.
 - Produces: `DockerSecurityPolicy.Tmpfs` entries for `/tmp`, `/dev/shm` and `/run/codex-secrets`.
 
-- [ ] **Step 1: Write failing container-spec tests**
+- [x] **Step 1: Write failing container-spec tests**
 
 Assert the created spec contains:
 
@@ -226,21 +226,21 @@ expect(spec.security).toMatchObject({
 });
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pnpm exec vitest run packages/agent-runtime-manager/src/lifecycle-service.test.ts packages/agent-runtime-manager/src/image-policy.test.ts`
 
 Expected: FAIL because policy currently supports one internal network and 2 GiB/2 CPU/256 PID limits.
 
-- [ ] **Step 3: Implement strict server-owned policy**
+- [x] **Step 3: Implement strict server-owned policy**
 
 Parse two network environment variables at Runtime Manager startup. Reject duplicates, `host`, `none`, empty names and any provision request containing network or security fields. Docker Engine sets the internal network as `NetworkMode` and includes both endpoint configs.
 
-- [ ] **Step 4: Add Compose egress network**
+- [x] **Step 4: Add Compose egress network**
 
 Define `agent-egress` as a named non-internal bridge. Runtime Manager joins only its management network; it instructs Docker to join user containers to the two fixed Agent networks.
 
-- [ ] **Step 5: Verify security invariants and commit**
+- [x] **Step 5: Verify security invariants and commit**
 
 Run focused tests, Runtime Manager typecheck and a temporary-container `docker inspect` assertion covering networks, mounts, ports, caps and tmpfs.
 
