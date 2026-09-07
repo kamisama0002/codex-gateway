@@ -1,16 +1,16 @@
-import type { Message, Peer } from "crossws";
 import { browserPreviewManager } from "./browser-preview-manager";
 import { readPreviewCookie } from "./browser-preview-proxy";
 import { browserPreviewUpstreamConnector } from "./browser-preview-upstream-connector";
 import { BrowserPreviewWebSocketBridge } from "./browser-preview-websocket-bridge";
+import type { BrowserPreviewMessage, BrowserPreviewPeer } from "./browser-preview-websocket-types";
 
 interface BrowserPreviewPeerContext {
   bridge?: BrowserPreviewWebSocketBridge;
 }
 
-const previewPeerContexts = new WeakMap<Peer, BrowserPreviewPeerContext>();
+const previewPeerContexts = new WeakMap<BrowserPreviewPeer, BrowserPreviewPeerContext>();
 
-export async function openBrowserPreviewWebSocket(peer: Peer) {
+export async function openBrowserPreviewWebSocket(peer: BrowserPreviewPeer) {
   const request = peer.request;
   const requestUrl = browserPreviewWebSocketUrl(request);
   const hostname = requestUrl.hostname.toLowerCase();
@@ -72,17 +72,20 @@ export function browserPreviewWebSocketUrl(request: { url: string; headers: Head
     : new URL(forwardedPath, `http://${headerHost}`);
 }
 
-export function forwardBrowserPreviewWebSocketMessage(peer: Peer, message: Message) {
+export function forwardBrowserPreviewWebSocketMessage(
+  peer: BrowserPreviewPeer,
+  message: BrowserPreviewMessage,
+) {
   previewPeerContext(peer).bridge?.sendFromPeer(message);
 }
 
-export function closeBrowserPreviewWebSocket(peer: Peer) {
+export function closeBrowserPreviewWebSocket(peer: BrowserPreviewPeer) {
   const context = previewPeerContext(peer);
   context.bridge?.closeFromPeer();
   context.bridge = undefined;
 }
 
-function previewPeerContext(peer: Peer) {
+function previewPeerContext(peer: BrowserPreviewPeer) {
   let context = previewPeerContexts.get(peer);
   if (context === undefined) {
     context = {};
