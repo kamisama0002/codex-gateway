@@ -10,7 +10,7 @@ const bodySchema = z.object({ notifications: notificationSettingsSchema }).stric
 export default defineGatewayConfigMutationHandler(async (event) => {
   const userId = event.context.auth!.user.id;
   const body = await readValidatedBody(event, (value) => bodySchema.parse(value));
-  return userConfigMutationService.commit(userId, () => {
+  return await userConfigMutationService.commit(userId, () => {
     runtimeConfigStore.replaceNotifications(body.notifications);
     return runtimeConfigStore.export();
   });

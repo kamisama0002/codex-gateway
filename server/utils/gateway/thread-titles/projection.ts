@@ -3,7 +3,7 @@ import { userConfigMutationService } from "../config/user-config-mutation-servic
 import { threadMetadataStore } from "../state/thread-metadata";
 import { threadSnapshotStore } from "../state/thread-snapshots";
 
-export function projectThreadTitle(
+export async function projectThreadTitle(
   userId: number,
   hostId: number,
   threadId: string,
@@ -20,5 +20,5 @@ export function projectThreadTitle(
           thread: { ...snapshot.thread, name: normalized },
         },
   );
-  userConfigMutationService.updatePinnedThreadTitle(userId, hostId, threadId, normalized);
+  await userConfigMutationService.updatePinnedThreadTitle(userId, hostId, threadId, normalized);
 }

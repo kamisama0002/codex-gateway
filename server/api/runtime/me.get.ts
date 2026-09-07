@@ -3,11 +3,11 @@ import { requireAuthenticatedUser } from "../../utils/gateway/auth/context";
 import { defineGatewayEventHandler } from "../../utils/gateway/http/errors";
 import { runtimeService } from "../../utils/gateway/runtime-manager/runtime-service";
 
-export function runtimeStatusForEvent(
+export async function runtimeStatusForEvent(
   event: H3Event,
-  service: { getStatus(userId: number): unknown } = runtimeService,
+  service: { getStatus(userId: number): Promise<unknown> } = runtimeService,
 ) {
-  return service.getStatus(requireAuthenticatedUser(event).id);
+  return await service.getStatus(requireAuthenticatedUser(event).id);
 }
 
-export default defineGatewayEventHandler((event) => runtimeStatusForEvent(event));
+export default defineGatewayEventHandler(async (event) => await runtimeStatusForEvent(event));

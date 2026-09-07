@@ -26,7 +26,7 @@ export interface ProviderProxyOptions {
   store?: Pick<ProviderStore, "listForUser" | "getWithSecret">;
   fetch?: typeof globalThis.fetch;
   verifyToken?: (token: string, scope: { providerId: string }) => RuntimeModelTokenClaims;
-  runtimeStore?: { getByUserId(userId: number): { status: string } | null };
+  runtimeStore?: { getByUserId(userId: number): Promise<{ status: string } | null> };
   streamIdleTimeoutMs?: number;
 }
 
@@ -44,14 +44,14 @@ export async function handleProviderResponses(
   if (modelId === "") return jsonError(400, "invalid_request");
   const claims = extractClaims(token, providerId, options);
   const activeRuntimeStore = options.runtimeStore ?? runtimeStore;
-  const runtime = activeRuntimeStore.getByUserId(claims.userId);
+  const runtime = await activeRuntimeStore.getByUserId(claims.userId);
   if (runtime === null || runtime.status !== "ready") return jsonError(401, "runtime_not_ready");
-  const models = store.listForUser(claims.userId);
+  const models = await store.listForUser(claims.userId);
   const model = models.find(
     (entry) => entry.providerId === providerId && entry.modelId === modelId,
   );
   if (model === undefined) return jsonError(403, "model_not_granted");
-  const provider = store.getWithSecret(providerId);
+  const provider = await store.getWithSecret(providerId);
   if (provider === null || !provider.enabled) return jsonError(503, "provider_unavailable");
   const upstreamPath = provider.wireApi === "responses" ? "/responses" : "/chat/completions";
   let upstreamBody: string;

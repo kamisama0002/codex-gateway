@@ -20,7 +20,7 @@ export async function loginWithDataOpsForEvent(
   const input = await readValidatedBody(event, (body) => inputSchema.parse(body));
   try {
     const claims = await client.exchange(input.ticket);
-    return identities.loginDataOps(claims);
+    return await identities.loginDataOps(claims);
   } catch (error) {
     if (!(error instanceof DataOpsSsoError)) throw error;
     const statusCode = dataOpsErrorStatus(error.code);

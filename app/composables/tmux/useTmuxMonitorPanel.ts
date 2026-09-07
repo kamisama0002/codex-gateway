@@ -1,4 +1,4 @@
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { toast } from "@codex-gateway/ui/sonner";
 import type { TmuxMonitor, TmuxMonitorMode, TmuxPaneSnapshot } from "~~/shared/types";
 import { useTmuxMonitorDashboard } from "./useTmuxMonitorDashboard";
@@ -32,6 +32,10 @@ export function useTmuxMonitorPanel() {
         )
       : "",
   );
+
+  onMounted(() => {
+    void tmux.loadSummary();
+  });
 
   function monitorsForHost(hostId: number) {
     return tmux.active.filter((monitor) => monitor.hostId === hostId);

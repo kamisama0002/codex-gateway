@@ -67,6 +67,7 @@ export interface GatewayMemoryState {
   deliveredNotificationKeys: string[];
   pendingNotificationKeys: string[];
   configLoaded: boolean;
+  configRevision: number;
 }
 
 function createGatewayMemoryState(): GatewayMemoryState {
@@ -88,6 +89,7 @@ function createGatewayMemoryState(): GatewayMemoryState {
     deliveredNotificationKeys: [],
     pendingNotificationKeys: [],
     configLoaded: false,
+    configRevision: 0,
   };
 }
 
@@ -201,6 +203,12 @@ export const gatewayMemoryState: GatewayMemoryState = {
   set configLoaded(value) {
     currentGatewayMemoryState().configLoaded = value;
   },
+  get configRevision() {
+    return currentGatewayMemoryState().configRevision;
+  },
+  set configRevision(value) {
+    currentGatewayMemoryState().configRevision = value;
+  },
 };
 
 export function currentGatewayUserId() {
@@ -263,6 +271,23 @@ export function buildGatewayMemoryState(config: GatewayConfig): GatewayMemorySta
   };
 }
 
+export function applyGatewayConfigToMemoryState(
+  state: GatewayMemoryState,
+  config: GatewayConfig,
+  revision: number,
+): GatewayMemoryState {
+  const configState = buildGatewayMemoryState(config);
+  state.hosts = configState.hosts;
+  state.projects = configState.projects;
+  state.configuredProjectIds = configState.configuredProjectIds;
+  state.pinnedThreads = configState.pinnedThreads;
+  state.notifications = configState.notifications;
+  state.pet = configState.pet;
+  state.configLoaded = true;
+  state.configRevision = revision;
+  return state;
+}
+
 export const initialGatewayMemoryState: GatewayMemoryState = {
   hosts: [],
   projects: [],
@@ -281,6 +306,7 @@ export const initialGatewayMemoryState: GatewayMemoryState = {
   deliveredNotificationKeys: [],
   pendingNotificationKeys: [],
   configLoaded: false,
+  configRevision: 0,
 };
 
 export function normalizePinnedThreads(threads: PinnedThreadRecord[]) {

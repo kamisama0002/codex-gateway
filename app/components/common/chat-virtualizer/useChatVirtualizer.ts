@@ -10,6 +10,7 @@ import {
 } from "vue";
 import {
   createChatVirtualizerBehavior,
+  resolveBackwardWheelOwnership,
   resolveChatFollowLatest,
   shouldAdjustChatScrollForSizeChange,
 } from "./anchoring";
@@ -68,7 +69,10 @@ export function useChatVirtualizer(options: ChatVirtualizerOptions) {
     viewportElement,
     "wheel",
     (event) => {
-      backwardWheelActive = event.deltaY < 0;
+      backwardWheelActive = resolveBackwardWheelOwnership({
+        deltaY: event.deltaY,
+        scrollTop: viewportElement.value?.scrollTop ?? 0,
+      });
     },
     { passive: true },
   );
@@ -91,6 +95,10 @@ export function useChatVirtualizer(options: ChatVirtualizerOptions) {
       // the outer viewport may change followLatest. Do not infer this from item types or stop
       // nested scrolling in each card, because scroll ownership belongs to the two viewports.
       if (event.target !== viewport) return;
+      // Once the viewport reaches its hard start edge, an upward wheel can no longer move it.
+      // Release gesture ownership so a concurrent history prepend can apply its measured anchor
+      // corrections instead of leaving the newly inserted rows at their estimated height.
+      if (viewport.scrollTop <= 0) backwardWheelActive = false;
       const distanceFromEnd = Math.max(
         0,
         viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight,

@@ -5,7 +5,45 @@ x-default-logging: &default-logging
     max-file: "3"
 
 services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-codex_gateway}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-}
+      MYSQL_USER: ${MYSQL_USER:-codex_gateway}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'mysqladmin ping -h 127.0.0.1 -uroot --password="$${MYSQL_ROOT_PASSWORD}" --silent',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - gateway-database
+
+  database-migrate:
+    image: ${CODEX_GATEWAY_IMAGE:-codex-gateway:local}
+    restart: "no"
+    logging: *default-logging
+    command: ["node", "scripts/database/migrate.mjs"]
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-codex_gateway}:${MYSQL_PASSWORD:-}@mysql:3306/${MYSQL_DATABASE:-codex_gateway}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - gateway-database
+
   codex-gateway:
+    image: ${CODEX_GATEWAY_IMAGE:-codex-gateway:local}
     build:
       context: .
       dockerfile: Dockerfile
@@ -24,8 +62,8 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       BROWSER_PREVIEW_DOMAIN: ${BROWSER_PREVIEW_DOMAIN:-cloudawn.top}
-      CODEX_GATEWAY_DB_PATH: /data/codex-gateway.db
       CODEX_GATEWAY_CONFIG_SECRET: ${CODEX_GATEWAY_CONFIG_SECRET:?CODEX_GATEWAY_CONFIG_SECRET is required}
+      DATABASE_URL: mysql://${MYSQL_USER:-codex_gateway}:${MYSQL_PASSWORD:-}@mysql:3306/${MYSQL_DATABASE:-codex_gateway}
       DATAOPS_BASE_URL: ${DATAOPS_BASE_URL:-}
       DATAOPS_SSO_SHARED_SECRET: ${DATAOPS_SSO_SHARED_SECRET:-}
       DATAOPS_ALLOWED_ORIGINS: ${DATAOPS_ALLOWED_ORIGINS:-}
@@ -33,8 +71,9 @@ services:
       RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS: ${RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS:-stable}
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:?RUNTIME_MANAGER_SHARED_SECRET is required}
       RUNTIME_PROVIDER_PROXY_BASE_URL: ${RUNTIME_PROVIDER_PROXY_BASE_URL:-http://codex-gateway:3000/api/internal/providers}
-    volumes:
-      - ./data:/data
+    depends_on:
+      database-migrate:
+        condition: service_completed_successfully
     # Keep liveness probes side-effect free. Nitro owns periodic GC so probe retries or Docker
     # daemon pauses cannot change application memory lifecycle.
     healthcheck:
@@ -51,6 +90,7 @@ services:
       start_period: 20s
     networks:
       - web-common
+      - gateway-database
       - runtime-manager
       - agent-runtime
 
@@ -88,6 +128,8 @@ services:
 networks:
   web-common:
     external: true
+  gateway-database:
+    internal: true
   runtime-manager:
     name: ${RUNTIME_MANAGER_NETWORK_NAME:-runtime-manager}
     internal: true
@@ -107,4 +149,5 @@ networks:
         - subnet: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK_SUBNET:-10.254.252.0/24}
 
 volumes:
+  mysql-data:
   runtime-manager-data:

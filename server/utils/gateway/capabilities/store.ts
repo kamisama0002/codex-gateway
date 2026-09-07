@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 import type {
   CapabilityArtifact,
   CapabilityArtifactInput,
@@ -9,6 +8,7 @@ import type {
   CapabilityDefinition,
   CapabilityUpdateInput,
 } from "~~/shared/types";
+import type { GatewayDb } from "../storage/contracts";
 import { gatewayDatabase } from "../storage/database";
 import {
   capabilityIdSchema,
@@ -20,207 +20,247 @@ import {
 } from "./schemas";
 
 export interface CapabilityStore {
-  create(input: CapabilityCreateInput): CapabilityDefinition;
-  get(id: string): CapabilityDefinition | null;
-  list(): CapabilityDefinition[];
-  update(id: string, input: CapabilityUpdateInput): CapabilityDefinition;
-  delete(id: string): boolean;
-  upsertArtifact(input: CapabilityArtifactInput): CapabilityArtifact;
-  getArtifact(capabilityId: string, version: string): CapabilityArtifact | null;
-  assign(input: CapabilityAssignmentInput): CapabilityAssignment;
-  unassign(input: CapabilityAssignmentInput): boolean;
-  listAssignments(capabilityId: string): CapabilityAssignment[];
-  listDesiredForContext(context: CapabilityContext): CapabilityDefinition[];
+  create(input: CapabilityCreateInput): Promise<CapabilityDefinition>;
+  get(id: string): Promise<CapabilityDefinition | null>;
+  list(): Promise<CapabilityDefinition[]>;
+  update(id: string, input: CapabilityUpdateInput): Promise<CapabilityDefinition>;
+  delete(id: string): Promise<boolean>;
+  upsertArtifact(input: CapabilityArtifactInput): Promise<CapabilityArtifact>;
+  getArtifact(capabilityId: string, version: string): Promise<CapabilityArtifact | null>;
+  assign(input: CapabilityAssignmentInput): Promise<CapabilityAssignment>;
+  unassign(input: CapabilityAssignmentInput): Promise<boolean>;
+  listAssignments(capabilityId: string): Promise<CapabilityAssignment[]>;
+  listDesiredForContext(context: CapabilityContext): Promise<CapabilityDefinition[]>;
 }
 
-export function createCapabilityStore(db: DatabaseSync): CapabilityStore {
+export function createCapabilityStore(db: GatewayDb): CapabilityStore {
   return {
-    create(input) {
+    async create(input) {
       const definition = parseCapabilityCreateInput(input);
-      if (definition.createdByUserId !== null) requireUser(db, definition.createdByUserId);
       const now = new Date().toISOString();
-      db.prepare(
+      await db.execute(
         `INSERT INTO capability_definitions (
            id, kind, display_name, description, version, source_json, config_json,
            sensitive_fields_json, enabled, created_by_user_id, created_at, updated_at
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        definition.id,
-        definition.kind,
-        definition.displayName,
-        definition.description,
-        definition.version,
-        JSON.stringify(definition.source),
-        JSON.stringify(definition.config),
-        JSON.stringify(definition.sensitiveFields),
-        definition.enabled ? 1 : 0,
-        definition.createdByUserId,
-        now,
-        now,
+        definitionParams(definition, now),
       );
-      return requiredDefinition(db, definition.id);
+      return await requiredDefinition(db, definition.id);
     },
 
-    get(id) {
-      const row = db
-        .prepare("SELECT * FROM capability_definitions WHERE id = ?")
-        .get(capabilityIdSchema.parse(id));
-      return row === undefined ? null : rowToDefinition(row);
+    async get(id) {
+      const row = await db.one("SELECT * FROM capability_definitions WHERE id = ?", [
+        capabilityIdSchema.parse(id),
+      ]);
+      return row === null ? null : rowToDefinition(row);
     },
 
-    list() {
-      return db
-        .prepare("SELECT * FROM capability_definitions ORDER BY id ASC")
-        .all()
-        .map(rowToDefinition);
+    async list() {
+      const rows = await db.many("SELECT * FROM capability_definitions ORDER BY id ASC");
+      return rows.map(rowToDefinition);
     },
 
-    update(id, input) {
+    async update(id, input) {
       const capabilityId = capabilityIdSchema.parse(id);
-      const current = requiredDefinition(db, capabilityId);
       const change = parseCapabilityUpdateInput(input);
-      const definition = parseCapabilityCreateInput({
-        id: capabilityId,
-        kind: current.kind,
-        displayName: change.displayName ?? current.displayName,
-        description: change.description ?? current.description,
-        version: change.version ?? current.version,
-        source: change.source ?? current.source,
-        config: change.config ?? current.config,
-        sensitiveFields: change.sensitiveFields ?? current.sensitiveFields,
-        enabled: change.enabled ?? current.enabled,
-        createdByUserId: current.createdByUserId,
+      return await db.transaction(async (tx) => {
+        const current = await requiredDefinition(tx, capabilityId, true);
+        const definition = parseCapabilityCreateInput({
+          id: capabilityId,
+          kind: current.kind,
+          displayName: change.displayName ?? current.displayName,
+          description: change.description ?? current.description,
+          version: change.version ?? current.version,
+          source: change.source ?? current.source,
+          config: change.config ?? current.config,
+          sensitiveFields: change.sensitiveFields ?? current.sensitiveFields,
+          enabled: change.enabled ?? current.enabled,
+          createdByUserId: current.createdByUserId,
+        });
+        await tx.execute(
+          `UPDATE capability_definitions SET
+             display_name = ?, description = ?, version = ?, source_json = ?, config_json = ?,
+             sensitive_fields_json = ?, enabled = ?, updated_at = ?
+           WHERE id = ?`,
+          [
+            definition.displayName,
+            definition.description,
+            definition.version,
+            JSON.stringify(definition.source),
+            JSON.stringify(definition.config),
+            JSON.stringify(definition.sensitiveFields),
+            definition.enabled,
+            new Date().toISOString(),
+            capabilityId,
+          ],
+        );
+        return await requiredDefinition(tx, capabilityId);
       });
-      db.prepare(
-        `UPDATE capability_definitions SET
-           display_name = ?, description = ?, version = ?, source_json = ?, config_json = ?,
-           sensitive_fields_json = ?, enabled = ?, updated_at = ?
-         WHERE id = ?`,
-      ).run(
-        definition.displayName,
-        definition.description,
-        definition.version,
-        JSON.stringify(definition.source),
-        JSON.stringify(definition.config),
-        JSON.stringify(definition.sensitiveFields),
-        definition.enabled ? 1 : 0,
-        new Date().toISOString(),
-        capabilityId,
-      );
-      return requiredDefinition(db, capabilityId);
     },
 
-    delete(id) {
-      const result = db
-        .prepare("DELETE FROM capability_definitions WHERE id = ?")
-        .run(capabilityIdSchema.parse(id));
-      return changedOneRow(result.changes);
+    async delete(id) {
+      const result = await db.execute("DELETE FROM capability_definitions WHERE id = ?", [
+        capabilityIdSchema.parse(id),
+      ]);
+      return result.affectedRows === 1;
     },
 
-    upsertArtifact(input) {
+    async upsertArtifact(input) {
       const artifact = parseCapabilityArtifactInput(input);
-      requiredDefinition(db, artifact.capabilityId);
       const now = new Date().toISOString();
-      db.prepare(
+      await db.execute(
         `INSERT INTO capability_artifacts (
            capability_id, version, sha256, storage_path, size_bytes, created_at
          ) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(capability_id, version) DO UPDATE SET
-           sha256 = excluded.sha256,
-           storage_path = excluded.storage_path,
-           size_bytes = excluded.size_bytes`,
-      ).run(
-        artifact.capabilityId,
-        artifact.version,
-        artifact.sha256,
-        artifact.storagePath,
-        artifact.sizeBytes,
-        now,
+         ON DUPLICATE KEY UPDATE
+           sha256 = VALUES(sha256),
+           storage_path = VALUES(storage_path),
+           size_bytes = VALUES(size_bytes)`,
+        [
+          artifact.capabilityId,
+          artifact.version,
+          artifact.sha256,
+          artifact.storagePath,
+          artifact.sizeBytes,
+          now,
+        ],
       );
-      return requiredArtifact(db, artifact.capabilityId, artifact.version);
+      return await requiredArtifact(db, artifact.capabilityId, artifact.version);
     },
 
-    getArtifact(capabilityId, version) {
+    async getArtifact(capabilityId, version) {
       const normalizedId = capabilityIdSchema.parse(capabilityId);
       const normalizedVersion = capabilityVersionSchema.parse(version);
-      const row = db
-        .prepare("SELECT * FROM capability_artifacts WHERE capability_id = ? AND version = ?")
-        .get(normalizedId, normalizedVersion);
-      return row === undefined ? null : rowToArtifact(row);
+      const row = await db.one(
+        "SELECT * FROM capability_artifacts WHERE capability_id = ? AND version = ?",
+        [normalizedId, normalizedVersion],
+      );
+      return row === null ? null : rowToArtifact(row);
     },
 
-    assign(input) {
+    async assign(input) {
       const assignment = normalizeAssignment(input);
-      requiredDefinition(db, assignment.capabilityId);
-      requireUser(db, assignment.userId);
       const now = new Date().toISOString();
-      db.prepare(
-        `INSERT OR IGNORE INTO capability_assignments (
+      await db.execute(
+        `INSERT INTO capability_assignments (
            capability_id, user_id, project_id, created_at
-         ) VALUES (?, ?, ?, ?)`,
-      ).run(assignment.capabilityId, assignment.userId, assignment.projectId, now);
-      const row = db
-        .prepare(
-          `SELECT * FROM capability_assignments
-           WHERE capability_id = ? AND user_id = ? AND project_id IS ?`,
-        )
-        .get(assignment.capabilityId, assignment.userId, assignment.projectId);
-      if (row === undefined) throw new Error("Capability assignment was not recorded");
+         ) VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`,
+        [assignment.capabilityId, assignment.userId, assignment.projectId, now],
+      );
+      const row = await db.one(
+        `SELECT * FROM capability_assignments
+         WHERE capability_id = ? AND user_id = ? AND project_id <=> ?`,
+        [assignment.capabilityId, assignment.userId, assignment.projectId],
+      );
+      if (row === null) throw new Error("Capability assignment was not recorded");
       return rowToAssignment(row);
     },
 
-    unassign(input) {
+    async unassign(input) {
       const assignment = normalizeAssignment(input);
-      const result = db
-        .prepare(
-          `DELETE FROM capability_assignments
-           WHERE capability_id = ? AND user_id = ? AND project_id IS ?`,
-        )
-        .run(assignment.capabilityId, assignment.userId, assignment.projectId);
-      return changedOneRow(result.changes);
+      const result = await db.execute(
+        `DELETE FROM capability_assignments
+         WHERE capability_id = ? AND user_id = ? AND project_id <=> ?`,
+        [assignment.capabilityId, assignment.userId, assignment.projectId],
+      );
+      return result.affectedRows === 1;
     },
 
-    listAssignments(capabilityId) {
-      return db
-        .prepare(
-          `SELECT * FROM capability_assignments
-           WHERE capability_id = ? ORDER BY user_id ASC, project_id ASC, id ASC`,
-        )
-        .all(capabilityIdSchema.parse(capabilityId))
-        .map(rowToAssignment);
+    async listAssignments(capabilityId) {
+      const rows = await db.many(
+        `SELECT * FROM capability_assignments
+         WHERE capability_id = ? ORDER BY user_id ASC, project_id ASC, id ASC`,
+        [capabilityIdSchema.parse(capabilityId)],
+      );
+      return rows.map(rowToAssignment);
     },
 
-    listDesiredForContext(context) {
+    async listDesiredForContext(context) {
       const normalized = normalizeContext(context);
-      return db
-        .prepare(
-          `SELECT DISTINCT d.*
-           FROM capability_definitions d
-           JOIN capability_assignments a ON a.capability_id = d.id
-           WHERE a.user_id = ?
-             AND d.enabled = 1
-             AND (a.project_id IS NULL OR a.project_id IS ?)
-           ORDER BY d.id ASC`,
-        )
-        .all(normalized.userId, normalized.projectId)
-        .map(rowToDefinition);
+      const rows = await db.many(
+        `SELECT DISTINCT d.*
+         FROM capability_definitions d
+         JOIN capability_assignments a ON a.capability_id = d.id
+         WHERE a.user_id = ?
+           AND d.enabled = 1
+           AND (a.project_id IS NULL OR a.project_id = ?)
+         ORDER BY d.id ASC`,
+        [normalized.userId, normalized.projectId],
+      );
+      return rows.map(rowToDefinition);
     },
   };
 }
 
-export const capabilityStore: CapabilityStore = createCapabilityStore(gatewayDatabase());
+export const capabilityStore: CapabilityStore = {
+  create(input) {
+    return createCapabilityStore(gatewayDatabase()).create(input);
+  },
+  get(id) {
+    return createCapabilityStore(gatewayDatabase()).get(id);
+  },
+  list() {
+    return createCapabilityStore(gatewayDatabase()).list();
+  },
+  update(id, input) {
+    return createCapabilityStore(gatewayDatabase()).update(id, input);
+  },
+  delete(id) {
+    return createCapabilityStore(gatewayDatabase()).delete(id);
+  },
+  upsertArtifact(input) {
+    return createCapabilityStore(gatewayDatabase()).upsertArtifact(input);
+  },
+  getArtifact(capabilityId, version) {
+    return createCapabilityStore(gatewayDatabase()).getArtifact(capabilityId, version);
+  },
+  assign(input) {
+    return createCapabilityStore(gatewayDatabase()).assign(input);
+  },
+  unassign(input) {
+    return createCapabilityStore(gatewayDatabase()).unassign(input);
+  },
+  listAssignments(capabilityId) {
+    return createCapabilityStore(gatewayDatabase()).listAssignments(capabilityId);
+  },
+  listDesiredForContext(context) {
+    return createCapabilityStore(gatewayDatabase()).listDesiredForContext(context);
+  },
+};
 
-function requiredDefinition(db: DatabaseSync, id: string) {
-  const row = db.prepare("SELECT * FROM capability_definitions WHERE id = ?").get(id);
-  if (row === undefined) throw new Error("Capability not found");
+function definitionParams(definition: NormalizedCapabilityCreateInput, now: string) {
+  return [
+    definition.id,
+    definition.kind,
+    definition.displayName,
+    definition.description,
+    definition.version,
+    JSON.stringify(definition.source),
+    JSON.stringify(definition.config),
+    JSON.stringify(definition.sensitiveFields),
+    definition.enabled,
+    definition.createdByUserId,
+    now,
+    now,
+  ] as const;
+}
+
+async function requiredDefinition(db: GatewayDb, id: string, forUpdate = false) {
+  const row = await db.one(
+    `SELECT * FROM capability_definitions WHERE id = ?${forUpdate ? " FOR UPDATE" : ""}`,
+    [id],
+  );
+  if (row === null) throw new Error("Capability not found");
   return rowToDefinition(row);
 }
 
-function requiredArtifact(db: DatabaseSync, capabilityId: string, version: string) {
-  const row = db
-    .prepare("SELECT * FROM capability_artifacts WHERE capability_id = ? AND version = ?")
-    .get(capabilityId, version);
-  if (row === undefined) throw new Error("Capability artifact not found");
+async function requiredArtifact(db: GatewayDb, capabilityId: string, version: string) {
+  const row = await db.one(
+    "SELECT * FROM capability_artifacts WHERE capability_id = ? AND version = ?",
+    [capabilityId, version],
+  );
+  if (row === null) throw new Error("Capability artifact not found");
   return rowToArtifact(row);
 }
 
@@ -246,10 +286,10 @@ function rowToDefinition(row: Record<string, unknown>): CapabilityDefinition {
 
 function rowToArtifact(row: Record<string, unknown>): CapabilityArtifact {
   const normalized = parseCapabilityArtifactInput({
-    capabilityId: String(row.capability_id),
-    version: String(row.version),
-    sha256: String(row.sha256),
-    storagePath: String(row.storage_path),
+    capabilityId: row.capability_id,
+    version: row.version,
+    sha256: row.sha256,
+    storagePath: row.storage_path,
     sizeBytes: Number(row.size_bytes),
   });
   return { ...normalized, createdAt: requiredStoredText(row.created_at, "created_at") };
@@ -280,14 +320,6 @@ function normalizeContext(context: CapabilityContext) {
   };
 }
 
-function requireUser(db: DatabaseSync, userId: number) {
-  if (
-    db.prepare("SELECT 1 FROM users WHERE id = ?").get(positiveId(userId, "user ID")) === undefined
-  ) {
-    throw new Error("User not found");
-  }
-}
-
 function positiveId(value: number, name: string) {
   if (!Number.isInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer`);
   return value;
@@ -299,8 +331,9 @@ function nullablePositiveId(value: unknown, name: string) {
 }
 
 function requiredStoredText(value: unknown, name: string) {
-  if (typeof value !== "string" || value === "")
+  if (typeof value !== "string" || value === "") {
     throw new Error(`Stored capability ${name} is invalid`);
+  }
   return value;
 }
 
@@ -311,8 +344,4 @@ function parseStoredJson(value: unknown, name: string): unknown {
   } catch {
     throw new Error(`Stored capability ${name} is invalid`);
   }
-}
-
-function changedOneRow(changes: number | bigint) {
-  return changes === 1 || changes === 1n;
 }

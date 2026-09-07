@@ -1,46 +1,61 @@
-import { DatabaseSync } from "node:sqlite";
-import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
-import { migrateGatewayDatabase } from "../storage/migrations";
-import { describe, expect, it } from "vitest";
 import {
   serializeManagedRuntimeStatus,
   type UserAgentRuntimeRecord,
 } from "@codex-gateway/agent-runtime-contracts";
+import { beforeEach, describe, expect, it } from "vitest";
+import { freshMysqlTestDatabase } from "../../../../tests/mysql/helpers";
+import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
+import type { GatewayDb } from "../storage/contracts";
+import { migrateMysqlGatewayDatabase } from "../storage/mysql-migrations";
 import { createRuntimeStore } from "./runtime-store";
 
 describe("runtimeStore", () => {
-  it("never returns another user's runtime", () => {
-    const db = migratedDatabase();
-    const store = createRuntimeStore(db);
+  let db: GatewayDb;
+  let store: ReturnType<typeof createRuntimeStore>;
 
-    store.upsert(runtimeFor(1, "container-a"));
-
-    expect(store.getByUserId(2)).toBeNull();
+  beforeEach(async () => {
+    db = await freshMysqlTestDatabase();
+    await migrateMysqlGatewayDatabase(db);
+    await db.execute(
+      "INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?), (?, ?, ?, ?)",
+      [1, "first-user", "hash", "admin", 2, "second-user", "hash", "user"],
+    );
+    store = createRuntimeStore(db);
   });
 
-  it("lists all managed runtimes in stable user order for administration", () => {
-    const db = migratedDatabase();
-    const store = createRuntimeStore(db);
-    store.upsert(runtimeFor(2, "container-2"));
-    store.upsert(runtimeFor(1, "container-1"));
+  it("never returns another user's runtime", async () => {
+    await store.upsert(runtimeFor(1, "container-a"));
 
-    expect(store.list().map((runtime) => runtime.userId)).toEqual([1, 2]);
+    await expect(store.getByUserId(2)).resolves.toBeNull();
   });
 
-  it("updates the requested user's status without changing another user's runtime", () => {
-    const db = migratedDatabase();
-    const store = createRuntimeStore(db);
-    store.upsert(runtimeFor(1, "container-a"));
-    store.upsert(runtimeFor(2, "container-b"));
+  it("lists all managed runtimes in stable user order for administration", async () => {
+    await store.upsert(runtimeFor(2, "container-2"));
+    await store.upsert(runtimeFor(1, "container-1"));
 
-    const updated = store.updateStatus(1, "degraded", "health check failed");
+    expect((await store.list()).map((runtime) => runtime.userId)).toEqual([1, 2]);
+  });
+
+  it("upserts the requested user's status without changing ownership or creation time", async () => {
+    await store.upsert(runtimeFor(1, "container-a"));
+    await store.upsert(runtimeFor(2, "container-b"));
+
+    const updated = await store.upsert({
+      ...runtimeFor(1, "container-a"),
+      status: "degraded",
+      lastError: "health_check_failed",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+    });
 
     expect(updated).toMatchObject({
       userId: 1,
       status: "degraded",
-      lastError: "health check failed",
+      lastError: "health_check_failed",
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
     });
-    expect(store.getByUserId(2)).toMatchObject({
+    await expect(store.getByUserId(2)).resolves.toMatchObject({
       userId: 2,
       containerId: "container-b",
       status: "ready",
@@ -48,15 +63,27 @@ describe("runtimeStore", () => {
     });
   });
 
-  it("deletes only the requested user's runtime", () => {
-    const db = migratedDatabase();
-    const store = createRuntimeStore(db);
-    store.upsert(runtimeFor(1, "container-a"));
-    store.upsert(runtimeFor(2, "container-b"));
+  it("deletes only the requested user's runtime", async () => {
+    await store.upsert(runtimeFor(1, "container-a"));
+    await store.upsert(runtimeFor(2, "container-b"));
 
-    expect(store.deleteForUser(1)).toBe(true);
-    expect(store.getByUserId(1)).toBeNull();
-    expect(store.getByUserId(2)).toMatchObject({ userId: 2, containerId: "container-b" });
+    await expect(store.deleteForUser(1)).resolves.toBe(true);
+    await expect(store.deleteForUser(1)).resolves.toBe(false);
+    await expect(store.getByUserId(1)).resolves.toBeNull();
+    await expect(store.getByUserId(2)).resolves.toMatchObject({
+      userId: 2,
+      containerId: "container-b",
+    });
+  });
+
+  it("rolls back a runtime rejected by the user foreign key", async () => {
+    await expect(store.upsert(runtimeFor(99, "container-missing-user"))).rejects.toMatchObject({
+      code: "ER_NO_REFERENCED_ROW_2",
+    });
+
+    expect(
+      await db.one<{ count: number }>("SELECT COUNT(*) AS count FROM user_agent_runtimes"),
+    ).toMatchObject({ count: 0 });
   });
 
   it("serializes runtime status without its container ID", () => {
@@ -76,24 +103,6 @@ describe("runtimeStore", () => {
     });
   });
 });
-
-function migratedDatabase() {
-  const db = new DatabaseSync(":memory:");
-  migrateGatewayDatabase(db);
-  db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
-    1,
-    "first-user",
-    "hash",
-    "admin",
-  );
-  db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
-    2,
-    "second-user",
-    "hash",
-    "user",
-  );
-  return db;
-}
 
 function runtimeFor(userId: number, containerId: string): UserAgentRuntimeRecord {
   return {

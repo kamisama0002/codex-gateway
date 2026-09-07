@@ -35,8 +35,23 @@ type DirectDomState<TItemElement extends Element> = {
   lastSize: number | null;
   mode: DirectDomMode;
   pendingMeasurements: Set<TItemElement>;
-  prevRange: { startIndex: number; endIndex: number; isScrolling: boolean } | null;
+  prevRange: {
+    startIndex: number;
+    endIndex: number;
+    isScrolling: boolean;
+    virtualIndexes: number[];
+  } | null;
 };
+
+export function didVirtualIndexMembershipChange(
+  previous: readonly number[],
+  current: readonly number[],
+) {
+  return (
+    previous.length !== current.length ||
+    previous.some((previousIndex, index) => previousIndex !== current[index])
+  );
+}
 
 // Mirrors TanStack React adapter's directDomUpdates path for chat streams.
 // Vue's published adapter does not expose that flag yet, so this wraps the
@@ -160,17 +175,20 @@ export function useDirectDomVirtualizer<
   function shouldRerender(changedInstance: Virtualizer<TScrollElement, TItemElement>) {
     const range = changedInstance.range;
     const prev = directState.prevRange;
+    const virtualIndexes = changedInstance.getVirtualIndexes();
     const should =
       !prev ||
       prev.isScrolling !== changedInstance.isScrolling ||
       prev.startIndex !== range?.startIndex ||
-      prev.endIndex !== range?.endIndex;
+      prev.endIndex !== range?.endIndex ||
+      didVirtualIndexMembershipChange(prev.virtualIndexes, virtualIndexes);
     if (should) {
       directState.prevRange = range
         ? {
             startIndex: range.startIndex,
             endIndex: range.endIndex,
             isScrolling: changedInstance.isScrolling,
+            virtualIndexes: [...virtualIndexes],
           }
         : null;
     }

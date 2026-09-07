@@ -14,6 +14,7 @@ test("goal slash input derives the goal tag and requires an objective before sub
 }) => {
   await openApp(page);
   await seedGatewayThread(page, {
+    projectId: 1,
     threadId: "e2e-goal-slash-thread",
     currentThread: { id: "e2e-goal-slash-thread", name: "Goal Slash" },
     history: { thread: { id: "e2e-goal-slash-thread", turns: [] } },
@@ -61,6 +62,7 @@ test("goal controls are shared by the slash menu and details dialog", async ({ p
   await openApp(page);
   const threadId = "e2e-goal-controls-thread";
   await seedGatewayThread(page, {
+    projectId: 1,
     threadId,
     currentThread: { id: threadId, name: "Goal Controls" },
     history: { thread: { id: threadId, turns: [] } },
@@ -310,6 +312,7 @@ test("goal snapshot updates only the composer status strip without fabricating h
   await openApp(page);
   const threadId = "e2e-goal-snapshot-thread";
   await seedGatewayThread(page, {
+    projectId: 1,
     threadId,
     currentThread: { id: threadId, name: "Goal Snapshot" },
     history: { thread: { id: threadId, turns: [] } },
