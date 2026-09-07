@@ -153,6 +153,8 @@ verify_production_database_modes() {
     MYSQL_USER=codex_gateway \
     RUNTIME_MANAGER_IMAGE_ALIASES='{"stable":{"image":"codex-agent-runtime:0.151.0","imageVersion":"0.151.0"}}' \
     RUNTIME_MANAGER_SHARED_SECRET=compose-config-runtime-secret \
+    SEARXNG_IMAGE='searxng/searxng@sha256:55e1fa15a63ff04e79e213e6aa2837549877b0c6d60757cdb633ae9111cb5fea' \
+    SEARXNG_SECRET=compose-config-search-secret \
     docker compose -f "$project_dir/docker-compose.yml" config --format json | node -e '
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -201,6 +203,8 @@ process.stdin.on("end", () => {
     MYSQL_TLS_MODE=verify-identity \
     RUNTIME_MANAGER_IMAGE_ALIASES='{"stable":{"image":"codex-agent-runtime:0.151.0","imageVersion":"0.151.0"}}' \
     RUNTIME_MANAGER_SHARED_SECRET=compose-config-runtime-secret \
+    SEARXNG_IMAGE='searxng/searxng@sha256:55e1fa15a63ff04e79e213e6aa2837549877b0c6d60757cdb633ae9111cb5fea' \
+    SEARXNG_SECRET=compose-config-search-secret \
     docker compose \
       -f "$project_dir/docker-compose.yml" \
       -f "$project_dir/docker-compose.external-db.yml" \
@@ -357,9 +361,20 @@ verify_compose_security_boundary
 if [ "${E2E_VERIFY_CONFIG_ONLY:-0}" = "1" ]; then
   exit 0
 fi
-docker compose -p "$project_name" -f "$compose_file" build \
-  agent-runtime-image agent-runtime-manager build-runner ssh-target ssh-target-legacy-node ssh-target-legacy-codex
-verify_agent_image
+build_services=(
+  agent-runtime-manager
+  build-runner
+  ssh-target
+  ssh-target-legacy-node
+  ssh-target-legacy-codex
+)
+if [ "${E2E_SKIP_AGENT_IMAGE_BUILD:-0}" != "1" ]; then
+  build_services+=(agent-runtime-image)
+fi
+docker compose -p "$project_name" -f "$compose_file" build "${build_services[@]}"
+if [ "${E2E_SKIP_AGENT_IMAGE_BUILD:-0}" != "1" ]; then
+  verify_agent_image
+fi
 # Build, application server, and browser runner use separate 2 GiB cgroups. Sharing only the
 # gateway network namespace preserves the production-like nip.io subdomain routing used by browser
 # preview tests without coupling process memory.
