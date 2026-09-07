@@ -80,7 +80,7 @@ function clearFrameTimer() {
 </script>
 
 <template>
-  <span class="block aspect-[12/13] w-16 shrink-0" role="img" :aria-label="label">
+  <span class="block aspect-[12/13] w-32 shrink-0" role="img" :aria-label="label">
     <span v-if="assetReady" class="block size-full bg-no-repeat" :style="spriteStyle" />
     <img
       v-else
