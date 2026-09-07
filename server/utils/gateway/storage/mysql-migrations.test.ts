@@ -11,7 +11,7 @@ describe("MySQL gateway migrations", () => {
     const tables = await db.many<{ table_name: string }>(
       "SELECT table_name AS table_name FROM information_schema.tables WHERE table_schema = DATABASE()",
     );
-    expect(tables).toHaveLength(12);
+    expect(tables).toHaveLength(13);
     expect(tables.map((row) => row.table_name).sort()).toEqual(
       expect.arrayContaining([
         "users",
@@ -25,12 +25,13 @@ describe("MySQL gateway migrations", () => {
         "user_model_grants",
         "external_identities",
         "external_session_contexts",
+        "user_runtime_policies",
         "schema_migrations",
       ]),
     );
     expect(
       await db.one("SELECT version, checksum FROM schema_migrations ORDER BY version DESC"),
-    ).toEqual(expect.objectContaining({ version: 8 }));
+    ).toEqual(expect.objectContaining({ version: 9 }));
   });
 
   it("rejects a changed checksum for an applied migration", async () => {
@@ -100,6 +101,51 @@ describe("MySQL gateway migrations", () => {
     await expect(insertMonitor()).rejects.toThrow("uq_tmux_active_location");
     await db.execute("DELETE FROM users WHERE id = ?", [1]);
     expect(await db.one("SELECT id FROM tmux_monitors WHERE user_id = ?", [1])).toBeNull();
+  });
+
+  it("creates the user runtime policy snapshot table with tenant lookup and user cascade", async () => {
+    const db = await freshMysqlTestDatabase();
+    await migrateMysqlGatewayDatabase(db);
+
+    expect(
+      await db.many<{ column_name: string; column_type: string; is_nullable: string }>(
+        "SELECT column_name AS column_name, column_type AS column_type, is_nullable AS is_nullable FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'user_runtime_policies' ORDER BY ordinal_position",
+      ),
+    ).toEqual([
+      { column_name: "user_id", column_type: "int unsigned", is_nullable: "NO" },
+      { column_name: "tenant_id", column_type: "int unsigned", is_nullable: "NO" },
+      { column_name: "policy_version", column_type: "int unsigned", is_nullable: "NO" },
+      { column_name: "image_alias", column_type: "varchar(64)", is_nullable: "NO" },
+      { column_name: "memory_mib", column_type: "int unsigned", is_nullable: "NO" },
+      { column_name: "cpu_millicores", column_type: "int unsigned", is_nullable: "NO" },
+      { column_name: "pids_limit", column_type: "int unsigned", is_nullable: "NO" },
+      { column_name: "source_issued_at", column_type: "varchar(32)", is_nullable: "NO" },
+      { column_name: "created_at", column_type: "varchar(32)", is_nullable: "NO" },
+      { column_name: "updated_at", column_type: "varchar(32)", is_nullable: "NO" },
+    ]);
+    await expect(
+      db.one<{ column_name: string }>(
+        "SELECT column_name AS column_name FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'user_runtime_policies' AND index_name = 'PRIMARY'",
+      ),
+    ).resolves.toEqual({ column_name: "user_id" });
+    await expect(
+      db.one<{ index_name: string; columns: string }>(
+        "SELECT index_name AS index_name, GROUP_CONCAT(column_name ORDER BY seq_in_index) AS columns FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'user_runtime_policies' AND index_name = 'idx_user_runtime_policies_tenant' GROUP BY index_name",
+      ),
+    ).resolves.toEqual({
+      index_name: "idx_user_runtime_policies_tenant",
+      columns: "tenant_id,user_id",
+    });
+    await expect(
+      db.one<{ delete_rule: string }>(
+        "SELECT delete_rule AS delete_rule FROM information_schema.referential_constraints WHERE constraint_schema = DATABASE() AND table_name = 'user_runtime_policies' AND referenced_table_name = 'users'",
+      ),
+    ).resolves.toEqual({ delete_rule: "CASCADE" });
+    await expect(
+      db.one<{ table_collation: string }>(
+        "SELECT table_collation AS table_collation FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'user_runtime_policies'",
+      ),
+    ).resolves.toEqual({ table_collation: "utf8mb4_0900_bin" });
   });
 
   it("keeps identifier and enum comparisons binary and populates UTC timestamp defaults", async () => {
@@ -255,6 +301,7 @@ describe("MySQL gateway migrations", () => {
       { version: 6, count: 1 },
       { version: 7, count: 1 },
       { version: 8, count: 1 },
+      { version: 9, count: 1 },
     ]);
   });
 });

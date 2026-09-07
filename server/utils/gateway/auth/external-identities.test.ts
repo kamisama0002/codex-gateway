@@ -1,10 +1,19 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { freshMysqlTestDatabase } from "../../../../tests/mysql/helpers";
+import { createRuntimePolicyStore } from "../runtime-manager/runtime-policy-store";
 import type { GatewayDb } from "../storage/contracts";
 import { verifyPassword } from "../storage/crypto";
 import { migrateMysqlGatewayDatabase } from "../storage/mysql-migrations";
 import { createExternalIdentityStore } from "./external-identities";
 import type { DataOpsClaims } from "./dataops-claims";
+
+const runtimePolicy = {
+  version: 1 as const,
+  imageAlias: "stable",
+  memoryMiB: 2048,
+  cpuCores: 2,
+  pidsLimit: 256,
+};
 
 function claims(overrides: Partial<DataOpsClaims> = {}): DataOpsClaims {
   return {
@@ -106,5 +115,85 @@ describe("external DataOps identities", () => {
     );
 
     expect(second.user.id).not.toBe(first.user.id);
+  });
+
+  it("persists a present policy and preserves it when a rollout-compatible Ticket omits policy", async () => {
+    let sequence = 0;
+    const store = createExternalIdentityStore(db, {
+      token: () => `token-${++sequence}`,
+      now: () => new Date("2026-09-04T00:01:00.000Z"),
+    });
+    const first = await store.loginDataOps(claims({ runtimePolicy }));
+
+    const policies = createRuntimePolicyStore(db);
+    const assigned = await policies.getByUserId(first.user.id);
+    expect(assigned).toMatchObject({
+      userId: first.user.id,
+      tenantId: 1,
+      imageAlias: "stable",
+      cpuMillicores: 2000,
+      sourceIssuedAt: "2026-09-04T00:00:00.000Z",
+    });
+
+    await store.loginDataOps(
+      claims({ issuedAt: "2026-09-04T00:02:00.000Z", runtimePolicy: undefined }),
+    );
+    await expect(policies.getByUserId(first.user.id)).resolves.toEqual(assigned);
+  });
+
+  it("keeps the newer snapshot when an older Ticket is exchanged later", async () => {
+    let sequence = 0;
+    const store = createExternalIdentityStore(db, {
+      token: () => `token-${++sequence}`,
+      now: () => new Date("2026-09-04T00:03:00.000Z"),
+    });
+    const first = await store.loginDataOps(
+      claims({
+        issuedAt: "2026-09-04T00:02:00.000Z",
+        runtimePolicy: { ...runtimePolicy, imageAlias: "newer", memoryMiB: 4096 },
+      }),
+    );
+
+    await store.loginDataOps(
+      claims({
+        issuedAt: "2026-09-04T00:01:00.000Z",
+        runtimePolicy: { ...runtimePolicy, imageAlias: "older", memoryMiB: 1024 },
+      }),
+    );
+
+    await expect(createRuntimePolicyStore(db).getByUserId(first.user.id)).resolves.toMatchObject({
+      imageAlias: "newer",
+      memoryMiB: 4096,
+      sourceIssuedAt: "2026-09-04T00:02:00.000Z",
+    });
+  });
+
+  it("rolls back identity and session writes when policy persistence fails", async () => {
+    await db.execute(`
+      CREATE TRIGGER reject_runtime_policy
+      BEFORE INSERT ON user_runtime_policies
+      FOR EACH ROW
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'reject runtime policy'
+    `);
+    const store = createExternalIdentityStore(db, {
+      token: () => "token-rejected",
+      now: () => new Date("2026-09-04T00:01:00.000Z"),
+    });
+
+    await expect(store.loginDataOps(claims({ runtimePolicy }))).rejects.toThrow(
+      "reject runtime policy",
+    );
+
+    for (const table of [
+      "users",
+      "external_identities",
+      "user_runtime_policies",
+      "sessions",
+      "external_session_contexts",
+    ]) {
+      expect(
+        (await db.one<{ count: number }>(`SELECT COUNT(*) AS count FROM ${table}`))?.count,
+      ).toBe(0);
+    }
   });
 });

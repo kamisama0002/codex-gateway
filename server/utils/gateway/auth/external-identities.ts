@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createRuntimePolicyStore } from "../runtime-manager/runtime-policy-store";
 import type { DbRow, GatewayDb } from "../storage/contracts";
 import { gatewayDatabase } from "../storage/database";
 import { hashToken } from "../storage/crypto";
@@ -87,6 +88,19 @@ async function loginDataOps(
     `,
     [PROVIDER, claims.externalSubject, userId, claims.username, nowText, nowText],
   );
+
+  if (claims.runtimePolicy !== undefined) {
+    await createRuntimePolicyStore(db).upsertIfNewer(
+      {
+        userId,
+        tenantId: claims.tenantId,
+        policy: claims.runtimePolicy,
+        sourceIssuedAt: claims.issuedAt,
+        now: nowText,
+      },
+      db,
+    );
+  }
 
   const storedUser = await users.findById(userId);
   if (storedUser === null || !storedUser.isActive) {
