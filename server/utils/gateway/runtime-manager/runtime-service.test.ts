@@ -5,7 +5,7 @@ import type {
   UserAgentRuntimeRecord,
 } from "@codex-gateway/agent-runtime-contracts";
 import type { AuditEventInput } from "~~/shared/types/audit";
-import type { UserProviderModel } from "~~/shared/types";
+import type { CapabilitySyncReason, HostRecord, UserProviderModel } from "~~/shared/types";
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import type { ProvisionRuntimeRequest } from "./client";
 import { ManagedRuntimeService, ManagedRuntimeServiceError } from "./runtime-service";
@@ -122,6 +122,44 @@ describe("ManagedRuntimeService", () => {
 
     expect(fixture.probe).toHaveBeenCalledTimes(3);
     expect(fixture.audit.some((event) => event.outcome === "failure")).toBe(false);
+  });
+
+  it("waits for capability reconciliation before start and restart become ready", async () => {
+    const syncCapabilities = vi.fn(
+      async (
+        _host: HostRecord,
+        _input: { userId: number; projectId: null; reason: CapabilitySyncReason },
+      ) => ({ status: "succeeded" as const }),
+    );
+    const fixture = runtimeFixture({ syncCapabilities });
+
+    await expect(fixture.service.start(7)).resolves.toMatchObject({ status: "ready" });
+    await expect(fixture.service.restart(7, 1)).resolves.toMatchObject({ status: "ready" });
+
+    expect(syncCapabilities.mock.calls.map(([, input]) => input)).toEqual([
+      { userId: 7, projectId: null, reason: "runtimeStart" },
+      { userId: 7, projectId: null, reason: "runtimeRestart" },
+    ]);
+    expect(fixture.statuses.filter((status) => status === "syncing_capabilities")).toHaveLength(2);
+  });
+
+  it("keeps a runtime degraded when mandatory capability reconciliation fails", async () => {
+    const fixture = runtimeFixture({
+      syncCapabilities: async () => ({ status: "failed" as const }),
+    });
+
+    await expect(fixture.service.start(7)).rejects.toMatchObject({
+      code: "capability_sync_failed",
+    });
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
+      status: "degraded",
+      lastError: "capability_sync_failed",
+    });
+    expect(fixture.audit.at(-1)).toMatchObject({
+      action: "runtime.capabilities",
+      outcome: "failure",
+      errorCode: "capability_sync_failed",
+    });
   });
 
   it("audits stop, restart, and removal and never serializes managed connection details", async () => {
@@ -406,6 +444,7 @@ function runtimeFixture(
       factor: number;
     };
     listProviderModels?: (userId: number) => Promise<UserProviderModel[]>;
+    syncCapabilities?: ConstructorParameters<typeof ManagedRuntimeService>[0]["syncCapabilities"];
   } = {},
 ) {
   const endpoint: ManagedRuntimeEndpoint = {
@@ -538,6 +577,7 @@ function runtimeFixture(
     probe,
     probeRetryOptions: options.probeRetryOptions,
     closeConnections,
+    syncCapabilities: options.syncCapabilities,
     now: () => new Date(1_788_134_400_000 + tick++).toISOString(),
     usernameFor: async (userId) => (userId === 7 ? "runtime-a" : null),
   });

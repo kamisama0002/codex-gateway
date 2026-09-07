@@ -278,6 +278,7 @@ export function planChanges(
             operation: "installSkill",
             capabilityId: definition.id,
             source: definition.source,
+            version: definition.version,
             targetDirectory,
             targetPath,
           });

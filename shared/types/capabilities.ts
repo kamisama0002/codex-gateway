@@ -166,6 +166,7 @@ export type CapabilityChange =
       operation: "installSkill";
       capabilityId: string;
       source: CapabilitySource;
+      version: string;
       targetDirectory: string;
       targetPath: string;
     }
@@ -225,4 +226,39 @@ export interface CapabilityChangeResult {
   operation: CapabilityChange["operation"];
   status: "applied" | "unsupportedCapability" | "failed";
   safeMessage: string;
+}
+
+export type CapabilitySyncStatus = "pending" | "running" | "succeeded" | "failed";
+export type CapabilitySyncReason =
+  | "runtimeStart"
+  | "runtimeRestart"
+  | "runtimeUpgrade"
+  | "assignmentChanged"
+  | "credentialRotated"
+  | "administratorRetry";
+
+export interface CapabilitySyncRecord {
+  id: number;
+  userId: number;
+  projectId: number | null;
+  desiredHash: string;
+  actualHash: string | null;
+  status: CapabilitySyncStatus;
+  results: CapabilityChangeResult[];
+  safeError: string | null;
+  attemptCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CapabilitySyncResult {
+  userId: number;
+  projectId: number | null;
+  reason: CapabilitySyncReason;
+  desiredHash: string;
+  actualHash: string;
+  status: "succeeded" | "failed";
+  results: CapabilityChangeResult[];
+  remainingChanges: CapabilityChange[];
+  skipped: boolean;
 }

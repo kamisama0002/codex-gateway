@@ -66,6 +66,7 @@ describe("planChanges", () => {
         operation: "installSkill",
         capabilityId: "org__revenue",
         source: { type: "internal", locator: "/data/capabilities/org__revenue/1" },
+        version: "1",
         targetDirectory: "/codex-home/skills/org__revenue/1",
         targetPath: "/codex-home/skills/org__revenue/1/SKILL.md",
       },

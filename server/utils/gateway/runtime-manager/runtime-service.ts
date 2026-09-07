@@ -8,7 +8,7 @@ import {
   type RuntimeStatus,
   type UserAgentRuntimeRecord,
 } from "@codex-gateway/agent-runtime-contracts";
-import type { HostRecord } from "~~/shared/types";
+import type { CapabilitySyncReason, HostRecord } from "~~/shared/types";
 import type { AuditEventInput } from "~~/shared/types/audit";
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import { recordFromUnknown, stringFromUnknown } from "~~/shared/utils/records";
@@ -76,6 +76,10 @@ interface ManagedRuntimeServiceOptions {
   closeConnections?(userId: number): void;
   now?: () => string;
   usernameFor?(userId: number): Promise<string | null>;
+  syncCapabilities?(
+    host: HostRecord,
+    input: { userId: number; projectId: null; reason: CapabilitySyncReason },
+  ): Promise<{ status: "succeeded" | "failed" }>;
 }
 
 const defaultProbeRetryOptions: RetryOptions = {
@@ -97,6 +101,7 @@ const safeManagerErrorCodes = new Set([
   "runtime_not_found",
   "unauthorized",
   "unknown_image_alias",
+  "capability_sync_failed",
 ]);
 
 export class ManagedRuntimeServiceError extends Error {
@@ -245,7 +250,13 @@ export class ManagedRuntimeService {
       });
       await this.auditSuccess("runtime.restart", actor, targetUserId, runtime, identity.runtimeId);
       return serializeManagedRuntimeStatus(
-        await this.finishCompatibility(runtime, endpoint, actor, identity.runtimeId),
+        await this.finishCompatibility(
+          runtime,
+          endpoint,
+          actor,
+          identity.runtimeId,
+          "runtimeRestart",
+        ),
       );
     });
   }
@@ -395,7 +406,13 @@ export class ManagedRuntimeService {
     });
     await this.auditSuccess("runtime.start", actorUserId, userId, runtime, identity.runtimeId);
     return serializeManagedRuntimeStatus(
-      await this.finishCompatibility(runtime, endpoint, actorUserId, identity.runtimeId),
+      await this.finishCompatibility(
+        runtime,
+        endpoint,
+        actorUserId,
+        identity.runtimeId,
+        "runtimeStart",
+      ),
     );
   }
 
@@ -404,6 +421,7 @@ export class ManagedRuntimeService {
     endpoint: ManagedRuntimeEndpoint,
     actorUserId: number,
     runtimeId: string,
+    reason: "runtimeStart" | "runtimeRestart",
   ): Promise<UserAgentRuntimeRecord> {
     let snapshot: RuntimeCompatibilitySnapshot;
     try {
@@ -447,6 +465,31 @@ export class ManagedRuntimeService {
       schemaHash: snapshot.schemaHash,
       lastError: null,
     });
+    if (this.options.syncCapabilities !== undefined) {
+      const host = createManagedRuntimeHost(runtime.userId, syncing, endpoint);
+      try {
+        const result = await this.options.syncCapabilities(host, {
+          userId: runtime.userId,
+          projectId: null,
+          reason,
+        });
+        if (result.status !== "succeeded") throw new Error("Capability sync did not converge");
+      } catch {
+        const code = "capability_sync_failed";
+        const degraded = await this.persistTransition(syncing, "runtimeFailed", {
+          lastError: code,
+        });
+        await this.auditFailure(
+          "runtime.capabilities",
+          actorUserId,
+          runtime.userId,
+          degraded,
+          runtimeId,
+          code,
+        );
+        throw new ManagedRuntimeServiceError(code);
+      }
+    }
     return await this.persistTransition(syncing, "capabilitiesOk");
   }
 
@@ -646,6 +689,10 @@ function defaultRuntimeService(): ManagedRuntimeService {
     closeConnections: (userId) =>
       runWithGatewayUser(userId, () => threadBroker.closeHost(MANAGED_RUNTIME_HOST_ID)),
     usernameFor: (userId) => userStore.findUsername(userId),
+    syncCapabilities: async (host, input) => {
+      const { reconcileUserRuntimeWithHost } = await import("../capabilities/reconciler");
+      return await reconcileUserRuntimeWithHost(host, input);
+    },
   });
   return productionRuntimeService;
 }
