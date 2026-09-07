@@ -1,16 +1,8 @@
 <script setup lang="ts">
-import { ActivityIcon, ChartNoAxesCombinedIcon, GlobeIcon, TerminalIcon } from "@lucide/vue";
+import { ChartNoAxesCombinedIcon } from "@lucide/vue";
 import { Button } from "@codex-gateway/ui/button";
 
-defineProps<{
-  canOpenTerminal: boolean;
-  tmuxActiveCount: number;
-}>();
-
 const emit = defineEmits<{
-  openTerminal: [];
-  openBrowser: [];
-  openTmux: [];
   openHostMonitor: [];
 }>();
 </script>
@@ -24,23 +16,6 @@ const emit = defineEmits<{
     </div>
     <div class="relative z-10 ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
       <Button
-        data-testid="open-tmux-mobile-button"
-        variant="ghost"
-        size="sm"
-        class="relative h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-muted hover:text-ink"
-        :disabled="!canOpenTerminal"
-        :aria-label="$t('app.openTmuxMonitor')"
-        @click="emit('openTmux')"
-      >
-        <ActivityIcon class="size-4" />
-        <span
-          v-if="tmuxActiveCount"
-          class="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold leading-4 text-primary-foreground"
-        >
-          {{ tmuxActiveCount }}
-        </span>
-      </Button>
-      <Button
         data-testid="open-host-monitor-mobile-button"
         variant="ghost"
         size="sm"
@@ -49,28 +24,6 @@ const emit = defineEmits<{
         @click="emit('openHostMonitor')"
       >
         <ChartNoAxesCombinedIcon class="size-4" />
-      </Button>
-      <Button
-        data-testid="open-browser-mobile-button"
-        variant="ghost"
-        size="sm"
-        class="h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-muted hover:text-ink"
-        :disabled="!canOpenTerminal"
-        :aria-label="$t('app.openBrowser')"
-        @click="emit('openBrowser')"
-      >
-        <GlobeIcon class="size-4" />
-      </Button>
-      <Button
-        data-testid="open-terminal-mobile-button"
-        variant="ghost"
-        size="sm"
-        class="h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-muted hover:text-ink"
-        :disabled="!canOpenTerminal"
-        :aria-label="$t('app.openTerminal')"
-        @click="emit('openTerminal')"
-      >
-        <TerminalIcon class="size-4" />
       </Button>
     </div>
   </header>

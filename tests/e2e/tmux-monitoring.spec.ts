@@ -2,6 +2,7 @@ import { expect, test } from "./fixtures/remote-workspace";
 import { configureBarkNotifications, useBarkReceiver } from "./helpers/bark";
 import { openApp, reloadApp } from "./helpers/app";
 import { execRemoteSsh, type RemoteCodexEnv } from "./helpers/remote-codex";
+import { openTmuxWorkspace } from "./helpers/workspace-actions";
 
 test("monitors a real tmux pane, persists it, and notifies once when it returns to shell", async ({
   page,
@@ -60,7 +61,7 @@ done
   const { host, project } = await remoteWorkspace.provision({ hostName });
   await remoteWorkspace.startThread(project.id);
 
-  await page.getByTestId("open-tmux-button").click();
+  await openTmuxWorkspace(page);
   const panel = page.getByTestId("tmux-monitor-panel");
   await expect(panel).toBeVisible();
   const hostNode = panel.getByTestId(`tmux-host-node-${host.id}`);
@@ -108,7 +109,6 @@ done
   await expect(runningPane.getByTestId("tmux-monitor-adding-spinner")).toBeVisible();
   await monitorCreated;
   await expect(panel.getByText("监控中 · 1")).toBeVisible();
-  await expect(page.getByTestId("open-tmux-button")).toContainText("1");
   const addedToast = page.locator("[data-sonner-toast]").filter({ hasText: "已开始监控" });
   await expect(addedToast).toContainText(sessionName);
   await expect(addedToast).toContainText(hostName);
@@ -228,7 +228,7 @@ tmux has-session -t ${shellQuote(sessionName)}`,
   await configureBarkNotifications(page, bark.url);
   const { host, project } = await remoteWorkspace.provision({ hostName });
   await remoteWorkspace.startThread(project.id);
-  await page.getByTestId("open-tmux-button").click();
+  await openTmuxWorkspace(page);
 
   const panel = page.getByTestId("tmux-monitor-panel");
   const hostNode = panel.getByTestId(`tmux-host-node-${host.id}`);

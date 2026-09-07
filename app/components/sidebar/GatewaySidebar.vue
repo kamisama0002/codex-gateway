@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from "@codex-gateway/ui/dialog";
 import SettingsPanel from "@/components/settings/SettingsPanel.vue";
-import BrowserOpenDialog from "@/components/browser/BrowserOpenDialog.vue";
 import { useLongPressContextMenu } from "@/composables/interactions/useLongPressContextMenu";
 import { useWorkspaceLaunchActions } from "@/composables/workspace/useWorkspaceLaunchActions";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
@@ -28,7 +27,6 @@ import { useThreadRename } from "./thread-list/useThreadRename";
 import { useThreadLifecycle } from "./thread-list/useThreadLifecycle";
 import SidebarWorkspaceToolbar from "./SidebarWorkspaceToolbar.vue";
 import RealtimeConnectionIndicator from "./RealtimeConnectionIndicator.vue";
-import { useTmuxMonitorLauncher } from "@/composables/workspace/useTmuxMonitorLauncher";
 import type { HostTreeController } from "./host-tree/controller";
 import type { HostRecord, ProjectRecord } from "./sidebar-types";
 
@@ -37,14 +35,12 @@ const navigation = useGatewayNavigationStore();
 withDefaults(defineProps<{ workspaceToolbar?: boolean }>(), { workspaceToolbar: true });
 const { t } = useI18n();
 const showSettings = ref(false);
-const showBrowserDialog = ref(false);
 const projectEditor = ref<{ host: HostRecord; project: ProjectRecord | null } | null>(null);
 const { longPressTriggered, longPressContextMenuHandlers } = useLongPressContextMenu();
 const sidebarTree = useSidebarTree(longPressTriggered);
 const threadRename = useThreadRename();
 const threadLifecycle = useThreadLifecycle();
 const workspaceActions = useWorkspaceLaunchActions();
-const tmuxLauncher = useTmuxMonitorLauncher();
 const {
   hosts,
   projects,
@@ -57,8 +53,7 @@ const {
   pinnedRuntimeStatus,
   pinnedCompletionAttention,
 } = sidebarTree;
-const { selectedHostTitle, canLaunch } = workspaceActions;
-const { activeCount: tmuxActiveCount } = tmuxLauncher;
+const { selectedHostTitle } = workspaceActions;
 const hostTreeController = computed<HostTreeController>(() => ({
   hosts: sidebarTree.hosts.value,
   availableProjectsByHost: sidebarTree.availableProjectsByHost.value,
@@ -133,11 +128,6 @@ async function openHostMonitor(hostId: number) {
     <SidebarWorkspaceToolbar
       v-if="workspaceToolbar"
       :title="selectedHostTitle"
-      :can-launch="canLaunch"
-      :tmux-active-count="tmuxActiveCount"
-      @open-tmux="tmuxLauncher.open"
-      @open-terminal="workspaceActions.openTerminal"
-      @open-browser="showBrowserDialog = true"
       @open-host-monitor="workspaceActions.openHostMonitor"
     />
     <div class="flex min-h-0 flex-1 overflow-hidden px-3 py-1.5">
@@ -182,12 +172,6 @@ async function openHostMonitor(hostId: number) {
         <RealtimeConnectionIndicator />
       </div>
     </SidebarFooter>
-
-    <BrowserOpenDialog
-      v-if="workspaceToolbar"
-      v-model:open="showBrowserDialog"
-      :open-target="workspaceActions.openBrowser"
-    />
 
     <Dialog v-model:open="showSettings">
       <DialogContent
