@@ -617,8 +617,11 @@ test("restoring the agent viewport reflows rows without moving a detached reader
 
   await parkChatViewportInMiddle(page);
   const anchor = await captureVisibleTextAnchor(page, "viewport reflow turn");
-  await page.getByTestId("workspace-tool-sidebar-toggle").first().click();
-  await page.getByTestId("workspace-tool-sidebar-toggle").click();
+  const toolToggle = page
+    .getByRole("region", { name: "Agent" })
+    .getByTestId("workspace-tool-sidebar-toggle");
+  await toolToggle.click();
+  await toolToggle.click();
 
   await expect.poll(() => visibleTimelineRowsDoNotOverlap(page)).toBe(true);
   await expect.poll(() => visibleTextTop(page, anchor.text)).toBeGreaterThanOrEqual(anchor.top - 2);

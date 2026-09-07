@@ -793,7 +793,7 @@ printf '%s\n' '# Mobile File Workspace' 'Rendered from the remote tree.' > ${she
     "Mobile File Baseline",
   );
   await page
-    .getByRole("region", { name: "审查变更" })
+    .getByRole("tab", { name: "审查变更" })
     .getByRole("button", { name: "关闭标签页" })
     .click();
   await page.getByRole("button", { name: "文件树", exact: true }).click();

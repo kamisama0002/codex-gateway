@@ -260,7 +260,7 @@ done
   const reviewPanel = page.getByTestId("git-review-panel");
   await expect(reviewPanel).toBeVisible();
   await page
-    .getByRole("region", { name: "审查变更" })
+    .getByRole("tab", { name: "审查变更" })
     .getByRole("button", { name: "关闭标签页" })
     .click();
   await expect(reviewPanel).toBeHidden();
@@ -274,7 +274,7 @@ done
     "deleted file baseline",
   );
   await page
-    .getByRole("region", { name: "审查变更" })
+    .getByRole("tab", { name: "审查变更" })
     .getByRole("button", { name: "关闭标签页" })
     .click();
   await expect(reviewPanel).toBeHidden();

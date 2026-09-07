@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { XIcon } from "@lucide/vue";
 import { useResizeObserver } from "@vueuse/core";
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Button } from "@codex-gateway/ui/button";
 import { toast } from "@codex-gateway/ui/sonner";
 import { useAccountLocalStorage } from "@/composables/storage/useAccountLocalStorage";
@@ -23,6 +23,7 @@ const pet = useGatewayPet();
 const dismissing = ref(false);
 const boundaryRef = ref<HTMLElement | null>(null);
 const petRef = ref<HTMLElement | null>(null);
+const dragHandleRef = ref<HTMLElement | null>(null);
 const savedPosition = useAccountLocalStorage<PetPosition>("pet-position", DEFAULT_POSITION);
 const position = ref<PetPosition>(positionFromStorage(savedPosition.value));
 const dragging = ref(false);
@@ -49,6 +50,20 @@ watch(savedPosition, async (stored) => {
 
 useResizeObserver([boundaryRef, petRef], constrainPosition);
 
+onMounted(() => {
+  window.addEventListener("pointerdown", beginDrag, true);
+  window.addEventListener("pointermove", moveDrag, true);
+  window.addEventListener("pointerup", finishDrag, true);
+  window.addEventListener("pointercancel", finishDrag, true);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("pointerdown", beginDrag, true);
+  window.removeEventListener("pointermove", moveDrag, true);
+  window.removeEventListener("pointerup", finishDrag, true);
+  window.removeEventListener("pointercancel", finishDrag, true);
+});
+
 async function dismiss() {
   dismissing.value = true;
   try {
@@ -61,12 +76,13 @@ async function dismiss() {
 }
 
 function beginDrag(event: PointerEvent) {
-  if (event.pointerType === "mouse" && event.button !== 0) return;
-  const handle = event.currentTarget;
-  if (!(handle instanceof HTMLElement)) return;
-  event.preventDefault();
-  handle.setPointerCapture(event.pointerId);
-  dragging.value = true;
+  if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+  const handle = dragHandleRef.value;
+  if (
+    handle === null ||
+    !containsPoint(handle.getBoundingClientRect(), event.clientX, event.clientY)
+  )
+    return;
   drag = {
     pointerId: event.pointerId,
     startX: event.clientX,
@@ -77,21 +93,26 @@ function beginDrag(event: PointerEvent) {
 
 function moveDrag(event: PointerEvent) {
   if (drag === undefined || drag.pointerId !== event.pointerId) return;
+  const deltaX = event.clientX - drag.startX;
+  const deltaY = event.clientY - drag.startY;
+  if (!dragging.value && Math.hypot(deltaX, deltaY) < 4) return;
+  dragging.value = true;
+  event.preventDefault();
   position.value = constrainedPosition({
-    right: drag.startPosition.right - (event.clientX - drag.startX),
-    bottom: drag.startPosition.bottom - (event.clientY - drag.startY),
+    right: drag.startPosition.right - deltaX,
+    bottom: drag.startPosition.bottom - deltaY,
   });
 }
 
 function finishDrag(event: PointerEvent) {
   if (drag === undefined || drag.pointerId !== event.pointerId) return;
-  const handle = event.currentTarget;
-  if (handle instanceof HTMLElement && handle.hasPointerCapture(event.pointerId)) {
-    handle.releasePointerCapture(event.pointerId);
-  }
+  const moved = dragging.value;
   drag = undefined;
   dragging.value = false;
-  savedPosition.value = { ...position.value };
+  if (moved) {
+    event.preventDefault();
+    savedPosition.value = { ...position.value };
+  }
 }
 
 function constrainPosition() {
@@ -138,6 +159,10 @@ function clamp(value: number, minimum: number, maximum: number) {
 function samePosition(left: PetPosition, right: PetPosition) {
   return left.right === right.right && left.bottom === right.bottom;
 }
+
+function containsPoint(rect: DOMRect, x: number, y: number) {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
 </script>
 
 <template>
@@ -167,13 +192,9 @@ function samePosition(left: PetPosition, right: PetPosition) {
         <XIcon class="size-3.5" />
       </Button>
       <div
-        class="pointer-events-auto cursor-grab touch-none select-none active:cursor-grabbing"
+        ref="dragHandleRef"
+        class="pointer-events-none cursor-grab touch-none select-none"
         data-testid="gateway-pet-drag-handle"
-        @pointerdown="beginDrag"
-        @pointermove="moveDrag"
-        @pointerup="finishDrag"
-        @pointercancel="finishDrag"
-        @lostpointercapture="finishDrag"
       >
         <PetSprite
           class="pointer-events-none"

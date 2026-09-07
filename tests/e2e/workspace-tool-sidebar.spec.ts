@@ -13,11 +13,13 @@ test("desktop keeps Agent primary and exposes a persistent tool workspace", asyn
   await expect(page.getByTestId("open-host-monitor-button")).toHaveCount(0);
   await expect(page.getByTestId("desktop-sidebar-collapse")).toBeVisible();
 
-  const toolToggle = page.getByTestId("workspace-tool-sidebar-toggle").first();
+  const toolToggle = page
+    .getByRole("region", { name: "Agent" })
+    .getByTestId("workspace-tool-sidebar-toggle");
   await toolToggle.click();
   await expect(page.getByTestId("workspace-tool-home")).toBeHidden();
   await expect(page.getByTestId("chat-main-pane")).toBeVisible();
 
-  await page.getByTestId("workspace-tool-sidebar-toggle").click();
+  await toolToggle.click();
   await expect(page.getByTestId("workspace-tool-home")).toBeVisible();
 });
