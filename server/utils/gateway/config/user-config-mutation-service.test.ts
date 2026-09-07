@@ -61,6 +61,7 @@ describe("UserConfigMutationService", () => {
 
     await runWithGatewayUser(502, async () => {
       installLoadedState(11);
+      currentGatewayMemoryState().notifications.bark.group = "winning config";
       await expect(
         service.commit(502, () => {
           currentGatewayMemoryState().notifications.bark.group = "losing draft";
@@ -68,7 +69,7 @@ describe("UserConfigMutationService", () => {
       ).rejects.toMatchObject({ code: "config_revision_conflict" });
 
       expect(currentGatewayMemoryState().configRevision).toBe(11);
-      expect(currentGatewayMemoryState().notifications.bark.group).toBe("Codex Gateway");
+      expect(currentGatewayMemoryState().notifications.bark.group).toBe("winning config");
     });
   });
 

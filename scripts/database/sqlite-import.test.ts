@@ -476,16 +476,39 @@ async function waitForWriterState(
   writerSettled: () => boolean,
 ): Promise<"blocked" | "committed"> {
   const deadline = Date.now() + 5_000;
+  let lastTransactionState: string | null = null;
+  let lastLockState: string | null = null;
+  let lastProcessState: string | null = null;
   while (Date.now() < deadline) {
     if (writerSettled()) return "committed";
     const [transactions] = await observer.query<(RowDataPacket & { state: string })[]>(
       "SELECT trx_state AS state FROM information_schema.innodb_trx WHERE trx_mysql_thread_id = ?",
       [connectionId],
     );
-    if (transactions[0]?.state === "LOCK WAIT") return "blocked";
+    lastTransactionState = transactions[0]?.state ?? null;
+    if (lastTransactionState === "LOCK WAIT") return "blocked";
+    const [locks] = await observer.query<(RowDataPacket & { state: string })[]>(
+      `
+        SELECT data_locks.LOCK_STATUS AS state
+        FROM performance_schema.data_locks
+        INNER JOIN performance_schema.threads
+          ON threads.THREAD_ID = data_locks.THREAD_ID
+        WHERE threads.PROCESSLIST_ID = ? AND data_locks.LOCK_STATUS = 'WAITING'
+      `,
+      [connectionId],
+    );
+    lastLockState = locks[0]?.state ?? null;
+    if (lastLockState === "WAITING") return "blocked";
+    const [processes] = await observer.query<(RowDataPacket & { state: string | null })[]>(
+      "SELECT STATE AS state FROM information_schema.processlist WHERE ID = ?",
+      [connectionId],
+    );
+    lastProcessState = processes[0]?.state ?? null;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  throw new Error("Timed out waiting for concurrent writer state");
+  throw new Error(
+    `Timed out waiting for concurrent writer state (transaction=${lastTransactionState ?? "missing"}, lock=${lastLockState ?? "missing"}, process=${lastProcessState ?? "missing"})`,
+  );
 }
 
 function deferred() {
