@@ -215,6 +215,22 @@ class ThreadBroker {
     return this.files.createDirectory(host, path);
   }
 
+  async openFile(host: HostRecord, path: string, options: { maxSize: number }) {
+    return this.files.openFile(host, path, options);
+  }
+
+  async statFile(host: HostRecord, path: string) {
+    return this.files.statFile(host, path);
+  }
+
+  async writeFile(host: HostRecord, path: string, content: Buffer) {
+    return this.files.writeFile(host, path, content);
+  }
+
+  async removeFile(host: HostRecord, path: string) {
+    return this.files.removeFile(host, path);
+  }
+
   async searchProjectFiles(
     host: HostRecord,
     rootPath: string,
