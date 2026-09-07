@@ -1,5 +1,5 @@
 import type { DbRow, GatewayDb } from "../storage/contracts";
-import { DEFAULT_WEB_SEARCH_CAPABILITY_ID } from "~~/shared/types/capabilities";
+import { DEFAULT_WEB_SEARCH_CAPABILITY_ID } from "../../../../shared/types/capabilities.ts";
 
 export type UserRole = "admin" | "user";
 
