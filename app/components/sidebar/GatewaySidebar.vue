@@ -53,7 +53,6 @@ const {
   pinnedRuntimeStatus,
   pinnedCompletionAttention,
 } = sidebarTree;
-const { selectedHostTitle } = workspaceActions;
 const hostTreeController = computed<HostTreeController>(() => ({
   hosts: sidebarTree.hosts.value,
   availableProjectsByHost: sidebarTree.availableProjectsByHost.value,
@@ -125,11 +124,7 @@ async function openHostMonitor(hostId: number) {
     v-bind="$attrs"
     class="relative flex h-full min-h-0 flex-col border-r border-hairline bg-canvas"
   >
-    <SidebarWorkspaceToolbar
-      v-if="workspaceToolbar"
-      :title="selectedHostTitle"
-      @open-host-monitor="workspaceActions.openHostMonitor"
-    />
+    <SidebarWorkspaceToolbar v-if="workspaceToolbar" />
     <div class="flex min-h-0 flex-1 overflow-hidden px-3 py-1.5">
       <SidebarScrollArea>
         <div class="min-w-0 max-w-full space-y-3 overflow-hidden pr-1">

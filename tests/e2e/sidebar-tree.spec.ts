@@ -12,12 +12,10 @@ import {
   realtimeThreadStartRequests,
 } from "./helpers/realtime-route";
 
-test("desktop workspace toolbar exposes only runtime monitoring and sidebar collapse", async ({
-  page,
-}) => {
+test("desktop workspace toolbar exposes only sidebar collapse", async ({ page }) => {
   await openApp(page);
 
-  await expect(page.getByTestId("open-host-monitor-button")).toBeVisible();
+  await expect(page.getByTestId("open-host-monitor-button")).toHaveCount(0);
   await expect(page.getByTestId("desktop-sidebar-collapse")).toBeVisible();
   await expect(page.getByTestId("desktop-sidebar-collapse").locator("..")).toHaveCSS(
     "border-bottom-width",

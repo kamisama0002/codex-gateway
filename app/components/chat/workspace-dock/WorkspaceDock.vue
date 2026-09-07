@@ -35,6 +35,12 @@ const scopeKey = computed(() =>
     workspace.selectedThreadId.value,
   ),
 );
+const mobileToolsOpen = ref(false);
+const toolSidebarOpen = computed(() =>
+  props.layout === "mobile"
+    ? mobileToolsOpen.value
+    : workspaceLayout.isToolSidebarOpen(scopeKey.value),
+);
 const {
   terminalPanels,
   subAgentPanels,
@@ -52,7 +58,7 @@ const panels = useWorkspaceDockPanels({
   layout: refs.layout,
   selectedThreadId: workspace.selectedThreadId,
   filesPanelOpen: computed(() => workspaceLayout.isFilesPanelOpen(scopeKey.value)),
-  toolSidebarOpen: computed(() => workspaceLayout.isToolSidebarOpen(scopeKey.value)),
+  toolSidebarOpen,
   terminalPanels,
   subAgentPanels,
   browserPanels,
@@ -79,7 +85,6 @@ const dockviewHost = ref<HTMLElement | null>(null);
 const workspaceActions = useWorkspaceLaunchActions();
 const tmuxLauncher = useTmuxMonitorLauncher();
 const browserDialogOpen = ref(false);
-const toolSidebarOpen = computed(() => workspaceLayout.isToolSidebarOpen(scopeKey.value));
 const toolCatalog = computed(() =>
   createWorkspaceToolCatalog({
     canOpenThreadTools:
@@ -113,12 +118,20 @@ const toolCatalog = computed(() =>
 );
 
 function showPanel(panelId: string) {
+  if (props.layout === "mobile") {
+    mobileToolsOpen.value = panelId !== AGENT_WORKSPACE_PANEL_ID;
+    return;
+  }
   if (panelId !== AGENT_WORKSPACE_PANEL_ID) {
     workspaceLayout.setToolSidebarOpen(scopeKey.value, true);
   }
 }
 
 function toggleToolSidebar() {
+  if (props.layout === "mobile") {
+    mobileToolsOpen.value = !mobileToolsOpen.value;
+    return;
+  }
   workspaceLayout.setToolSidebarOpen(scopeKey.value, !toolSidebarOpen.value);
 }
 
@@ -158,7 +171,8 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
   >
     <MobileWorkspaceHeader
       v-if="layout === 'mobile'"
-      @open-host-monitor="workspaceActions.openHostMonitor"
+      :tools-open="toolSidebarOpen"
+      @toggle-tools="toggleToolSidebar"
     >
       <template #start><slot name="mobile-header-start" /></template>
     </MobileWorkspaceHeader>
@@ -215,5 +229,9 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
 
 .gateway-dockview :deep(.dv-tab:has([data-panel-kind="toolHome"])) {
   display: none;
+}
+
+.gateway-dockview :deep(.dv-groupview:has([data-panel-kind="agent"]) .dv-tab) {
+  background: transparent;
 }
 </style>

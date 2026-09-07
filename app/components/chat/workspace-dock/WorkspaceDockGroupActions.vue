@@ -1,15 +1,24 @@
 <script setup lang="ts">
 import type { IDockviewHeaderActionsProps } from "dockview-vue";
-import { ArrowDownToLineIcon, Maximize2Icon, PictureInPicture2Icon, Rows3Icon } from "@lucide/vue";
+import {
+  ArrowDownToLineIcon,
+  Maximize2Icon,
+  PanelRightCloseIcon,
+  PanelRightOpenIcon,
+  PictureInPicture2Icon,
+  Rows3Icon,
+} from "@lucide/vue";
 import { onBeforeUnmount, ref } from "vue";
 import { Button } from "@codex-gateway/ui/button";
 
 import { floatDockItem, popoutDockItem } from "./actions";
+import { requireWorkspaceDockUiContext } from "./context";
 
 const props = defineProps<{ params?: IDockviewHeaderActionsProps }>();
 if (!props.params) throw new Error("Dockview header action parameters are unavailable");
 const params = props.params;
 const { t } = useI18n();
+const dockUi = requireWorkspaceDockUiContext();
 const location = ref(params.group.api.location.type);
 const locationSubscription = params.group.api.onDidLocationChange((event) => {
   location.value = event.location.type;
@@ -72,6 +81,23 @@ function popout() {
       @click="popout"
     >
       <ArrowDownToLineIcon class="size-3" />
+    </Button>
+    <span class="mx-0.5 h-4 border-l border-hairline" />
+    <Button
+      data-testid="workspace-tool-sidebar-toggle"
+      variant="ghost"
+      size="icon-xs"
+      class="size-6"
+      :aria-label="
+        $t(dockUi.toolSidebarOpen.value ? 'app.hideWorkspaceTools' : 'app.showWorkspaceTools')
+      "
+      :title="
+        $t(dockUi.toolSidebarOpen.value ? 'app.hideWorkspaceTools' : 'app.showWorkspaceTools')
+      "
+      @click="dockUi.toggleToolSidebar"
+    >
+      <PanelRightCloseIcon v-if="dockUi.toolSidebarOpen.value" class="size-3" />
+      <PanelRightOpenIcon v-else class="size-3" />
     </Button>
   </div>
 </template>

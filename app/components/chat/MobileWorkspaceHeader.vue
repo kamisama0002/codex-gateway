@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ChartNoAxesCombinedIcon } from "@lucide/vue";
+import { PanelRightCloseIcon, PanelRightOpenIcon } from "@lucide/vue";
 import { Button } from "@codex-gateway/ui/button";
 
+defineProps<{ toolsOpen: boolean }>();
 const emit = defineEmits<{
-  openHostMonitor: [];
+  toggleTools: [];
 }>();
 </script>
 
@@ -16,14 +17,16 @@ const emit = defineEmits<{
     </div>
     <div class="relative z-10 ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
       <Button
-        data-testid="open-host-monitor-mobile-button"
+        data-testid="mobile-workspace-tools-toggle"
         variant="ghost"
-        size="sm"
-        class="h-8 shrink-0 rounded-md px-2 text-ink-muted hover:bg-muted hover:text-ink"
-        :aria-label="$t('app.openHostMonitor')"
-        @click="emit('openHostMonitor')"
+        size="icon"
+        class="size-8 shrink-0 rounded-md text-ink-muted hover:bg-muted hover:text-ink"
+        :aria-label="$t(toolsOpen ? 'app.hideWorkspaceTools' : 'app.showWorkspaceTools')"
+        :title="$t(toolsOpen ? 'app.hideWorkspaceTools' : 'app.showWorkspaceTools')"
+        @click="emit('toggleTools')"
       >
-        <ChartNoAxesCombinedIcon class="size-4" />
+        <PanelRightCloseIcon v-if="toolsOpen" class="size-4" />
+        <PanelRightOpenIcon v-else class="size-4" />
       </Button>
     </div>
   </header>

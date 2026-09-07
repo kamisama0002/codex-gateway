@@ -75,6 +75,8 @@
     "agentTab": "Agent",
     "workspaceTools": "工具",
     "addWorkspaceTool": "添加工具",
+    "showWorkspaceTools": "展开工具侧栏",
+    "hideWorkspaceTools": "收起工具侧栏",
     "workspaceToolFilesDescription": "浏览和编辑当前工作区文件",
     "workspaceToolGitDescription": "查看当前工作区的 Git 变更",
     "workspaceToolTerminalDescription": "打开当前主机的远程终端",

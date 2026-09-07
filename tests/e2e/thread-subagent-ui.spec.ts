@@ -203,8 +203,6 @@ test("sub-agent activity opens workspace tabs with sub-agent timelines", async (
     panel.getByText("Inherited parent content must not render in the subagent panel."),
   ).toHaveCount(0);
   await expect(panel.locator("textarea")).toHaveCount(0);
-  await expect(mainPane).toBeHidden();
-  await agentWorkspaceTab(page).click();
   await expect(mainPane).toBeVisible();
   await expect(
     page
@@ -252,7 +250,6 @@ test("sub-agent activity opens workspace tabs with sub-agent timelines", async (
       turnId: "sub-turn-running",
     });
 
-  await agentWorkspaceTab(page).click();
   await page.getByTestId("open-subagent-panel").nth(1).click();
   await expect(subAgentTab(page, "Atlas [explorer]")).toHaveCount(1);
   await expect(subAgentTab(page, "Nova [reviewer]")).toHaveCount(1);
@@ -329,10 +326,6 @@ function subAgentTab(page: Page, title: string) {
   return page.locator(
     `[data-testid="workspace-dock-tab"][data-panel-kind="subagent"][data-panel-title="${title}"]`,
   );
-}
-
-function agentWorkspaceTab(page: Page) {
-  return page.locator('[data-testid="workspace-dock-tab"][data-panel-kind="agent"]');
 }
 
 async function closeWorkspaceTab(page: Page) {

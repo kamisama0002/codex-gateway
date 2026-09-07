@@ -16,7 +16,6 @@ interface PetPosition {
 
 const DEFAULT_POSITION: PetPosition = { right: 20, bottom: 112 };
 const EDGE_INSET = 8;
-const COMPOSER_INSET = 112;
 
 const { t } = useI18n();
 const config = useGatewayConfigStore();
@@ -110,7 +109,7 @@ function constrainedPosition(candidate: PetPosition): PetPosition {
   const maxBottom = Math.max(EDGE_INSET, boundary.clientHeight - element.offsetHeight - EDGE_INSET);
   return {
     right: clamp(candidate.right, EDGE_INSET, maxRight),
-    bottom: clamp(candidate.bottom, Math.min(COMPOSER_INSET, maxBottom), maxBottom),
+    bottom: clamp(candidate.bottom, EDGE_INSET, maxBottom),
   };
 }
 
@@ -145,7 +144,7 @@ function samePosition(left: PetPosition, right: PetPosition) {
   <div
     v-if="pet.settings.value.enabled"
     ref="boundaryRef"
-    class="pointer-events-none absolute inset-0 z-30 overflow-hidden"
+    class="pointer-events-none fixed inset-0 z-30 overflow-hidden"
   >
     <div
       ref="petRef"

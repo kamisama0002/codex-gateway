@@ -27,6 +27,8 @@ logs
 .env.*
 !.env.example
 test-results
+.playwright-cli
+output/playwright
 .data-e2e
 .e2e-runtime
 .data
