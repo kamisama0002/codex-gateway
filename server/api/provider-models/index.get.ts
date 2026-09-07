@@ -3,9 +3,11 @@ import { requireAuthenticatedUser } from "../../utils/gateway/auth/context";
 import { defineGatewayEventHandler } from "../../utils/gateway/http/errors";
 import { providerStore } from "../../utils/gateway/providers/provider-store";
 
-export function listUserProviderModelsForEvent(event: H3Event, store = providerStore) {
+export async function listUserProviderModelsForEvent(event: H3Event, store = providerStore) {
   const user = requireAuthenticatedUser(event);
-  return { data: store.listForUser(user.id) };
+  return { data: await store.listForUser(user.id) };
 }
 
-export default defineGatewayEventHandler((event) => listUserProviderModelsForEvent(event));
+export default defineGatewayEventHandler(
+  async (event) => await listUserProviderModelsForEvent(event),
+);

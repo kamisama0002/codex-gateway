@@ -1,25 +1,345 @@
 diff --git a/dist/cjs/index.cjs b/dist/cjs/index.cjs
+index e470032a9572b3ced764ca02238a8c6be435a9d4..89eed26e776688aded2264127ab03549e0678dcf 100644
 --- a/dist/cjs/index.cjs
 +++ b/dist/cjs/index.cjs
-@@ -1137,4 +1137,4 @@ class Virtualizer {
+@@ -181,6 +181,7 @@ class Virtualizer {
+     this.lanesChangedFlag = false;
+     this.lanesSettling = false;
+     this.pendingScrollAnchor = null;
++    this.pendingPrependMeasurements = /* @__PURE__ */ new Map();
+     this.scrollRect = null;
+     this.scrollOffset = null;
+     this.scrollDirection = null;
+@@ -289,6 +290,21 @@ class Virtualizer {
+       let anchor = null;
+       let followOnAppend = null;
+       let edgeKeysChanged = false;
++      const canTrackPendingPrepend = merged.enabled && merged.anchorTo === "end" && this.scrollElement !== null;
++      let nextPendingPrependMeasurements = this.pendingPrependMeasurements;
++      if (!canTrackPendingPrepend) {
++        if (nextPendingPrependMeasurements.size > 0) {
++          nextPendingPrependMeasurements = /* @__PURE__ */ new Map();
++        }
++      } else if (nextPendingPrependMeasurements.size > 0) {
++        const pendingKeys = /* @__PURE__ */ new Set(nextPendingPrependMeasurements.values());
++        const rebasedPending = /* @__PURE__ */ new Map();
++        for (let index = 0; index < merged.count; index++) {
++          const key = merged.getItemKey(index);
++          if (pendingKeys.has(key)) rebasedPending.set(index, key);
++        }
++        nextPendingPrependMeasurements = rebasedPending;
++      }
+       if (prevOptions !== void 0 && prevOptions.enabled && merged.enabled && merged.anchorTo === "end" && this.scrollElement !== null) {
+         const prevCount = prevOptions.count;
+         const nextCount = merged.count;
+@@ -299,6 +315,22 @@ class Virtualizer {
+         const didEdgeKeysChange = didCountChange || prevCount > 0 && nextCount > 0 && (merged.getItemKey(0) !== prevFirstKey || merged.getItemKey(nextCount - 1) !== prevLastKey);
+         if (didEdgeKeysChange) {
+           edgeKeysChanged = true;
++          const addedCount = nextCount - prevCount;
++          if (addedCount > 0 && prevFirstKey !== null && prevLastKey !== null) {
++            let prependCount = 0;
++            while (prependCount <= addedCount && merged.getItemKey(prependCount) !== prevFirstKey) {
++              prependCount++;
++            }
++            const previousLastIndex = prependCount + prevCount - 1;
++            if (prependCount > 0 && prependCount <= addedCount && previousLastIndex < nextCount && merged.getItemKey(previousLastIndex) === prevLastKey) {
++              if (nextPendingPrependMeasurements === this.pendingPrependMeasurements) {
++                nextPendingPrependMeasurements = /* @__PURE__ */ new Map(nextPendingPrependMeasurements);
++              }
++              for (let index = 0; index < prependCount; index++) {
++                nextPendingPrependMeasurements.set(index, merged.getItemKey(index));
++              }
++            }
++          }
+           const item = prevCount > 0 ? this.getVirtualItemForOffset(this.getScrollOffset()) ?? measurements[0] : null;
+           if (item) {
+             anchor = [item.key, this.getScrollOffset() - item.start];
+@@ -309,6 +341,7 @@ class Virtualizer {
+           }
+         }
+       }
++      this.pendingPrependMeasurements = nextPendingPrependMeasurements;
+       this.options = merged;
+       if (edgeKeysChanged) {
+         this.pendingMin = 0;
+@@ -385,6 +418,7 @@ class Virtualizer {
+       this._iosDeferredAdjustment = 0;
+       this._iosTouching = false;
+       this._iosJustTouchEnded = false;
++      this.pendingPrependMeasurements = /* @__PURE__ */ new Map();
+       this.scrollElement = null;
+       this.targetWindow = null;
+     };
+@@ -763,16 +797,21 @@ class Virtualizer {
+           this.options.overscan,
+           this.options.count,
+           startIndex,
+-          endIndex
++          endIndex,
++          this.pendingPrependMeasurements
+         ];
+       },
+-      (rangeExtractor, overscan, count, startIndex, endIndex) => {
+-        return startIndex === null || endIndex === null ? [] : rangeExtractor({
++      (rangeExtractor, overscan, count, startIndex, endIndex, pendingPrependMeasurements) => {
++        const indexes = startIndex === null || endIndex === null ? [] : rangeExtractor({
+           startIndex,
+           endIndex,
+           overscan,
+           count
+         });
++        if (pendingPrependMeasurements.size === 0) return indexes;
++        return [...new Set([...indexes, ...pendingPrependMeasurements.keys()])].sort(
++          (left, right) => left - right
++        );
+       },
+       {
+         key: process.env.NODE_ENV !== "production" && "getVirtualIndexes",
+@@ -855,6 +894,13 @@ class Virtualizer {
+       }
+       const itemSize = this.itemSizeCache.get(key) ?? cachedSize;
+       const delta = size - itemSize;
++      let resolvedPendingPrepend = false;
++      if (this.pendingPrependMeasurements.get(index) === key) {
++        const pending = /* @__PURE__ */ new Map(this.pendingPrependMeasurements);
++        pending.delete(index);
++        this.pendingPrependMeasurements = pending;
++        resolvedPendingPrepend = true;
++      }
+       if (delta !== 0) {
+         const wasAtEnd = this.options.anchorTo === "end" && ((_a = this.scrollState) == null ? void 0 : _a.behavior) !== "smooth" && this.getVirtualDistanceFromEnd() <= this.options.scrollEndThreshold;
+         const prevTotalSize = wasAtEnd ? this.getTotalSize() : 0;
+@@ -903,6 +949,8 @@ class Virtualizer {
+           adjustedSync = this.applyScrollAdjustment(delta);
+         }
+         this.notify(adjustedSync);
++      } else if (resolvedPendingPrepend) {
++        this.notify(false);
+       }
+     };
+     this.getVirtualItems = utils.memo(
+@@ -1134,7 +1182,7 @@ class Virtualizer {
+     if (process.env.NODE_ENV !== "production" && this.options.debug) {
+       console.info("correction", delta);
+     }
 -    if (isIOSWebKit() && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
 +    if (isIOSWebKit() && this.scrollState === null && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
        this._iosDeferredAdjustment += delta;
        return false;
      } else {
 diff --git a/dist/esm/index.js b/dist/esm/index.js
+index 2495b26cf2c3589213546b3958eaadf2eb6b751d..49374cf99b2bd4cbddfe0338f53fc278ac4194b1 100644
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
-@@ -1135,4 +1135,4 @@ class Virtualizer {
+@@ -179,6 +179,7 @@ class Virtualizer {
+     this.lanesChangedFlag = false;
+     this.lanesSettling = false;
+     this.pendingScrollAnchor = null;
++    this.pendingPrependMeasurements = /* @__PURE__ */ new Map();
+     this.scrollRect = null;
+     this.scrollOffset = null;
+     this.scrollDirection = null;
+@@ -287,6 +288,21 @@ class Virtualizer {
+       let anchor = null;
+       let followOnAppend = null;
+       let edgeKeysChanged = false;
++      const canTrackPendingPrepend = merged.enabled && merged.anchorTo === "end" && this.scrollElement !== null;
++      let nextPendingPrependMeasurements = this.pendingPrependMeasurements;
++      if (!canTrackPendingPrepend) {
++        if (nextPendingPrependMeasurements.size > 0) {
++          nextPendingPrependMeasurements = new Map();
++        }
++      } else if (nextPendingPrependMeasurements.size > 0) {
++        const pendingKeys = new Set(nextPendingPrependMeasurements.values());
++        const rebasedPending = new Map();
++        for (let index = 0; index < merged.count; index++) {
++          const key = merged.getItemKey(index);
++          if (pendingKeys.has(key)) rebasedPending.set(index, key);
++        }
++        nextPendingPrependMeasurements = rebasedPending;
++      }
+       if (prevOptions !== void 0 && prevOptions.enabled && merged.enabled && merged.anchorTo === "end" && this.scrollElement !== null) {
+         const prevCount = prevOptions.count;
+         const nextCount = merged.count;
+@@ -297,6 +313,22 @@ class Virtualizer {
+         const didEdgeKeysChange = didCountChange || prevCount > 0 && nextCount > 0 && (merged.getItemKey(0) !== prevFirstKey || merged.getItemKey(nextCount - 1) !== prevLastKey);
+         if (didEdgeKeysChange) {
+           edgeKeysChanged = true;
++          const addedCount = nextCount - prevCount;
++          if (addedCount > 0 && prevFirstKey !== null && prevLastKey !== null) {
++            let prependCount = 0;
++            while (prependCount <= addedCount && merged.getItemKey(prependCount) !== prevFirstKey) {
++              prependCount++;
++            }
++            const previousLastIndex = prependCount + prevCount - 1;
++            if (prependCount > 0 && prependCount <= addedCount && previousLastIndex < nextCount && merged.getItemKey(previousLastIndex) === prevLastKey) {
++              if (nextPendingPrependMeasurements === this.pendingPrependMeasurements) {
++                nextPendingPrependMeasurements = new Map(nextPendingPrependMeasurements);
++              }
++              for (let index = 0; index < prependCount; index++) {
++                nextPendingPrependMeasurements.set(index, merged.getItemKey(index));
++              }
++            }
++          }
+           const item = prevCount > 0 ? this.getVirtualItemForOffset(this.getScrollOffset()) ?? measurements[0] : null;
+           if (item) {
+             anchor = [item.key, this.getScrollOffset() - item.start];
+@@ -307,6 +339,7 @@ class Virtualizer {
+           }
+         }
+       }
++      this.pendingPrependMeasurements = nextPendingPrependMeasurements;
+       this.options = merged;
+       if (edgeKeysChanged) {
+         this.pendingMin = 0;
+@@ -383,6 +416,7 @@ class Virtualizer {
+       this._iosDeferredAdjustment = 0;
+       this._iosTouching = false;
+       this._iosJustTouchEnded = false;
++      this.pendingPrependMeasurements = new Map();
+       this.scrollElement = null;
+       this.targetWindow = null;
+     };
+@@ -761,16 +795,21 @@ class Virtualizer {
+           this.options.overscan,
+           this.options.count,
+           startIndex,
+-          endIndex
++          endIndex,
++          this.pendingPrependMeasurements
+         ];
+       },
+-      (rangeExtractor, overscan, count, startIndex, endIndex) => {
+-        return startIndex === null || endIndex === null ? [] : rangeExtractor({
++      (rangeExtractor, overscan, count, startIndex, endIndex, pendingPrependMeasurements) => {
++        const indexes = startIndex === null || endIndex === null ? [] : rangeExtractor({
+           startIndex,
+           endIndex,
+           overscan,
+           count
+         });
++        if (pendingPrependMeasurements.size === 0) return indexes;
++        return [...new Set([...indexes, ...pendingPrependMeasurements.keys()])].sort(
++          (left, right) => left - right
++        );
+       },
+       {
+         key: process.env.NODE_ENV !== "production" && "getVirtualIndexes",
+@@ -853,6 +892,13 @@ class Virtualizer {
+       }
+       const itemSize = this.itemSizeCache.get(key) ?? cachedSize;
+       const delta = size - itemSize;
++      let resolvedPendingPrepend = false;
++      if (this.pendingPrependMeasurements.get(index) === key) {
++        const pending = new Map(this.pendingPrependMeasurements);
++        pending.delete(index);
++        this.pendingPrependMeasurements = pending;
++        resolvedPendingPrepend = true;
++      }
+       if (delta !== 0) {
+         const wasAtEnd = this.options.anchorTo === "end" && ((_a = this.scrollState) == null ? void 0 : _a.behavior) !== "smooth" && this.getVirtualDistanceFromEnd() <= this.options.scrollEndThreshold;
+         const prevTotalSize = wasAtEnd ? this.getTotalSize() : 0;
+@@ -901,6 +947,8 @@ class Virtualizer {
+           adjustedSync = this.applyScrollAdjustment(delta);
+         }
+         this.notify(adjustedSync);
++      } else if (resolvedPendingPrepend) {
++        this.notify(false);
+       }
+     };
+     this.getVirtualItems = memo(
+@@ -1132,7 +1180,7 @@ class Virtualizer {
+     if (process.env.NODE_ENV !== "production" && this.options.debug) {
+       console.info("correction", delta);
+     }
 -    if (isIOSWebKit() && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
 +    if (isIOSWebKit() && this.scrollState === null && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
        this._iosDeferredAdjustment += delta;
        return false;
      } else {
 diff --git a/src/index.ts b/src/index.ts
+index dc6f1010c4d4758de9c46fb8d69209e582e47171..ab4132743fdd06650c2d158384bfe657685b570b 100644
 --- a/src/index.ts
 +++ b/src/index.ts
-@@ -702,5 +702,10 @@ export class Virtualizer<
+@@ -421,6 +421,7 @@ export class Virtualizer<
+   private lanesChangedFlag = false
+   private lanesSettling = false
+   private pendingScrollAnchor: PendingScrollAnchor | null = null
++  private pendingPrependMeasurements = new Map<number, Key>()
+   scrollRect: Rect | null = null
+   scrollOffset: number | null = null
+   scrollDirection: ScrollDirection | null = null
+@@ -570,6 +571,25 @@ export class Virtualizer<
+     let anchor: [Key, number] | null = null
+     let followOnAppend: ScrollBehavior | null = null
+     let edgeKeysChanged = false
++    const canTrackPendingPrepend =
++      merged.enabled &&
++      merged.anchorTo === 'end' &&
++      this.scrollElement !== null
++    let nextPendingPrependMeasurements = this.pendingPrependMeasurements
++
++    if (!canTrackPendingPrepend) {
++      if (nextPendingPrependMeasurements.size > 0) {
++        nextPendingPrependMeasurements = new Map()
++      }
++    } else if (nextPendingPrependMeasurements.size > 0) {
++      const pendingKeys = new Set(nextPendingPrependMeasurements.values())
++      const rebasedPending = new Map<number, Key>()
++      for (let index = 0; index < merged.count; index++) {
++        const key = merged.getItemKey(index)
++        if (pendingKeys.has(key)) rebasedPending.set(index, key)
++      }
++      nextPendingPrependMeasurements = rebasedPending
++    }
+ 
+     if (
+       prevOptions !== undefined &&
+@@ -600,6 +620,30 @@ export class Virtualizer<
+ 
+       if (didEdgeKeysChange) {
+         edgeKeysChanged = true
++        const addedCount = nextCount - prevCount
++        if (addedCount > 0 && prevFirstKey !== null && prevLastKey !== null) {
++          let prependCount = 0
++          while (
++            prependCount <= addedCount &&
++            merged.getItemKey(prependCount) !== prevFirstKey
++          ) {
++            prependCount++
++          }
++          const previousLastIndex = prependCount + prevCount - 1
++          if (
++            prependCount > 0 &&
++            prependCount <= addedCount &&
++            previousLastIndex < nextCount &&
++            merged.getItemKey(previousLastIndex) === prevLastKey
++          ) {
++            if (nextPendingPrependMeasurements === this.pendingPrependMeasurements) {
++              nextPendingPrependMeasurements = new Map(nextPendingPrependMeasurements)
++            }
++            for (let index = 0; index < prependCount; index++) {
++              nextPendingPrependMeasurements.set(index, merged.getItemKey(index))
++            }
++          }
++        }
+         const item =
+           prevCount > 0
+             ? (this.getVirtualItemForOffset(this.getScrollOffset()) ??
+@@ -626,6 +670,8 @@ export class Virtualizer<
+       }
+     }
+ 
++    this.pendingPrependMeasurements = nextPendingPrependMeasurements
++
+     this.options = merged
+ 
+     // When edge keys changed (prepend, trim, reorder, etc.) the key→index
+@@ -699,8 +745,13 @@ export class Virtualizer<
+       console.info('correction', delta)
+     }
+ 
 +    // `isScrolling` also becomes true when scrollToIndex/scrollToEnd receives its own scroll-event
 +    // read-back. That is a Core-owned transaction, not native touch momentum: deferring dynamic
 +    // row corrections there lets the estimated last row settle above the real bottom on WebKit.
@@ -30,3 +350,67 @@ diff --git a/src/index.ts b/src/index.ts
        (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)
      ) {
        this._iosDeferredAdjustment += delta
+@@ -787,6 +838,7 @@ export class Virtualizer<
+     this._iosDeferredAdjustment = 0
+     this._iosTouching = false
+     this._iosJustTouchEnded = false
++    this.pendingPrependMeasurements = new Map()
+     this.scrollElement = null
+     this.targetWindow = null
+   }
+@@ -1451,10 +1503,19 @@ export class Virtualizer<
+         this.options.count,
+         startIndex,
+         endIndex,
++        this.pendingPrependMeasurements,
+       ]
+     },
+-    (rangeExtractor, overscan, count, startIndex, endIndex) => {
+-      return startIndex === null || endIndex === null
++    (
++      rangeExtractor,
++      overscan,
++      count,
++      startIndex,
++      endIndex,
++      pendingPrependMeasurements,
++    ) => {
++      const indexes =
++        startIndex === null || endIndex === null
+         ? []
+         : rangeExtractor({
+             startIndex,
+@@ -1462,6 +1523,10 @@ export class Virtualizer<
+             overscan,
+             count,
+           })
++      if (pendingPrependMeasurements.size === 0) return indexes
++      return [...new Set([...indexes, ...pendingPrependMeasurements.keys()])].sort(
++        (left, right) => left - right,
++      )
+     },
+     {
+       key: process.env.NODE_ENV !== 'production' && 'getVirtualIndexes',
+@@ -1575,6 +1640,13 @@ export class Virtualizer<
+ 
+     const itemSize = this.itemSizeCache.get(key) ?? cachedSize
+     const delta = size - itemSize
++    let resolvedPendingPrepend = false
++    if (this.pendingPrependMeasurements.get(index) === key) {
++      const pending = new Map(this.pendingPrependMeasurements)
++      pending.delete(index)
++      this.pendingPrependMeasurements = pending
++      resolvedPendingPrepend = true
++    }
+ 
+     if (delta !== 0) {
+       const wasAtEnd =
+@@ -1646,6 +1718,8 @@ export class Virtualizer<
+       // land in one paint. When nothing moved (or the write was deferred on
+       // iOS), keep the cheaper async notify.
+       this.notify(adjustedSync)
++    } else if (resolvedPendingPrepend) {
++      this.notify(false)
+     }
+   }
+ 

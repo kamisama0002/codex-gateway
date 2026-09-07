@@ -7,7 +7,7 @@ import { userConfigMutationService } from "../../utils/gateway/config/user-confi
 export default defineGatewayAdvancedConfigMutationHandler(async (event) => {
   const userId = event.context.auth!.user.id;
   const config = await readValidatedBody(event, parseGatewayConfig);
-  return userConfigMutationService.commit(userId, () => {
+  return await userConfigMutationService.commit(userId, () => {
     runtimeConfigStore.replace(config);
     return runtimeConfigStore.export();
   });

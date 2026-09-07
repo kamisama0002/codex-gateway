@@ -74,9 +74,9 @@ test("dynamic tool response submits through the server request responder and sur
 
   await page.getByTestId("dynamic-tool-submit").click();
   await expect(page.getByTestId("thread-runtime-notice")).toHaveCount(0);
-  await expect(
-    page.getByText("pending app-server request was not found", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Notifications alt+T" })).toContainText(
+    "pending app-server request was not found",
+  );
   await expect(
     page.getByTestId("chat-scroll-area").getByText("pending app-server request was not found"),
   ).toHaveCount(0);
@@ -172,6 +172,7 @@ test("provider API key errors fail immediately without a second status panel", a
   await openApp(page);
   const threadId = "e2e-provider-auth-error-thread";
   await seedGatewayThread(page, {
+    projectId: 1,
     threadId,
     currentThread: { id: threadId, name: "Provider Auth Error" },
     history: { thread: { id: threadId, turns: [] } },

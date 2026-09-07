@@ -109,12 +109,12 @@ These views are captured from the real Playwright E2E environment. Select any im
 Browser
   └─ HTTP + WebSocket
      └─ Codex Gateway (Nuxt server)
-        ├─ SQLite encrypted config
+        ├─ MySQL encrypted config
         ├─ SSH connection pool
         ├─ one shared RPC client per host
         ├─ direct SSH PTY terminal sessions
         ├─ HTTP/WebSocket preview proxy over SSH
-        ├─ SQLite-backed tmux monitor scheduler
+        ├─ MySQL-backed tmux monitor scheduler
         ├─ thread/event cache
         └─ remote official codex app-server
 ```
@@ -129,7 +129,7 @@ Core rules:
 
 ## Features
 
-- **Server-side accounts and config**: manually created users, Bearer token login, encrypted host/project/thread config in SQLite.
+- **Server-side accounts and config**: manually created users, Bearer token login, encrypted host/project/thread config in MySQL.
 - **Remote hosts**: SSH password, private key, ssh-agent, and optional SSH proxy support.
 - **Codex runtime management**: detects remote Codex versions, upgrades old installs, restarts stale app-server processes, and reconnects automatically.
 - **Thread discovery and restore**: discovers Codex sessions from remote state and opens threads with a small cached turn window first.
@@ -141,7 +141,7 @@ Core rules:
 - **Remote terminal tabs**: open independent SSH PTY terminals beside the agent loop with `@xterm/xterm`; terminal sessions are isolated per user and host.
 - **Remote browser tabs**: preview a Host's `localhost` HTTP/HTTPS application in Dockview through SSH, including full-origin resources and WebSocket traffic, without exposing an additional Gateway port. Per-resource failures are reported inside the preview.
 - **Host and GPU observability**: stream CPU, memory, network, disk, GPU utilization, temperature, and VRAM metrics over the shared realtime connection. GPU process tables identify the remote user, PID, runtime, memory, and command behind each workload.
-- **User-wide tmux monitoring**: scan tmux sessions across every configured Host, inspect recent pane output, and bind a monitor to the relevant Codex thread. One-shot monitors notify when the current job exits or returns to its shell; permanent monitors wait for later runs and notify after each completed run. Active monitors and history are persisted in SQLite.
+- **User-wide tmux monitoring**: scan tmux sessions across every configured Host, inspect recent pane output, and bind a monitor to the relevant Codex thread. One-shot monitors notify when the current job exits or returns to its shell; permanent monitors wait for later runs and notify after each completed run. Active monitors and history are persisted in MySQL.
 - **Multi-client sync**: multiple browser tabs can subscribe to the same thread and receive the same gateway-side app-server event stream.
 - **State repair**: after SSH/app-server reconnect, Gateway refreshes running thread state; a Nitro scheduled task also checks stale running threads.
 - **Actionable notifications**: in-browser Sonner notifications and optional server-side Bark push for completed main turns and tmux jobs. Thread notifications navigate to the conversation; tmux notifications open the matching monitor and pane output. Delivery is de-duplicated per user and completion.
@@ -176,11 +176,13 @@ git clone --recurse-submodules https://github.com/yunhaoli24/codex-gateway.git
 cd codex-gateway
 
 cp .env.example .env
-# Replace CODEX_GATEWAY_CONFIG_SECRET in .env with: openssl rand -hex 32
+# Set CODEX_GATEWAY_CONFIG_SECRET, MYSQL_PASSWORD, and MYSQL_ROOT_PASSWORD in .env.
+# Generate a different value for each with: openssl rand -hex 32
 
 docker network create web-common 2>/dev/null || true
-docker compose build
-docker compose run --rm codex-gateway \
+docker compose build codex-gateway
+docker compose run --rm database-migrate
+docker compose run --rm --no-deps codex-gateway \
   node scripts/create-user.mjs admin '<a-password-with-at-least-8-characters>'
 docker compose up -d
 ```
@@ -207,7 +209,13 @@ Environment variables:
 | Variable | Required | Description |
 | --- | --- | --- |
 | `CODEX_GATEWAY_CONFIG_SECRET` | Yes in production | Stable secret used to encrypt stored host/project/thread config. |
-| `CODEX_GATEWAY_DB_PATH` | No | SQLite database path. Defaults to the app data path; Docker uses `/data/codex-gateway.db`. |
+| `DATABASE_URL` | External MySQL mode | MySQL 8 connection URL. Use the external database Compose overlay when setting it. |
+| `MYSQL_TLS_MODE` | External MySQL mode | `required` encrypts without certificate/hostname verification; `verify-identity` verifies both and is recommended. Bundled MySQL defaults to `disabled` on its private network. |
+| `MYSQL_TLS_CA_FILE` | With `verify-identity` | CA file path readable by Gateway and every database CLI container. |
+| `MYSQL_DATABASE` | Self-contained Compose | Bundled MySQL database name. Defaults to `codex_gateway`. |
+| `MYSQL_USER` | Self-contained Compose | Bundled MySQL application user. Defaults to `codex_gateway`. |
+| `MYSQL_PASSWORD` | Self-contained Compose | Bundled MySQL application password. Use a URL-safe random value. |
+| `MYSQL_ROOT_PASSWORD` | Self-contained Compose | Bundled MySQL administrative password; Gateway does not receive it. |
 | `HOST` | No | Nuxt listen host. Docker uses `0.0.0.0`. |
 | `PORT` | No | Nuxt listen port. Docker uses `3000`. |
 | `BROWSER_PREVIEW_DOMAIN` | Browser preview | Parent domain for isolated preview origins; configure wildcard DNS for `p-*.your-domain`. |
@@ -219,7 +227,10 @@ Create an admin user:
 
 ```bash
 CODEX_GATEWAY_CONFIG_SECRET="replace-with-a-long-random-secret" \
-CODEX_GATEWAY_DB_PATH="./data/codex-gateway.db" \
+DATABASE_URL="mysql://user:password@127.0.0.1:3306/codex_gateway" \
+pnpm db:migrate
+CODEX_GATEWAY_CONFIG_SECRET="replace-with-a-long-random-secret" \
+DATABASE_URL="mysql://user:password@127.0.0.1:3306/codex_gateway" \
 pnpm user:create <username> <password>
 ```
 
@@ -229,7 +240,7 @@ pnpm user:create <username> <password>
 
 - SSH credentials and Codex tokens stay on the server side.
 - Browser clients authenticate to Gateway with a Bearer token.
-- Stored connection config is encrypted in SQLite with `CODEX_GATEWAY_CONFIG_SECRET`.
+- Stored connection config is encrypted in MySQL with `CODEX_GATEWAY_CONFIG_SECRET`.
 - Direct terminal tabs, tmux inspection, and remote Browser proxy connections are server-side SSH channels; they do not expose SSH keys or remote ports to the browser.
 - Public deployments should run behind a trusted reverse proxy with HTTPS.
 
@@ -237,10 +248,44 @@ pnpm user:create <username> <password>
 
 ```bash
 export CODEX_GATEWAY_CONFIG_SECRET="replace-with-a-long-random-secret"
+export MYSQL_PASSWORD="$(openssl rand -hex 32)"
+export MYSQL_ROOT_PASSWORD="$(openssl rand -hex 32)"
 docker compose up -d --build
 ```
 
-The compose service exposes container port `3000` only to Docker networks. Put it behind nginx, Caddy, Cloudflare Tunnel, or another trusted reverse proxy. SQLite data is stored at `/data/codex-gateway.db` and persisted through `./data:/data`.
+The self-contained stack keeps MySQL on an internal Docker network, persists it in the `mysql-data` named volume, runs schema migration once, and starts Gateway only after migration succeeds. Neither MySQL nor Gateway publishes a host port; put Gateway behind nginx, Caddy, Cloudflare Tunnel, or another trusted reverse proxy on `web-common`.
+
+For a production-managed external MySQL 8 service, keep the connection and TLS settings in the uncommitted `.env`. `verify-identity` requires a CA file and verifies both the certificate chain and database hostname:
+
+```dotenv
+DATABASE_URL=mysql://user:percent-encoded-password@mysql.example.internal:3306/codex_gateway
+MYSQL_TLS_MODE=verify-identity
+MYSQL_TLS_CA_FILE=/run/secrets/mysql-ca.pem
+```
+
+Mount that file at the same read-only path for Gateway and the migration/CLI container in the site-local `docker-compose.override.yml`:
+
+```yaml
+services:
+  database-migrate:
+    volumes:
+      - ./secrets/mysql-ca.pem:/run/secrets/mysql-ca.pem:ro
+  codex-gateway:
+    volumes:
+      - ./secrets/mysql-ca.pem:/run/secrets/mysql-ca.pem:ro
+```
+
+Layer the external database override before that site-local override, and do not add a trailing service selector; the command starts Gateway, its one-shot migration gate, and Runtime Manager as the complete active stack:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.external-db.yml \
+  -f docker-compose.override.yml \
+  up -d --build
+```
+
+External mode does not start the bundled MySQL service. Use `required` only when encryption without certificate/hostname verification is an accepted policy; `verify-identity` is the production recommendation. Gateway and all database CLIs use the same TLS variables. `DATABASE_URL` query parameters, including TLS, timezone, and multi-statement options, are rejected rather than ignored. Keep `DATABASE_URL`, CA material, and all passwords in an uncommitted environment or secret store. Follow [the MySQL cutover runbook](docs/operations/mysql-cutover.md) before changing an existing SQLite deployment, and use [the backup and restore runbook](docs/operations/mysql-backup-restore.md) for ongoing operations.
 
 Remote Browser panels use isolated origins such as `p-<hmac>.example.com`. Configure wildcard DNS for `p-*.example.com` and route those hosts to the same Codex Gateway Nitro port (`3000`). The reverse proxy must preserve the Host header and WebSocket upgrades. No second listener or published container port is required. Upstream `Content-Security-Policy` and `X-Frame-Options` are preserved, so applications that prohibit embedding remain blocked by the browser.
 

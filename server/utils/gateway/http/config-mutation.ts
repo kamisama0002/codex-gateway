@@ -5,12 +5,16 @@ import { defineGatewayEventHandler } from "./errors";
 
 const userConfigLocks = new Map<number, Mutex>();
 
-// Config routes mutate both the user-scoped runtime graph and SQLite; keep that pair atomic.
+// Config routes mutate both the user-scoped runtime graph and MySQL; keep that pair atomic.
 export function defineGatewayConfigMutationHandler<T>(handler: (event: H3Event) => Promise<T> | T) {
-  return defineGatewayEventHandler((event) => {
+  return defineGatewayEventHandler(async (event) => {
     const userId = event.context.auth!.user.id;
-    return userConfigLock(userId).runExclusive(() => handler(event));
+    return await withUserConfigLock(userId, () => handler(event));
   });
+}
+
+export function withUserConfigLock<T>(userId: number, operation: () => Promise<T> | T): Promise<T> {
+  return userConfigLock(userId).runExclusive(operation);
 }
 
 export function defineGatewayAdvancedConfigMutationHandler<T>(

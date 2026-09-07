@@ -2,12 +2,13 @@ import type {
   TmuxMonitorCompletionReason,
   TmuxMonitorListResult,
   TmuxMonitorMode,
-  TmuxPaneSnapshot,
   TmuxMonitorThreadBinding,
+  TmuxPaneSnapshot,
 } from "~~/shared/types";
-import { gatewayDatabase, withGatewayDatabaseTransaction } from "../storage/database";
-import type { StoredTmuxMonitor, TmuxMonitorHostGroup } from "./types";
 import { z } from "zod";
+import type { GatewayDb } from "../storage/contracts";
+import { gatewayDatabase } from "../storage/database";
+import type { StoredTmuxMonitor, TmuxMonitorHostGroup } from "./types";
 
 const HISTORY_LIMIT = 100;
 const tmuxMonitorModeSchema = z.enum(["once", "permanent"]);
@@ -20,80 +21,86 @@ const tmuxMonitorCompletionReasonSchema = z.enum([
   "cancelled",
 ]);
 
+type DatabaseProvider = () => GatewayDb;
+
 export class TmuxMonitorRepository {
-  listForUser(userId: number): TmuxMonitorListResult {
-    const rows = gatewayDatabase()
-      .prepare(
+  private readonly database: DatabaseProvider;
+
+  constructor(database: GatewayDb | DatabaseProvider = gatewayDatabase) {
+    this.database = typeof database === "function" ? database : () => database;
+  }
+
+  async listForUser(userId: number): Promise<TmuxMonitorListResult> {
+    const rows = (
+      await this.database().many(
         `SELECT * FROM tmux_monitors
          WHERE user_id = ?
          ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,
-           CASE WHEN status = 'active' THEN created_at ELSE completed_at END DESC`,
+           CASE WHEN status = 'active' THEN created_at ELSE completed_at END DESC,
+           id DESC`,
+        [userId],
       )
-      .all(userId)
-      .map(mapMonitor);
+    ).map(mapMonitor);
     return {
       active: rows.filter((row) => row.status === "active"),
       history: rows.filter((row) => row.status !== "active").slice(0, HISTORY_LIMIT),
     };
   }
 
-  create(
+  async create(
     userId: number,
     hostId: number,
     pane: TmuxPaneSnapshot,
     thread: TmuxMonitorThreadBinding | null,
     mode: TmuxMonitorMode,
-  ): StoredTmuxMonitor {
+  ): Promise<StoredTmuxMonitor> {
     const now = new Date().toISOString();
-    const result = gatewayDatabase()
-      .prepare(
+    return await this.database().transaction(async (tx) => {
+      const result = await tx.execute(
         `INSERT INTO tmux_monitors (
           user_id, host_id, project_id, thread_id, thread_title,
           session_name, session_id, session_created,
           window_index, window_name, pane_index, pane_id, pane_pid,
           initial_command, last_command, mode, status, created_at, run_started_at, last_checked_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
-      )
-      .run(
-        userId,
-        hostId,
-        thread?.projectId ?? null,
-        thread?.threadId ?? null,
-        thread?.threadTitle ?? null,
-        pane.sessionName,
-        pane.sessionId,
-        pane.sessionCreated,
-        pane.windowIndex,
-        pane.windowName,
-        pane.paneIndex,
-        pane.paneId,
-        pane.panePid,
-        pane.currentCommand,
-        pane.currentCommand,
-        mode,
-        now,
-        mode === "once" || pane.running ? now : null,
-        now,
+        [
+          userId,
+          hostId,
+          thread?.projectId ?? null,
+          thread?.threadId ?? null,
+          thread?.threadTitle ?? null,
+          pane.sessionName,
+          pane.sessionId,
+          pane.sessionCreated,
+          pane.windowIndex,
+          pane.windowName,
+          pane.paneIndex,
+          pane.paneId,
+          pane.panePid,
+          pane.currentCommand,
+          pane.currentCommand,
+          mode,
+          now,
+          mode === "once" || pane.running ? now : null,
+          now,
+        ],
       );
-    return this.getOwned(userId, Number(result.lastInsertRowid))!;
+      return await requiredOwned(tx, userId, result.insertId);
+    });
   }
 
-  getOwned(userId: number, id: number): StoredTmuxMonitor | null {
-    const row = gatewayDatabase()
-      .prepare("SELECT * FROM tmux_monitors WHERE user_id = ? AND id = ?")
-      .get(userId, id);
-    return row ? mapMonitor(row) : null;
+  async getOwned(userId: number, id: number): Promise<StoredTmuxMonitor | null> {
+    return await findOwned(this.database(), userId, id);
   }
 
-  pollGroups(): TmuxMonitorHostGroup[] {
-    const monitors = gatewayDatabase()
-      .prepare(
+  async pollGroups(): Promise<TmuxMonitorHostGroup[]> {
+    const monitors = (
+      await this.database().many(
         `SELECT * FROM tmux_monitors
          WHERE status = 'active' OR (status = 'completed' AND notification_sent_at IS NULL)
          ORDER BY user_id, host_id, id`,
       )
-      .all()
-      .map(mapMonitor);
+    ).map(mapMonitor);
     const groups = new Map<string, TmuxMonitorHostGroup>();
     for (const monitor of monitors) {
       const key = `${monitor.userId}:${monitor.hostId}`;
@@ -110,25 +117,26 @@ export class TmuxMonitorRepository {
     return Array.from(groups.values());
   }
 
-  activeForHost(userId: number, hostId: number): StoredTmuxMonitor[] {
-    return gatewayDatabase()
-      .prepare(
+  async activeForHost(userId: number, hostId: number): Promise<StoredTmuxMonitor[]> {
+    return (
+      await this.database().many(
         "SELECT * FROM tmux_monitors WHERE user_id = ? AND host_id = ? AND status = 'active' ORDER BY id",
+        [userId, hostId],
       )
-      .all(userId, hostId)
-      .map(mapMonitor);
+    ).map(mapMonitor);
   }
 
-  recordChecked(monitor: StoredTmuxMonitor, pane: TmuxPaneSnapshot) {
+  async recordChecked(monitor: StoredTmuxMonitor, pane: TmuxPaneSnapshot): Promise<void> {
     const now = new Date().toISOString();
-    gatewayDatabase()
-      .prepare(
-        `UPDATE tmux_monitors SET session_name = ?, session_id = ?, session_created = ?,
-          window_index = ?, window_name = ?, pane_index = ?, pane_id = ?, pane_pid = ?,
-          last_command = ?, last_checked_at = ?, last_error = NULL,
-          last_error_at = NULL WHERE id = ? AND status = 'active'`,
-      )
-      .run(
+    await this.database().execute(
+      `UPDATE tmux_monitors SET session_name = ?, session_id = ?, session_created = ?,
+        window_index = ?, window_name = ?, pane_index = ?, pane_id = ?, pane_pid = ?,
+        last_command = ?, last_checked_at = ?, last_error = NULL,
+        last_error_at = NULL
+       WHERE id = ? AND user_id = ? AND status = 'active' AND mode = ?
+         AND run_started_at <=> ? AND last_checked_at <=> ?
+         AND session_id = ? AND session_created = ? AND pane_id = ? AND pane_pid = ?`,
+      [
         pane.sessionName,
         pane.sessionId,
         pane.sessionCreated,
@@ -140,28 +148,36 @@ export class TmuxMonitorRepository {
         pane.currentCommand,
         now,
         monitor.id,
-      );
+        monitor.userId,
+        monitor.mode,
+        monitor.runStartedAt,
+        monitor.lastCheckedAt,
+        monitor.sessionId,
+        monitor.sessionCreated,
+        monitor.paneId,
+        monitor.panePid,
+      ],
+    );
   }
 
-  recordWaitingCheck(monitor: StoredTmuxMonitor) {
-    gatewayDatabase()
-      .prepare(
-        `UPDATE tmux_monitors SET last_checked_at = ?, last_error = NULL, last_error_at = NULL
-         WHERE id = ? AND status = 'active' AND mode = 'permanent'`,
-      )
-      .run(new Date().toISOString(), monitor.id);
+  async recordWaitingCheck(monitor: StoredTmuxMonitor): Promise<void> {
+    await this.database().execute(
+      `UPDATE tmux_monitors SET last_checked_at = ?, last_error = NULL, last_error_at = NULL
+       WHERE id = ? AND status = 'active' AND mode = 'permanent'`,
+      [new Date().toISOString(), monitor.id],
+    );
   }
 
-  startPermanentRun(monitor: StoredTmuxMonitor, pane: TmuxPaneSnapshot) {
+  async startPermanentRun(monitor: StoredTmuxMonitor, pane: TmuxPaneSnapshot): Promise<void> {
     const now = new Date().toISOString();
-    gatewayDatabase()
-      .prepare(
-        `UPDATE tmux_monitors SET session_id = ?, session_created = ?, window_name = ?,
-          pane_id = ?, pane_pid = ?, initial_command = ?, last_command = ?, run_started_at = ?,
-          last_checked_at = ?, last_error = NULL, last_error_at = NULL
-         WHERE id = ? AND status = 'active' AND mode = 'permanent' AND run_started_at IS NULL`,
-      )
-      .run(
+    await this.database().execute(
+      `UPDATE tmux_monitors SET session_id = ?, session_created = ?, window_name = ?,
+        pane_id = ?, pane_pid = ?, initial_command = ?, last_command = ?, run_started_at = ?,
+        last_checked_at = ?, last_error = NULL, last_error_at = NULL
+       WHERE id = ? AND user_id = ? AND status = 'active' AND mode = 'permanent'
+         AND run_started_at IS NULL AND run_started_at <=> ? AND last_checked_at <=> ?
+         AND session_id = ? AND session_created = ? AND pane_id = ? AND pane_pid = ?`,
+      [
         pane.sessionId,
         pane.sessionCreated,
         pane.windowName,
@@ -172,65 +188,73 @@ export class TmuxMonitorRepository {
         now,
         now,
         monitor.id,
-      );
+        monitor.userId,
+        monitor.runStartedAt,
+        monitor.lastCheckedAt,
+        monitor.sessionId,
+        monitor.sessionCreated,
+        monitor.paneId,
+        monitor.panePid,
+      ],
+    );
   }
 
-  recordHostError(userId: number, hostId: number, error: unknown) {
+  async recordHostError(userId: number, hostId: number, error: unknown): Promise<void> {
     const now = new Date().toISOString();
-    gatewayDatabase()
-      .prepare(
-        `UPDATE tmux_monitors SET last_error = ?, last_error_at = ?
-         WHERE user_id = ? AND host_id = ? AND status = 'active'`,
-      )
-      .run(error instanceof Error ? error.message : String(error), now, userId, hostId);
+    await this.database().execute(
+      `UPDATE tmux_monitors SET last_error = ?, last_error_at = ?
+       WHERE user_id = ? AND host_id = ? AND status = 'active'`,
+      [error instanceof Error ? error.message : String(error), now, userId, hostId],
+    );
   }
 
-  complete(
+  async complete(
     monitor: StoredTmuxMonitor,
     reason: Exclude<TmuxMonitorCompletionReason, "cancelled">,
     pane: TmuxPaneSnapshot | null,
-  ): StoredTmuxMonitor | null {
+  ): Promise<StoredTmuxMonitor | null> {
     const now = new Date().toISOString();
-    const result = gatewayDatabase()
-      .prepare(
+    return await this.database().transaction(async (tx) => {
+      const result = await tx.execute(
         `UPDATE tmux_monitors SET status = 'completed', completion_reason = ?,
           session_name = ?, window_index = ?, window_name = ?, pane_index = ?,
           last_command = ?, last_checked_at = ?, completed_at = ?, last_error = NULL,
-          last_error_at = NULL WHERE id = ? AND status = 'active'`,
-      )
-      .run(
-        reason,
-        pane?.sessionName ?? monitor.sessionName,
-        pane?.windowIndex ?? monitor.windowIndex,
-        pane?.windowName ?? monitor.windowName,
-        pane?.paneIndex ?? monitor.paneIndex,
-        pane?.currentCommand ?? monitor.lastCommand,
-        now,
-        now,
-        monitor.id,
+          last_error_at = NULL
+         WHERE id = ? AND user_id = ? AND status = 'active' AND mode = 'once'`,
+        [
+          reason,
+          pane?.sessionName ?? monitor.sessionName,
+          pane?.windowIndex ?? monitor.windowIndex,
+          pane?.windowName ?? monitor.windowName,
+          pane?.paneIndex ?? monitor.paneIndex,
+          pane?.currentCommand ?? monitor.lastCommand,
+          now,
+          now,
+          monitor.id,
+          monitor.userId,
+        ],
       );
-    if (result.changes === 0) return null;
-    this.pruneHistory(monitor.userId, monitor.hostId);
-    return this.getOwned(monitor.userId, monitor.id);
+      if (result.affectedRows === 0) return null;
+      await pruneHistory(tx, monitor.userId, monitor.hostId);
+      return await findOwned(tx, monitor.userId, monitor.id);
+    });
   }
 
-  completePermanentRun(
+  async completePermanentRun(
     monitor: StoredTmuxMonitor,
     reason: Exclude<TmuxMonitorCompletionReason, "cancelled">,
     pane: TmuxPaneSnapshot | null,
-  ): StoredTmuxMonitor | null {
+  ): Promise<StoredTmuxMonitor | null> {
     if (monitor.mode !== "permanent" || monitor.runStartedAt === null) return null;
     const now = new Date().toISOString();
-    let historyId: number | null = null;
-    withGatewayDatabaseTransaction((database) => {
-      const reset = database
-        .prepare(
-          `UPDATE tmux_monitors SET session_id = ?, session_created = ?, window_name = ?,
-            pane_id = ?, pane_pid = ?, last_command = ?, run_started_at = NULL,
-            last_checked_at = ?, last_error = NULL, last_error_at = NULL
-           WHERE id = ? AND status = 'active' AND mode = 'permanent' AND run_started_at IS NOT NULL`,
-        )
-        .run(
+    return await this.database().transaction(async (tx) => {
+      const reset = await tx.execute(
+        `UPDATE tmux_monitors SET session_id = ?, session_created = ?, window_name = ?,
+          pane_id = ?, pane_pid = ?, last_command = ?, run_started_at = NULL,
+          last_checked_at = ?, last_error = NULL, last_error_at = NULL
+         WHERE id = ? AND user_id = ? AND status = 'active' AND mode = 'permanent'
+           AND run_started_at = ? AND session_id = ? AND pane_id = ?`,
+        [
           pane?.sessionId ?? monitor.sessionId,
           pane?.sessionCreated ?? monitor.sessionCreated,
           pane?.windowName ?? monitor.windowName,
@@ -239,19 +263,22 @@ export class TmuxMonitorRepository {
           pane?.currentCommand ?? monitor.lastCommand,
           now,
           monitor.id,
-        );
-      if (reset.changes === 0) return;
-      const inserted = database
-        .prepare(
-          `INSERT INTO tmux_monitors (
-            user_id, host_id, project_id, thread_id, thread_title,
-            session_name, session_id, session_created, window_index, window_name,
-            pane_index, pane_id, pane_pid, initial_command, last_command, mode, status,
-            completion_reason, created_at, run_started_at, last_checked_at, completed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'permanent', 'completed',
-            ?, ?, ?, ?, ?)`,
-        )
-        .run(
+          monitor.userId,
+          monitor.runStartedAt,
+          monitor.sessionId,
+          monitor.paneId,
+        ],
+      );
+      if (reset.affectedRows === 0) return null;
+      const inserted = await tx.execute(
+        `INSERT INTO tmux_monitors (
+          user_id, host_id, project_id, thread_id, thread_title,
+          session_name, session_id, session_created, window_index, window_name,
+          pane_index, pane_id, pane_pid, initial_command, last_command, mode, status,
+          completion_reason, created_at, run_started_at, last_checked_at, completed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'permanent', 'completed',
+          ?, ?, ?, ?, ?)`,
+        [
           monitor.userId,
           monitor.hostId,
           monitor.projectId,
@@ -272,87 +299,131 @@ export class TmuxMonitorRepository {
           monitor.runStartedAt,
           now,
           now,
-        );
-      historyId = Number(inserted.lastInsertRowid);
+        ],
+      );
+      await pruneHistory(tx, monitor.userId, monitor.hostId);
+      return await findOwned(tx, monitor.userId, inserted.insertId);
     });
-    if (historyId === null) return null;
-    this.pruneHistory(monitor.userId, monitor.hostId);
-    return this.getOwned(monitor.userId, historyId);
   }
 
-  promote(monitor: StoredTmuxMonitor, pane: TmuxPaneSnapshot | null) {
+  async promote(
+    monitor: StoredTmuxMonitor,
+    pane: TmuxPaneSnapshot | null,
+  ): Promise<StoredTmuxMonitor | null> {
     const now = new Date().toISOString();
-    gatewayDatabase()
-      .prepare(
+    return await this.database().transaction(async (tx) => {
+      const result = await tx.execute(
         `UPDATE tmux_monitors SET mode = 'permanent', session_name = ?, session_id = ?,
           session_created = ?, window_index = ?, window_name = ?, pane_index = ?, pane_id = ?,
           pane_pid = ?, initial_command = ?, last_command = ?, run_started_at = ?, last_checked_at = ?,
           last_error = NULL, last_error_at = NULL
          WHERE id = ? AND user_id = ? AND status = 'active' AND mode = 'once'`,
-      )
-      .run(
-        pane?.sessionName ?? monitor.sessionName,
-        pane?.sessionId ?? monitor.sessionId,
-        pane?.sessionCreated ?? monitor.sessionCreated,
-        pane?.windowIndex ?? monitor.windowIndex,
-        pane?.windowName ?? monitor.windowName,
-        pane?.paneIndex ?? monitor.paneIndex,
-        pane?.paneId ?? monitor.paneId,
-        pane?.panePid ?? monitor.panePid,
-        pane?.currentCommand ?? monitor.initialCommand,
-        pane?.currentCommand ?? monitor.lastCommand,
-        pane?.running === true ? monitor.createdAt : null,
-        now,
-        monitor.id,
-        monitor.userId,
+        [
+          pane?.sessionName ?? monitor.sessionName,
+          pane?.sessionId ?? monitor.sessionId,
+          pane?.sessionCreated ?? monitor.sessionCreated,
+          pane?.windowIndex ?? monitor.windowIndex,
+          pane?.windowName ?? monitor.windowName,
+          pane?.paneIndex ?? monitor.paneIndex,
+          pane?.paneId ?? monitor.paneId,
+          pane?.panePid ?? monitor.panePid,
+          pane?.currentCommand ?? monitor.initialCommand,
+          pane?.currentCommand ?? monitor.lastCommand,
+          pane?.running === true ? monitor.createdAt : null,
+          now,
+          monitor.id,
+          monitor.userId,
+        ],
       );
-    return this.getOwned(monitor.userId, monitor.id);
+      if (result.affectedRows !== 1) return null;
+      const promoted = await findOwned(tx, monitor.userId, monitor.id);
+      if (promoted?.status !== "active" || promoted.mode !== "permanent") {
+        throw new Error("Tmux monitor promotion was not persisted");
+      }
+      return promoted;
+    });
   }
 
-  cancel(userId: number, id: number): StoredTmuxMonitor | null {
-    const monitor = this.getOwned(userId, id);
-    if (monitor === null || monitor.status !== "active") return null;
+  async cancel(userId: number, id: number): Promise<StoredTmuxMonitor | null> {
     const now = new Date().toISOString();
-    gatewayDatabase()
-      .prepare(
+    return await this.database().transaction(async (tx) => {
+      const row = await tx.one(
+        "SELECT * FROM tmux_monitors WHERE user_id = ? AND id = ? FOR UPDATE",
+        [userId, id],
+      );
+      if (row === null) return null;
+      const monitor = mapMonitor(row);
+      if (monitor.status !== "active") return null;
+      const result = await tx.execute(
         `UPDATE tmux_monitors SET status = 'cancelled', completion_reason = 'cancelled',
           completed_at = ?, last_checked_at = ? WHERE user_id = ? AND id = ? AND status = 'active'`,
-      )
-      .run(now, now, userId, id);
-    this.pruneHistory(userId, monitor.hostId);
-    return this.getOwned(userId, id);
+        [now, now, userId, id],
+      );
+      if (result.affectedRows === 0) return null;
+      await pruneHistory(tx, userId, monitor.hostId);
+      return await findOwned(tx, userId, id);
+    });
   }
 
-  markNotificationSent(userId: number, id: number) {
-    const now = new Date().toISOString();
-    return Boolean(
-      gatewayDatabase()
-        .prepare(
-          `UPDATE tmux_monitors SET notification_sent_at = ?
-           WHERE user_id = ? AND id = ? AND notification_sent_at IS NULL`,
-        )
-        .run(now, userId, id).changes,
+  async markNotificationSent(userId: number, id: number): Promise<boolean> {
+    const result = await this.database().execute(
+      `UPDATE tmux_monitors SET notification_sent_at = ?
+       WHERE user_id = ? AND id = ? AND notification_sent_at IS NULL`,
+      [new Date().toISOString(), userId, id],
     );
+    return result.affectedRows > 0;
   }
 
-  deleteHost(userId: number, hostId: number) {
-    gatewayDatabase()
-      .prepare("DELETE FROM tmux_monitors WHERE user_id = ? AND host_id = ?")
-      .run(userId, hostId);
+  async deleteHost(userId: number, hostId: number): Promise<void> {
+    await this.database().execute("DELETE FROM tmux_monitors WHERE user_id = ? AND host_id = ?", [
+      userId,
+      hostId,
+    ]);
   }
+}
 
-  private pruneHistory(userId: number, hostId: number) {
-    gatewayDatabase()
-      .prepare(
-        `DELETE FROM tmux_monitors WHERE id IN (
-          SELECT id FROM tmux_monitors
-          WHERE user_id = ? AND host_id = ? AND status != 'active'
-            AND (status = 'cancelled' OR notification_sent_at IS NOT NULL)
-          ORDER BY completed_at DESC LIMIT -1 OFFSET ?
-        )`,
-      )
-      .run(userId, hostId, HISTORY_LIMIT);
-  }
+async function findOwned(
+  db: GatewayDb,
+  userId: number,
+  id: number,
+): Promise<StoredTmuxMonitor | null> {
+  const row = await db.one("SELECT * FROM tmux_monitors WHERE user_id = ? AND id = ?", [
+    userId,
+    id,
+  ]);
+  return row === null ? null : mapMonitor(row);
+}
+
+async function requiredOwned(db: GatewayDb, userId: number, id: number) {
+  const monitor = await findOwned(db, userId, id);
+  if (monitor === null) throw new Error("Tmux monitor was not recorded");
+  return monitor;
+}
+
+async function pruneHistory(db: GatewayDb, userId: number, hostId: number): Promise<void> {
+  const row = await db.one<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM tmux_monitors
+     WHERE user_id = ? AND host_id = ? AND status != 'active'
+       AND (status = 'cancelled' OR notification_sent_at IS NOT NULL)`,
+    [userId, hostId],
+  );
+  const excess = Number(row?.count ?? 0) - HISTORY_LIMIT;
+  if (excess <= 0) return;
+  const rows = await db.many<{ id: number }>(
+    `SELECT id FROM tmux_monitors
+     WHERE user_id = ? AND host_id = ? AND status != 'active'
+       AND (status = 'cancelled' OR notification_sent_at IS NOT NULL)
+     ORDER BY completed_at ASC, id ASC
+     LIMIT ?`,
+    [userId, hostId, excess],
+  );
+  const ids = rows.map((entry) => Number(entry.id));
+  if (ids.length === 0) return;
+  await db.execute(
+    `DELETE FROM tmux_monitors
+     WHERE user_id = ? AND host_id = ? AND id IN (${ids.map(() => "?").join(", ")})`,
+    [userId, hostId, ...ids],
+  );
 }
 
 function mapMonitor(row: Record<string, unknown>): StoredTmuxMonitor {

@@ -82,18 +82,7 @@ test("Bark keeps monitoring an active main turn after the last browser closes", 
       ].join("\n"),
     );
   await page.getByTestId("send-turn-button").click();
-  await expect
-    .poll(
-      () =>
-        page.evaluate(
-          () =>
-            window.__codexGatewayE2e?.views.events.filter(
-              (event) => event.method === "turn/started",
-            ).length ?? 0,
-        ),
-      { timeout: 30_000 },
-    )
-    .toBeGreaterThan(0);
+  await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "停止生成");
   await page.close();
 
   // Closing the last browser releases its UI lease, not the active app-server subscription.

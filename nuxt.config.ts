@@ -32,8 +32,13 @@ export default defineNuxtConfig({
     plugins: tailwindcss(),
   },
   nitro: {
-    rollupConfig: {
-      external: ["node:sqlite"],
+    esbuild: {
+      options: {
+        target: "node24",
+      },
+    },
+    externals: {
+      external: ["mysql2"],
     },
     experimental: {
       websocket: true,

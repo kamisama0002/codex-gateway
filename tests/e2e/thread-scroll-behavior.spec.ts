@@ -397,13 +397,13 @@ test("streaming output does not drift the viewport during upward wheel scrolling
   // One scenario covers every mutation that previously competed for active-scroll ownership:
   // overscan remeasurement, streamed content, and a newly appended timeline row. Touch
   // continuation and momentum remain separate because mobile browsers own those gestures.
-  await startChatWheelScrollUp(page);
-  const scrollTopAfterGesture = await chatViewportScrollTop(page);
-  await growMeasuredRowAboveViewport(page);
-  await waitForAnimationFrames(page, 3);
+  const activeReflow = await growMeasuredRowAboveViewportDuringWheelScroll(page);
   // A delayed image/Markdown measurement above the fold must not write a reverse scroll delta
   // while the browser owns upward movement. The old override added exactly the row's 160px growth.
-  expect(await chatViewportScrollTop(page)).toBeLessThanOrEqual(scrollTopAfterGesture + 2);
+  expect(activeReflow.followLatest).toBe("false");
+  expect(activeReflow.isScrolling).toBe("true");
+  expect(activeReflow.moved).toBeGreaterThan(0);
+  expect(activeReflow.afterReflow).toBeLessThanOrEqual(activeReflow.afterGesture + 2);
 
   // Re-arm the wheel-owned window after the reflow assertion. Official Chat mode keeps Vue state
   // reactive while TanStack limits mounted rows to the virtual window; the contract is viewport
@@ -713,6 +713,44 @@ async function growMeasuredRowAboveViewport(page: Page) {
     delayedContent.dataset.testid = "delayed-row-content";
     row.append(delayedContent);
   });
+}
+
+async function growMeasuredRowAboveViewportDuringWheelScroll(page: Page, distance = 240) {
+  return await page.getByTestId("chat-scroll-area").evaluate(async (root, scrollDistance) => {
+    const viewport = root.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+    if (viewport === null) throw new Error("Missing chat viewport");
+    const before = viewport.scrollTop;
+    viewport.dispatchEvent(
+      new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -scrollDistance }),
+    );
+    viewport.scrollTop = Math.max(0, before - scrollDistance);
+    viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const afterGesture = viewport.scrollTop;
+    const viewportTop = viewport.getBoundingClientRect().top;
+    const row = Array.from(root.querySelectorAll<HTMLElement>("[data-row-key]")).find(
+      (candidate) => candidate.getBoundingClientRect().bottom <= viewportTop,
+    );
+    if (row === undefined) throw new Error("Missing measured overscan row above viewport");
+    const delayedContent = document.createElement("div");
+    delayedContent.style.height = "160px";
+    delayedContent.dataset.testid = "active-wheel-delayed-row-content";
+    row.append(delayedContent);
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+    );
+
+    return {
+      afterGesture,
+      afterReflow: viewport.scrollTop,
+      followLatest: root.dataset.followLatest,
+      isScrolling: root.dataset.isScrolling,
+      moved: before - afterGesture,
+    };
+  }, distance);
 }
 
 test("streaming output does not force scroll when the user is reading earlier content", async ({

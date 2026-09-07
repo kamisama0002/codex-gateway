@@ -1,5 +1,10 @@
-import type { DatabaseSync } from "node:sqlite";
-import type { AuditEventInput, AuditEventRecord, AuditMetadata, AuditMetadataValue } from "~~/shared/types/audit";
+import type {
+  AuditEventInput,
+  AuditEventRecord,
+  AuditMetadata,
+  AuditMetadataValue,
+} from "~~/shared/types/audit";
+import type { GatewayDb } from "../storage/contracts";
 import { gatewayDatabase } from "../storage/database";
 
 const SENSITIVE_METADATA_KEY = /token|secret|password|authorization|prompt|input|output|content/i;
@@ -31,57 +36,47 @@ const ALLOWED_METADATA_KEYS = new Set([
   "totalTokens",
 ]);
 
-export function createAuditStore(db: DatabaseSync) {
+interface ValidatedAuditEvent {
+  actorUserId: number | null;
+  userId: number | null;
+  action: string;
+  outcome: string;
+  errorCode: string | null;
+  metadata: AuditMetadata;
+  createdAt: string;
+}
+
+export function createAuditStore(db: GatewayDb) {
   return {
-    record(input: AuditEventInput): AuditEventRecord {
-      const action = requiredText(input.action, "action");
-      const outcome = requiredText(input.outcome, "outcome");
-      const errorCode = optionalText(input.errorCode, "errorCode");
-      const metadata = validateMetadata(input.metadata ?? {});
-      const createdAt = input.createdAt ?? new Date().toISOString();
-      const result = db
-        .prepare(
-          `
-            INSERT INTO agent_audit_events (
-              actor_user_id, user_id, action, outcome, error_code, metadata_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-          `,
-        )
-        .run(
-          nullablePositiveId(input.actorUserId, "actorUserId"),
-          nullablePositiveId(input.userId, "userId"),
-          action,
-          outcome,
-          errorCode,
-          JSON.stringify(metadata),
-          createdAt,
-        );
-      return getById(db, Number(result.lastInsertRowid));
+    record(input: AuditEventInput): Promise<AuditEventRecord> {
+      return recordValidated(db, validateAuditInput(input));
     },
 
-    listForAdmin(): AuditEventRecord[] {
-      return db
-        .prepare("SELECT * FROM agent_audit_events ORDER BY created_at DESC, id DESC")
-        .all()
-        .map(rowToAuditEvent);
+    async listForAdmin(): Promise<AuditEventRecord[]> {
+      const rows = await db.many(
+        "SELECT * FROM agent_audit_events ORDER BY created_at DESC, id DESC",
+      );
+      return rows.map(rowToAuditEvent);
     },
 
-    listForUser(userId: number): AuditEventRecord[] {
-      return db
-        .prepare("SELECT * FROM agent_audit_events WHERE user_id = ? ORDER BY created_at DESC, id DESC")
-        .all(nullablePositiveId(userId, "userId"))
-        .map(rowToAuditEvent);
+    async listForUser(userId: number): Promise<AuditEventRecord[]> {
+      const rows = await db.many(
+        "SELECT * FROM agent_audit_events WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+        [nullablePositiveId(userId, "userId")],
+      );
+      return rows.map(rowToAuditEvent);
     },
 
-    getById(id: number): AuditEventRecord {
+    getById(id: number): Promise<AuditEventRecord> {
       return getById(db, id);
     },
   };
 }
 
 export const auditStore = {
-  record(input: AuditEventInput) {
-    return createAuditStore(gatewayDatabase()).record(input);
+  record(input: AuditEventInput): Promise<AuditEventRecord> {
+    const validated = validateAuditInput(input);
+    return recordValidated(gatewayDatabase(), validated);
   },
   listForAdmin() {
     return createAuditStore(gatewayDatabase()).listForAdmin();
@@ -91,10 +86,45 @@ export const auditStore = {
   },
 };
 
-function getById(db: DatabaseSync, id: number): AuditEventRecord {
-  const row = db.prepare("SELECT * FROM agent_audit_events WHERE id = ?").get(id);
-  if (row === undefined) throw new Error(`Audit event ${id} was not recorded`);
+async function recordValidated(
+  db: GatewayDb,
+  input: ValidatedAuditEvent,
+): Promise<AuditEventRecord> {
+  return await db.transaction(async (tx) => {
+    const result = await tx.execute(
+      `INSERT INTO agent_audit_events (
+         actor_user_id, user_id, action, outcome, error_code, metadata_json, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        input.actorUserId,
+        input.userId,
+        input.action,
+        input.outcome,
+        input.errorCode,
+        JSON.stringify(input.metadata),
+        input.createdAt,
+      ],
+    );
+    return await getById(tx, result.insertId);
+  });
+}
+
+async function getById(db: GatewayDb, id: number): Promise<AuditEventRecord> {
+  const row = await db.one("SELECT * FROM agent_audit_events WHERE id = ?", [id]);
+  if (row === null) throw new Error(`Audit event ${id} was not recorded`);
   return rowToAuditEvent(row);
+}
+
+function validateAuditInput(input: AuditEventInput): ValidatedAuditEvent {
+  return {
+    actorUserId: nullablePositiveId(input.actorUserId, "actorUserId"),
+    userId: nullablePositiveId(input.userId, "userId"),
+    action: requiredText(input.action, "action"),
+    outcome: requiredText(input.outcome, "outcome"),
+    errorCode: optionalText(input.errorCode, "errorCode"),
+    metadata: validateMetadata(input.metadata ?? {}),
+    createdAt: input.createdAt ?? new Date().toISOString(),
+  };
 }
 
 function validateMetadata(metadata: unknown): AuditMetadata {
@@ -149,7 +179,9 @@ function optionalText(value: string | null | undefined, name: string) {
 
 function nullablePositiveId(value: number | null | undefined, name: string) {
   if (value === null || value === undefined) return null;
-  if (!Number.isInteger(value) || value <= 0) throw new Error(`Audit ${name} must be a positive integer`);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`Audit ${name} must be a positive integer`);
+  }
   return value;
 }
 
@@ -172,5 +204,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function isAuditMetadataValue(value: unknown): value is AuditMetadataValue {
-  return value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  );
 }

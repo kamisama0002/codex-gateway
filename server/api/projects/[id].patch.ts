@@ -36,7 +36,7 @@ export default defineGatewayConfigMutationHandler(async (event) => {
   if (!isManagedRuntimeHostId(existing.hostId)) {
     requireRecord(hostStore.get(existing.hostId), "Host not found");
   }
-  return userConfigMutationService.commit(event.context.auth!.user.id, () =>
+  return await userConfigMutationService.commit(event.context.auth!.user.id, () =>
     requireRecord(projectStore.update(id, constrainedInput), "Project not found"),
   );
 });

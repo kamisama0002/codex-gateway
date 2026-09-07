@@ -9,6 +9,27 @@ test("renders the desktop companion at twice the previous size", async ({ page }
   await expect.poll(() => elementBox(sprite).then((box) => box.width)).toBe(128);
 });
 
+test("keeps centered composer controls above a dragged companion", async ({ page }) => {
+  await openApp(page);
+
+  await page.getByTestId("composer-input").fill("Verify the composer hit target");
+  const sendButton = page.getByTestId("send-turn-button");
+  await expect(sendButton).toBeEnabled();
+  const handleBox = await elementBox(page.getByTestId("gateway-pet-drag-handle"));
+  const sendButtonBox = await elementBox(sendButton);
+
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    sendButtonBox.x + sendButtonBox.width / 2,
+    sendButtonBox.y + sendButtonBox.height / 2,
+    { steps: 8 },
+  );
+  await page.mouse.up();
+
+  await sendButton.click({ trial: true });
+});
+
 test("drags the companion across the desktop viewport and restores its saved position", async ({
   page,
 }) => {
