@@ -4,6 +4,7 @@ import type {
   ResolvedRuntimeSecret,
 } from "~~/shared/types";
 import { credentialTargetSchema } from "./schemas";
+import type { ExternalIssuerContext, ExternalIssuerDefinition } from "./external-issuer";
 
 interface CredentialSecretReader {
   resolveSecretsForContext(
@@ -12,10 +13,18 @@ interface CredentialSecretReader {
   ): Promise<DecryptedCredential[]>;
 }
 
+interface ExternalIssuerPort {
+  issue(
+    definition: ExternalIssuerDefinition,
+    context: ExternalIssuerContext,
+  ): Promise<{ token: string; expiresAt: string }>;
+}
+
 export class CredentialResolver {
   constructor(
     private readonly store: CredentialSecretReader,
     private readonly now: () => number = Date.now,
+    private readonly externalIssuer?: ExternalIssuerPort,
   ) {}
 
   async resolveForRuntime(context: CapabilityContext, capabilityIds: string[]) {
@@ -24,12 +33,13 @@ export class CredentialResolver {
     const resolved: ResolvedRuntimeSecret[] = [];
     for (const credential of credentials) {
       if (!isActive(credential, this.now())) continue;
+      const values = await this.runtimeValues(credential, context);
       for (const mapping of credential.mappings) {
         const target = credentialTargetSchema.parse(mapping.target);
         const targetId = targetKey(target);
         if (targets.has(targetId)) throw new Error("Credential target is assigned more than once");
         targets.add(targetId);
-        const value = credential.secret[mapping.field];
+        const value = values[mapping.field];
         if (value === undefined || value === "") {
           throw new Error("Credential mapping value is missing");
         }
@@ -45,6 +55,26 @@ export class CredentialResolver {
     return resolved.sort((left, right) =>
       targetKey(left.target).localeCompare(targetKey(right.target)),
     );
+  }
+
+  private async runtimeValues(credential: DecryptedCredential, context: CapabilityContext) {
+    if (credential.kind !== "external_issuer") return credential.secret;
+    if (this.externalIssuer === undefined)
+      throw new Error("External credential issuer is unavailable");
+    const url = credential.secret.issuerUrl;
+    const audience = credential.secret.audience;
+    if (url === undefined || audience === undefined) {
+      throw new Error("External credential issuer configuration is incomplete");
+    }
+    const issued = await this.externalIssuer.issue(
+      { url, audience, timeoutMs: 5_000 },
+      {
+        userId: context.userId,
+        projectId: context.projectId,
+        capabilityId: credential.capabilityId,
+      },
+    );
+    return { token: issued.token };
   }
 }
 

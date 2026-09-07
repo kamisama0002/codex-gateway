@@ -31,6 +31,9 @@ describe("Agent runtime managed Codex profile", () => {
       CODEX_GATEWAY_PROVIDER_BASE_URL: "http://codex-gateway:3000/api/internal/providers/gpt/v1",
       CODEX_GATEWAY_PROVIDER_ID: "gpt",
       CODEX_GATEWAY_PROVIDER_TOKEN: providerToken,
+      CODEX_MCP_OAUTH_CALLBACK_URL:
+        "https://gateway.example.test/api/capabilities/mcp/oauth/callback",
+      CODEX_MCP_OAUTH_CALLBACK_PORT: "1456",
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -47,6 +50,8 @@ describe("Agent runtime managed Codex profile", () => {
         'model_provider="codex_gateway"',
         'model_providers.codex_gateway.env_key="CODEX_GATEWAY_PROVIDER_TOKEN"',
         'model_providers.codex_gateway.wire_api="responses"',
+        "mcp_oauth_callback_port=1456",
+        'mcp_oauth_callback_url="https://gateway.example.test/api/capabilities/mcp/oauth/callback"',
       ]),
     );
     expect(args.join("\n")).not.toContain(providerToken);
@@ -56,6 +61,9 @@ describe("Agent runtime managed Codex profile", () => {
       CODEX_GATEWAY_PROVIDER_BASE_URL: "http://codex-gateway:3000/api/internal/providers/gpt/v1",
       CODEX_GATEWAY_PROVIDER_ID: "gpt",
       CODEX_GATEWAY_PROVIDER_TOKEN: providerToken,
+      CODEX_MCP_OAUTH_CALLBACK_URL:
+        "https://gateway.example.test/api/capabilities/mcp/oauth/callback",
+      CODEX_MCP_OAUTH_CALLBACK_PORT: "1456",
     });
     expect(second.status, second.stderr).toBe(0);
     expect(readFileSync(join(codexHome, "config.toml"), "utf8")).toBe(userConfig);

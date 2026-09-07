@@ -264,6 +264,7 @@ export const configWriteResponseSchema = z
   .strict();
 
 export const emptyCapabilityResponseSchema = z.object({}).strict();
+export const mcpOAuthLoginResponseSchema = z.object({ authorizationUrl: z.url() }).strict();
 
 export function parseSkillsListResponse(value: unknown) {
   return skillsListResponseSchema.parse(value);
@@ -315,4 +316,8 @@ export function parseConfigWriteResponse(value: unknown) {
 
 export function parseEmptyCapabilityResponse(value: unknown) {
   return emptyCapabilityResponseSchema.parse(value);
+}
+
+export function parseMcpOAuthLoginResponse(value: unknown) {
+  return mcpOAuthLoginResponseSchema.parse(value);
 }

@@ -68,7 +68,13 @@ export const credentialCreateInputSchema = z
     if (required.some((field) => input.secret[field] === undefined)) {
       context.addIssue({ code: "custom", message: "Credential secret fields are incomplete" });
     }
-    if (input.mappings.some((mapping) => input.secret[mapping.field] === undefined)) {
+    if (
+      input.mappings.some(
+        (mapping) =>
+          input.secret[mapping.field] === undefined &&
+          !(input.kind === "external_issuer" && mapping.field === "token"),
+      )
+    ) {
       context.addIssue({ code: "custom", message: "Credential mapping field is missing" });
     }
     if (
@@ -110,7 +116,13 @@ export function parseCredentialSecret(
   if (required.some((field) => secret[field] === undefined)) {
     throw new Error("Credential secret fields are incomplete");
   }
-  if (mappings.some((mapping) => secret[mapping.field] === undefined)) {
+  if (
+    mappings.some(
+      (mapping) =>
+        secret[mapping.field] === undefined &&
+        !(kind === "external_issuer" && mapping.field === "token"),
+    )
+  ) {
     throw new Error("Credential mapping field is missing");
   }
   return secret;
@@ -119,8 +131,9 @@ export function parseCredentialSecret(
 function requiredSecretFields(kind: z.infer<typeof credentialKindSchema>) {
   switch (kind) {
     case "token":
-    case "external_issuer":
       return ["token"];
+    case "external_issuer":
+      return ["issuerUrl", "audience"];
     case "username_password":
       return ["username", "password"];
     case "ssh_private_key":

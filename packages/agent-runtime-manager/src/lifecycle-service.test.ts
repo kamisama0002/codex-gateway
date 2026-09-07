@@ -36,6 +36,7 @@ const testPolicy: RuntimeManagerPolicy = {
   },
   internalPort: 4_555,
   networkNames: ["agent-runtime", "agent-egress"],
+  oauthCallbackUrl: "https://gateway.example.test/api/capabilities/mcp/oauth/callback",
 };
 
 function requestFor(runtimeId: string) {
@@ -76,6 +77,7 @@ class RecordingDockerEngine implements DockerEngine {
       value: string;
     }>;
   }> = [];
+  readonly oauthCallbackCalls: Array<{ containerId: string; pathAndQuery: string }> = [];
   readonly updateCalls: Array<{
     containerId: string;
     Memory: number;
@@ -164,6 +166,10 @@ class RecordingDockerEngine implements DockerEngine {
     secrets: RecordingDockerEngine["secretCalls"][number]["secrets"],
   ): Promise<void> {
     this.secretCalls.push({ containerId, secrets });
+  }
+
+  async forwardOAuthCallback(containerId: string, pathAndQuery: string): Promise<void> {
+    this.oauthCallbackCalls.push({ containerId, pathAndQuery });
   }
 
   async sampleContainerStats(containerId: string): Promise<unknown> {
@@ -385,6 +391,7 @@ describe("RuntimeLifecycleService", () => {
       },
       serviceToken: "generated-service-token",
       userHash,
+      oauthCallbackUrl: "https://gateway.example.test/api/capabilities/mcp/oauth/callback",
     });
   });
 
@@ -485,6 +492,31 @@ describe("RuntimeLifecycleService", () => {
     expect(engine.secretCalls.at(-1)?.secrets[0]?.value).toBe("rotated-env");
   });
 
+  it("forwards an OAuth callback only to a running target container", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+    await service.provision(requestFor("runtime-oauth"));
+
+    await expect(
+      service.forwardOAuthCallback({
+        runtimeId: "runtime-oauth",
+        pathAndQuery: "/api/capabilities/mcp/oauth/callback?code=abc&state=state-value",
+      }),
+    ).rejects.toThrow("not running");
+    await service.start({ runtimeId: "runtime-oauth" });
+    await service.forwardOAuthCallback({
+      runtimeId: "runtime-oauth",
+      pathAndQuery: "/api/capabilities/mcp/oauth/callback?code=abc&state=state-value",
+    });
+
+    expect(engine.oauthCallbackCalls).toEqual([
+      {
+        containerId: "container-1",
+        pathAndQuery: "/api/capabilities/mcp/oauth/callback?code=abc&state=state-value",
+      },
+    ]);
+  });
+
   it("uses operator-configured agent CPU, memory, and PID limits", async () => {
     const engine = new RecordingDockerEngine();
     const service = new RuntimeLifecycleService(
@@ -515,11 +547,16 @@ describe("RuntimeLifecycleService", () => {
       RUNTIME_AGENT_MEMORY: "4g",
       RUNTIME_AGENT_CPUS: "1",
       RUNTIME_AGENT_PIDS: "128",
+      RUNTIME_MANAGER_MCP_OAUTH_CALLBACK_URL:
+        "https://gateway.example.test/api/capabilities/mcp/oauth/callback",
     });
     expect(policy.agentMemoryBytes).toBe(4_294_967_296);
     expect(policy.agentNanoCpus).toBe(1_000_000_000);
     expect(policy.agentPidsLimit).toBe(128);
     expect(policy.networkNames).toEqual(["agent-runtime", "agent-egress"]);
+    expect(policy.oauthCallbackUrl).toBe(
+      "https://gateway.example.test/api/capabilities/mcp/oauth/callback",
+    );
   });
 
   it("rejects duplicate and Docker-reserved Agent networks", () => {
@@ -955,6 +992,49 @@ describe("Runtime Manager HTTP API", () => {
     expect(response.status).toBe(200);
     expect(JSON.stringify(await response.json())).not.toContain(exactSecret);
     expect(engine.secretCalls.at(-1)?.secrets[0]?.value).toBe(exactSecret);
+  });
+
+  it("serves an authenticated OAuth callback forward without echoing query data", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+    await service.provision(requestFor("runtime-oauth-http"));
+    await service.start({ runtimeId: "runtime-oauth-http" });
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
+    const server = createServer(createRuntimeManagerRequestHandler({ authenticator, service }));
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("missing test server");
+    const callback = "/api/capabilities/mcp/oauth/callback?code=secret-code&state=secret-state";
+    const body = Buffer.from(
+      JSON.stringify({ runtimeId: "runtime-oauth-http", pathAndQuery: callback }),
+    );
+    const path = "/v1/runtimes/oauth-callback";
+    const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
+      method: "POST",
+      body,
+      headers: {
+        "content-type": "application/json",
+        ...createSignedHeaders({
+          body,
+          method: "POST",
+          path,
+          nonce: "http-oauth-callback",
+          secret: "shared-secret",
+          timestamp: now,
+        }),
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(engine.oauthCallbackCalls).toEqual([
+      { containerId: "container-1", pathAndQuery: callback },
+    ]);
   });
 
   it("rejects unauthenticated requests with a safe fixed response", async () => {

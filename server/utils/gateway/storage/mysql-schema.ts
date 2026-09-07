@@ -392,4 +392,32 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
       `,
     ],
   },
+  {
+    version: 11,
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS credential_oauth_states (
+          state_hash CHAR(64) NOT NULL,
+          user_id INT UNSIGNED NOT NULL,
+          project_id INT UNSIGNED NULL,
+          capability_id VARCHAR(128) NOT NULL,
+          runtime_id VARCHAR(128) NOT NULL,
+          callback_path VARCHAR(256) NOT NULL,
+          expires_at VARCHAR(32) NOT NULL,
+          consumed_at VARCHAR(32) NULL,
+          created_at VARCHAR(32) NOT NULL,
+          PRIMARY KEY (state_hash),
+          KEY idx_credential_oauth_states_expiry (expires_at, consumed_at),
+          CONSTRAINT chk_credential_oauth_states_project
+            CHECK (project_id IS NULL OR project_id > 0),
+          CONSTRAINT chk_credential_oauth_states_hash
+            CHECK (state_hash REGEXP '^[a-f0-9]{64}$'),
+          CONSTRAINT fk_credential_oauth_states_capability
+            FOREIGN KEY (capability_id) REFERENCES capability_definitions(id) ON DELETE CASCADE,
+          CONSTRAINT fk_credential_oauth_states_user
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
+      `,
+    ],
+  },
 ];

@@ -101,6 +101,31 @@ export const syncRuntimeSecretsRequestSchema = z
   .strict();
 export type SyncRuntimeSecretsRequest = z.infer<typeof syncRuntimeSecretsRequestSchema>;
 
+export const forwardOAuthCallbackRequestSchema = z
+  .object({
+    runtimeId: runtimeIdSchema,
+    pathAndQuery: z
+      .string()
+      .min(1)
+      .max(32 * 1024)
+      .refine((value) => {
+        try {
+          const url = new URL(value, "http://callback.invalid");
+          return (
+            url.origin === "http://callback.invalid" &&
+            url.pathname === "/api/capabilities/mcp/oauth/callback" &&
+            url.hash === "" &&
+            url.searchParams.has("state") &&
+            (url.searchParams.has("code") || url.searchParams.has("error"))
+          );
+        } catch {
+          return false;
+        }
+      }, "Invalid MCP OAuth callback"),
+  })
+  .strict();
+export type ForwardOAuthCallbackRequest = z.infer<typeof forwardOAuthCallbackRequestSchema>;
+
 export const upgradeRuntimeRequestSchema = z
   .object({
     runtimeId: runtimeIdSchema,
@@ -195,6 +220,18 @@ const dockerNetworkNameSchema = z
     message: "Reserved Docker network names are not allowed",
   });
 
+const oauthCallbackUrlSchema = z.url().refine((value) => {
+  const url = new URL(value);
+  return (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    url.username === "" &&
+    url.password === "" &&
+    url.pathname === "/api/capabilities/mcp/oauth/callback" &&
+    url.search === "" &&
+    url.hash === ""
+  );
+}, "Invalid MCP OAuth callback URL");
+
 export const runtimeManagerPolicySchema = z
   .object({
     images: z.record(imageAliasSchema, runtimeImagePolicySchema),
@@ -204,6 +241,7 @@ export const runtimeManagerPolicySchema = z
       .refine(([internal, egress]) => internal !== egress, {
         message: "Agent runtime requires two different networks",
       }),
+    oauthCallbackUrl: oauthCallbackUrlSchema.optional(),
     resourceLabels: z.record(z.string().min(1).max(128), z.string().max(256)).default({}),
     agentMemoryBytes: z
       .number()

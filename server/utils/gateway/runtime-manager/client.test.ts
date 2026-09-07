@@ -163,6 +163,25 @@ describe("RuntimeManagerClient", () => {
     expect(JSON.stringify(result)).not.toContain(exactSecret);
   });
 
+  it("forwards an OAuth callback through the fixed signed endpoint", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ ok: true }));
+    const client = new RuntimeManagerClient({
+      baseUrl: "http://runtime-manager:8787",
+      secret: "manager-shared-secret",
+      fetch,
+    });
+    const callback = "/api/capabilities/mcp/oauth/callback?code=secret-code&state=secret-state";
+
+    await expect(
+      client.forwardOAuthCallback({ runtimeId: "runtime_01", pathAndQuery: callback }),
+    ).resolves.toBeUndefined();
+
+    expect(fetch.mock.calls[0]?.[0]).toBe("http://runtime-manager:8787/v1/runtimes/oauth-callback");
+    expect(fetch.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ runtimeId: "runtime_01", pathAndQuery: callback }),
+    );
+  });
+
   it("fails closed when Runtime Manager returns an invalid endpoint", async () => {
     const client = new RuntimeManagerClient({
       baseUrl: "http://runtime-manager:8787",

@@ -11,12 +11,14 @@ import {
 } from "./docker-engine.js";
 import {
   agentRuntimeStatsResultSchema,
+  forwardOAuthCallbackRequestSchema,
   provisionRuntimeRequestSchema,
   runtimeManagerPolicySchema,
   syncRuntimeSecretsRequestSchema,
   type AgentRuntimeStatsResult,
   type ExecRuntimeRequest,
   type ExecRuntimeResult,
+  type ForwardOAuthCallbackRequest,
   type ProvisionRuntimeRequest,
   type RuntimeActionRequest,
   type RuntimeLifecycleResult,
@@ -30,6 +32,7 @@ export interface RuntimeManagerPolicy {
   images: Record<string, { image: string; imageVersion: string }>;
   internalPort: number;
   networkNames: [string, string];
+  oauthCallbackUrl?: string;
   resourceLabels?: Record<string, string>;
   agentMemoryBytes?: number;
   agentNanoCpus?: number;
@@ -162,6 +165,13 @@ export class RuntimeLifecycleService {
     return toResult({ ...container, running: true });
   }
 
+  async forwardOAuthCallback(request: ForwardOAuthCallbackRequest): Promise<void> {
+    const normalized = forwardOAuthCallbackRequestSchema.parse(request);
+    const container = await this.requireContainer(normalized.runtimeId);
+    if (!container.running) throw new Error("Agent runtime is not running");
+    await this.engine.forwardOAuthCallback(container.containerId, normalized.pathAndQuery);
+  }
+
   async upgrade(request: UpgradeRuntimeRequest): Promise<RuntimeLifecycleResult> {
     const image = this.resolveImage(request.imageAlias);
     const existing = await this.requireContainer(request.runtimeId);
@@ -226,6 +236,7 @@ export class RuntimeLifecycleService {
         },
       ],
       networkNames: this.policy.networkNames,
+      oauthCallbackUrl: this.policy.oauthCallbackUrl,
       runtimeId: request.runtimeId,
       runtimeType: request.runtimeType,
       security: this.agentSecurityPolicy(),

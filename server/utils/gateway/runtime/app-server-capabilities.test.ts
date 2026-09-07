@@ -188,6 +188,9 @@ describe("AppServerCapabilityService RPC mapping", () => {
         overriddenMetadata: null,
       },
       "config/mcpServer/reload": {},
+      "mcpServer/oauth/login": {
+        authorizationUrl: "https://auth.example.test/authorize?state=state-value",
+      },
     });
     const skillPath = "/codex-home/skills/org__revenue/1/SKILL.md";
 
@@ -207,6 +210,7 @@ describe("AppServerCapabilityService RPC mapping", () => {
     await service.removeMarketplace(managedHost, "org__old_catalog");
     await service.writeConfigValue(managedHost, 'apps."org__crm_app".enabled', true);
     await service.reloadMcpServers(managedHost);
+    await service.startMcpOAuth(managedHost, "org__business", null);
 
     expect(request.mock.calls.map(([method, params]) => [method, params])).toEqual([
       ["fs/createDirectory", { path: "/codex-home/skills/org__revenue/1", recursive: true }],
@@ -230,6 +234,7 @@ describe("AppServerCapabilityService RPC mapping", () => {
         { keyPath: 'apps."org__crm_app".enabled', value: true, mergeStrategy: "replace" },
       ],
       ["config/mcpServer/reload", undefined],
+      ["mcpServer/oauth/login", { name: "org__business", threadId: null, timeoutSecs: 600 }],
     ]);
   });
 });

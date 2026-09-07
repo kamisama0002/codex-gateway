@@ -606,6 +606,7 @@ function runtimeFixture(
       status: "running" as const,
       endpoint: { ...endpoint, runtimeId: input.runtimeId },
     })),
+    forwardOAuthCallback: vi.fn(async () => undefined),
     remove: vi.fn(async (runtimeId: string) => ({
       runtimeId,
       containerId: null,

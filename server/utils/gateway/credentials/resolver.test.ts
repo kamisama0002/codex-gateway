@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CredentialTarget, DecryptedCredential } from "~~/shared/types";
 import { CredentialResolver } from "./resolver";
 
@@ -56,6 +56,41 @@ describe("CredentialResolver", () => {
     await expect(
       resolver.resolveForRuntime({ userId: 7, projectId: null }, ["org__business"]),
     ).resolves.toEqual([]);
+  });
+
+  it("issues external credentials at resolution time instead of storing a token", async () => {
+    const issue = vi.fn(async () => ({
+      token: "fresh-short-token",
+      expiresAt: "2026-09-07T00:10:00.000Z",
+    }));
+    const resolver = new CredentialResolver(
+      {
+        resolveSecretsForContext: async () => [
+          credential({
+            kind: "external_issuer",
+            secret: {
+              issuerUrl: "https://issuer.example.test/v1/token",
+              audience: "business-mcp",
+            },
+            mappings: [{ field: "token", target: { type: "env", name: "BUSINESS_TOKEN" } }],
+          }),
+        ],
+      },
+      () => Date.parse("2026-09-07T00:00:00.000Z"),
+      { issue },
+    );
+
+    await expect(
+      resolver.resolveForRuntime({ userId: 7, projectId: 10 }, ["org__business"]),
+    ).resolves.toEqual([expect.objectContaining({ value: "fresh-short-token" })]);
+    expect(issue).toHaveBeenCalledWith(
+      {
+        url: "https://issuer.example.test/v1/token",
+        audience: "business-mcp",
+        timeoutMs: 5_000,
+      },
+      { userId: 7, projectId: 10, capabilityId: "org__business" },
+    );
   });
 
   const unsafeTargets: CredentialTarget[] = [

@@ -77,6 +77,30 @@ const provisionRuntimeRequestSchema = z
 const upgradeRuntimeRequestSchema = z
   .object({ runtimeId: runtimeIdSchema, imageAlias: imageAliasSchema })
   .strict();
+const forwardOAuthCallbackRequestSchema = z
+  .object({
+    runtimeId: runtimeIdSchema,
+    pathAndQuery: z
+      .string()
+      .min(1)
+      .max(32 * 1024)
+      .refine((value) => {
+        try {
+          const url = new URL(value, "http://callback.invalid");
+          return (
+            url.origin === "http://callback.invalid" &&
+            url.pathname === "/api/capabilities/mcp/oauth/callback" &&
+            url.hash === "" &&
+            url.searchParams.has("state") &&
+            (url.searchParams.has("code") || url.searchParams.has("error"))
+          );
+        } catch {
+          return false;
+        }
+      }),
+  })
+  .strict();
+const okResponseSchema = z.object({ ok: z.literal(true) }).strict();
 const internalManagedRuntimeEndpointSchema = managedRuntimeEndpointSchema.refine((endpoint) => {
   try {
     const protocol = new URL(endpoint.websocketUrl).protocol;
@@ -163,6 +187,11 @@ export interface ProvisionRuntimeRequest {
 export interface SyncRuntimeSecretsRequest {
   runtimeId: string;
   runtimeSecrets: ResolvedRuntimeSecret[];
+}
+
+export interface ForwardOAuthCallbackRequest {
+  runtimeId: string;
+  pathAndQuery: string;
 }
 
 export interface RuntimeLifecycleResult {
@@ -265,6 +294,15 @@ export class RuntimeManagerClient {
         .pick({ runtimeId: true, runtimeSecrets: true })
         .required({ runtimeSecrets: true })
         .parse(input),
+    );
+  }
+
+  async forwardOAuthCallback(input: ForwardOAuthCallbackRequest): Promise<void> {
+    await this.requestParsed(
+      "POST",
+      "/v1/runtimes/oauth-callback",
+      forwardOAuthCallbackRequestSchema.parse(input),
+      okResponseSchema,
     );
   }
 

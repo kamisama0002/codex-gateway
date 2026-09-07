@@ -20,4 +20,12 @@ describe("MySQL capability schema", () => {
     expect(sql).toContain("encrypted_payload LONGTEXT NOT NULL");
     expect(sql).toContain("idx_credentials_context");
   });
+
+  it("adds one-time MCP OAuth state in migration 11", () => {
+    const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 11);
+    const sql = migration?.statements.join("\n") ?? "";
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS credential_oauth_states");
+    expect(sql).toContain("PRIMARY KEY (state_hash)");
+    expect(sql).toContain("consumed_at VARCHAR(32) NULL");
+  });
 });

@@ -46,6 +46,7 @@ export interface DockerContainerCreateSpec {
   serviceToken: string;
   userHash: string;
   providerConfig?: RuntimeProviderConfig;
+  oauthCallbackUrl?: string;
 }
 
 export interface EngineContainerState {
@@ -80,6 +81,7 @@ export interface DockerEngine {
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
   ): Promise<void>;
   writeRuntimeSecrets(containerId: string, secrets: RuntimeSecret[]): Promise<void>;
+  forwardOAuthCallback(containerId: string, pathAndQuery: string): Promise<void>;
 }
 
 export class DockerodeEngine implements DockerEngine {
@@ -114,6 +116,12 @@ export class DockerodeEngine implements DockerEngine {
         `CODEX_APP_SERVER_PORT=${spec.internalPort}`,
         `CODEX_REMOTE_TOKEN=${spec.serviceToken}`,
         `CODEX_RUNTIME_IMAGE_ALIAS=${spec.imageAlias}`,
+        ...(spec.oauthCallbackUrl === undefined
+          ? []
+          : [
+              `CODEX_MCP_OAUTH_CALLBACK_URL=${spec.oauthCallbackUrl}`,
+              "CODEX_MCP_OAUTH_CALLBACK_PORT=1456",
+            ]),
         ...(spec.providerConfig === undefined
           ? []
           : [
@@ -168,6 +176,28 @@ export class DockerodeEngine implements DockerEngine {
       await completion;
       const inspected = await exec.inspect();
       if (inspected.ExitCode !== 0) throw new Error("Runtime secret writer failed");
+    } finally {
+      payload.fill(0);
+    }
+  }
+
+  async forwardOAuthCallback(containerId: string, pathAndQuery: string): Promise<void> {
+    const payload = Buffer.from(pathAndQuery, "utf8");
+    try {
+      const exec = await this.docker.getContainer(containerId).exec({
+        AttachStderr: true,
+        AttachStdin: true,
+        AttachStdout: true,
+        Cmd: ["node", "/usr/local/lib/agent-runtime-oauth-callback.mjs"],
+        User: "10001:10001",
+      });
+      const stream = await exec.start({ hijack: true, stdin: true });
+      const completion = finished(stream);
+      stream.resume();
+      stream.end(payload);
+      await completion;
+      const inspected = await exec.inspect();
+      if (inspected.ExitCode !== 0) throw new Error("MCP OAuth callback forwarding failed");
     } finally {
       payload.fill(0);
     }

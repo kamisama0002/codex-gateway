@@ -112,12 +112,14 @@ RUN yarn_version="$(node -p 'require("/tmp/agent-runtime-node-tools.json").packa
 
 COPY docker/agent-runtime-entrypoint.sh /usr/local/bin/agent-runtime-entrypoint
 COPY docker/agent-runtime-config.mjs /usr/local/lib/agent-runtime-config.mjs
+COPY docker/agent-runtime-oauth-callback.mjs /usr/local/lib/agent-runtime-oauth-callback.mjs
 COPY docker/agent-runtime-secret-writer.mjs /usr/local/lib/agent-runtime-secret-writer.mjs
 COPY docker/agent-runtime-healthcheck.mjs /usr/local/lib/agent-runtime-healthcheck.mjs
 COPY scripts/smoke-agent-runtime.mjs /usr/local/lib/smoke-agent-runtime.mjs
 
 RUN chmod 0555 /usr/local/bin/agent-runtime-entrypoint \
       /usr/local/lib/agent-runtime-config.mjs \
+      /usr/local/lib/agent-runtime-oauth-callback.mjs \
       /usr/local/lib/agent-runtime-secret-writer.mjs \
       /usr/local/lib/agent-runtime-healthcheck.mjs \
       /usr/local/lib/smoke-agent-runtime.mjs \

@@ -19,6 +19,7 @@ import {
   provisionRuntimeRequestSchema,
   runtimeActionRequestSchema,
   execRuntimeRequestSchema,
+  forwardOAuthCallbackRequestSchema,
   type RuntimeLifecycleResult,
   runtimeManagerPolicySchema,
   syncRuntimeSecretsRequestSchema,
@@ -87,6 +88,10 @@ async function handleRequest(
         200,
         await options.service.exec(execRuntimeRequestSchema.parse(payload)),
       );
+    }
+    if (url.pathname === "/v1/runtimes/oauth-callback") {
+      await options.service.forwardOAuthCallback(forwardOAuthCallbackRequestSchema.parse(payload));
+      return sendJson(response, 200, { ok: true });
     }
     const actionMatch =
       /^\/v1\/runtimes\/(provision|start|stop|restart|upgrade|remove|secrets)$/.exec(url.pathname);
@@ -187,6 +192,7 @@ export function loadRuntimeManagerPolicy(
       requiredEnvironment(environment, "RUNTIME_MANAGER_AGENT_NETWORK"),
       requiredEnvironment(environment, "RUNTIME_MANAGER_AGENT_EGRESS_NETWORK"),
     ],
+    oauthCallbackUrl: optionalEnvironment(environment, "RUNTIME_MANAGER_MCP_OAUTH_CALLBACK_URL"),
     resourceLabels,
     agentMemoryBytes: parseAgentMemoryBytes(environment.RUNTIME_AGENT_MEMORY),
     agentNanoCpus: parseAgentNanoCpus(environment.RUNTIME_AGENT_CPUS),
@@ -216,6 +222,11 @@ function requiredEnvironment(environment: NodeJS.ProcessEnv, key: string): strin
   const value = environment[key];
   if (value === undefined || value.length === 0) throw new Error(`${key} is required`);
   return value;
+}
+
+function optionalEnvironment(environment: NodeJS.ProcessEnv, key: string) {
+  const value = environment[key]?.trim();
+  return value === undefined || value === "" ? undefined : value;
 }
 
 function isLifecycleAction(

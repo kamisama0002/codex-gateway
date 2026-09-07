@@ -26,9 +26,11 @@ import { transitionRuntime, type RuntimeEvent } from "./runtime-state";
 import { capabilityStore } from "../capabilities/store";
 import { credentialStore } from "../credentials/store";
 import { CredentialResolver } from "../credentials/resolver";
+import { externalCredentialIssuerFromEnvironment } from "../credentials/external-issuer";
 import {
   RuntimeManagerClient,
   type AgentRuntimeStatsResult,
+  type ForwardOAuthCallbackRequest,
   type ProvisionRuntimeRequest,
   type RuntimeLifecycleResult,
   type SyncRuntimeSecretsRequest,
@@ -49,6 +51,7 @@ interface RuntimeManagerPort {
   restart(runtimeId: string): Promise<RuntimeLifecycleResult>;
   syncSecrets(input: SyncRuntimeSecretsRequest): Promise<RuntimeLifecycleResult>;
   remove(runtimeId: string): Promise<RuntimeLifecycleResult>;
+  forwardOAuthCallback(input: ForwardOAuthCallbackRequest): Promise<void>;
 }
 
 interface RuntimeStorePort {
@@ -110,6 +113,7 @@ const safeManagerErrorCodes = new Set([
   "unknown_image_alias",
   "capability_sync_failed",
   "credential_sync_failed",
+  "oauth_callback_failed",
 ]);
 
 export class ManagedRuntimeServiceError extends Error {
@@ -386,6 +390,25 @@ export class ManagedRuntimeService {
     }
     const endpoint = this.runningEndpoint(identity.runtimeId, result);
     return createManagedRuntimeHost(targetUserId, runtime, endpoint);
+  }
+
+  runtimeIdForUser(userId: number) {
+    return this.identity(positiveUserId(userId)).runtimeId;
+  }
+
+  forwardOAuthCallback(userId: number, pathAndQuery: string): Promise<void> {
+    const targetUserId = positiveUserId(userId);
+    return this.lockFor(targetUserId).runExclusive(async () => {
+      await this.requiredRuntime(targetUserId);
+      try {
+        await this.options.manager.forwardOAuthCallback({
+          runtimeId: this.identity(targetUserId).runtimeId,
+          pathAndQuery,
+        });
+      } catch {
+        throw new ManagedRuntimeServiceError("oauth_callback_failed");
+      }
+    });
   }
 
   private async startLocked(userId: number, actorUserId: number): Promise<ManagedRuntimeStatus> {
@@ -743,6 +766,12 @@ export const runtimeService = {
   resolveManagedHost(userId: number) {
     return defaultRuntimeService().resolveManagedHost(userId);
   },
+  runtimeIdForUser(userId: number) {
+    return defaultRuntimeService().runtimeIdForUser(userId);
+  },
+  forwardOAuthCallback(userId: number, pathAndQuery: string) {
+    return defaultRuntimeService().forwardOAuthCallback(userId, pathAndQuery);
+  },
 };
 
 function defaultRuntimeService(): ManagedRuntimeService {
@@ -767,7 +796,11 @@ function defaultRuntimeService(): ManagedRuntimeService {
         userId,
         projectId,
       });
-      return await new CredentialResolver(credentialStore).resolveForRuntime(
+      return await new CredentialResolver(
+        credentialStore,
+        Date.now,
+        externalCredentialIssuerFromEnvironment(),
+      ).resolveForRuntime(
         { userId, projectId },
         capabilities.map((capability) => capability.id),
       );

@@ -9,6 +9,7 @@ import {
   parseMarketplaceAddResponse,
   parseMarketplaceRemoveResponse,
   parseMarketplaceUpgradeResponse,
+  parseMcpOAuthLoginResponse,
   parsePluginInstallResponse,
   parsePluginListResponse,
   parseSkillConfigWriteResponse,
@@ -184,6 +185,15 @@ export class AppServerCapabilityService {
       "config/mcpServer/reload",
       undefined,
       parseEmptyCapabilityResponse,
+    );
+  }
+
+  async startMcpOAuth(host: HostRecord, name: string, threadId: string | null) {
+    return await this.request(
+      host,
+      "mcpServer/oauth/login",
+      { name, threadId, timeoutSecs: 600 },
+      parseMcpOAuthLoginResponse,
     );
   }
 

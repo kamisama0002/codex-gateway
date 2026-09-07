@@ -6,6 +6,7 @@ const codexHome = nonEmptyEnvironment("CODEX_HOME") ?? "/codex-home";
 const secretDirectory = nonEmptyEnvironment("CODEX_RUNTIME_SECRET_DIR") ?? "/run/codex-secrets";
 const runtimeSecrets = loadRuntimeSecrets(secretDirectory);
 const provider = providerConfiguration({ ...process.env, ...runtimeSecrets.environment });
+const oauthCallback = oauthCallbackConfiguration(process.env);
 const websocketTokenSha256 = requiredSha256("CODEX_REMOTE_TOKEN_SHA256");
 
 mkdirSync(codexHome, { mode: 0o700, recursive: true });
@@ -22,6 +23,7 @@ const args = [
   "memories",
   "--enable",
   "plugins",
+  ...(oauthCallback === null ? [] : oauthCallbackArguments(oauthCallback)),
   ...(provider === null ? [] : providerArguments(provider)),
   "--listen",
   "ws://0.0.0.0:4500",
@@ -43,6 +45,8 @@ if (process.env.CODEX_RUNTIME_CONFIG_DRY_RUN === "1") {
   delete childEnvironment.CODEX_RUNTIME_CONFIG_DRY_RUN;
   delete childEnvironment.CODEX_RUNTIME_CONFIG_HELPER;
   delete childEnvironment.CODEX_RUNTIME_SECRET_DIR;
+  delete childEnvironment.CODEX_MCP_OAUTH_CALLBACK_URL;
+  delete childEnvironment.CODEX_MCP_OAUTH_CALLBACK_PORT;
 
   const child = spawn("codex", args, { env: childEnvironment, stdio: "inherit" });
   const forwardSignal = (signal) => child.kill(signal);
@@ -57,6 +61,41 @@ if (process.env.CODEX_RUNTIME_CONFIG_DRY_RUN === "1") {
     process.removeListener("SIGTERM", forwardSignal);
     process.exitCode = code ?? 1;
   });
+}
+
+/** @param {{ port: number, url: string }} callback */
+function oauthCallbackArguments(callback) {
+  return [
+    "-c",
+    `mcp_oauth_callback_port=${callback.port}`,
+    "-c",
+    `mcp_oauth_callback_url=${tomlString(callback.url)}`,
+  ];
+}
+
+/** @param {NodeJS.ProcessEnv} environment */
+function oauthCallbackConfiguration(environment) {
+  const rawUrl = nonEmptyValue(environment.CODEX_MCP_OAUTH_CALLBACK_URL);
+  const rawPort = nonEmptyValue(environment.CODEX_MCP_OAUTH_CALLBACK_PORT);
+  if (rawUrl === null && rawPort === null) return null;
+  if (rawUrl === null || rawPort === null)
+    throw new Error("Incomplete MCP OAuth callback configuration");
+  const url = new URL(rawUrl);
+  const port = Number(rawPort);
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/api/capabilities/mcp/oauth/callback" ||
+    url.search !== "" ||
+    url.hash !== "" ||
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65_535
+  ) {
+    throw new Error("MCP OAuth callback configuration is invalid");
+  }
+  return { port, url: url.toString() };
 }
 
 /** @param {string} directory */
