@@ -150,37 +150,39 @@ Commit: `feat(runtime): add full agent toolchain`
 - Create: `tests/unit/agent-runtime-config.test.ts`
 
 **Interfaces:**
-- Produces: `buildManagedCodexArgs(env): string[]`.
-- Guarantees: `/codex-home/config.toml` is created only when absent; platform model and Feature settings are CLI overrides; secrets stay environment references.
+- Produces: deterministic `codex app-server -c ... --enable ...` argument arrays and a signal-forwarding
+  Node launcher.
+- Guarantees: `/codex-home/config.toml` is created only when absent; platform model and Feature
+  settings use supported runtime overrides; secrets stay environment references.
 
-- [ ] **Step 1: Write failing persistence and redaction tests**
+- [x] **Step 1: Write failing persistence and redaction tests**
 
 Use a temporary `CODEX_HOME` containing a manual MCP entry, execute the entrypoint twice with a fake Codex binary, and assert:
 
 ```ts
 expect(readFileSync(configPath, "utf8")).toContain("[mcp_servers.user_server]");
 expect(capturedArgs).toContain('model_provider="codex_gateway"');
-expect(capturedArgs).toContain("features.memories=true");
+expect(capturedArgs).toContain("memories");
 expect(capturedArgs.join(" ")).not.toContain(providerToken);
 ```
 
 The exact Memory feature key must come from the generated 0.153.4 config schema; the test literal and implementation must match that schema.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pnpm exec vitest run tests/unit/agent-runtime-config.test.ts packages/agent-runtime-manager/src/image-policy.test.ts`
 
 Expected: FAIL because the current entrypoint overwrites `config.toml`.
 
-- [ ] **Step 3: Implement structured managed arguments**
+- [x] **Step 3: Implement structured managed arguments**
 
 The Node helper validates provider ID, model, URL and Feature keys, serializes values as valid TOML literals, and emits one JSON array to the entrypoint. The shell script unsets `CODEX_REMOTE_TOKEN` before `exec codex` and never writes provider tokens.
 
-- [ ] **Step 4: Verify restart persistence with temporary volumes**
+- [x] **Step 4: Verify restart persistence with temporary volumes**
 
 Start, stop and start the same smoke container. Assert the manual MCP entry, Memory directory and an arbitrary user config key survive byte-for-byte.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run both focused tests, the entrypoint smoke, `pnpm typecheck` and `git diff --check`.
 

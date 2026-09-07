@@ -325,28 +325,16 @@ describe("Agent runtime image policy", () => {
     }
   });
 
-  it("starts App Server with a derived capability-token digest and no raw token", () => {
+  it("builds App Server arguments with a derived capability-token digest and no raw token", () => {
     const fixtureDirectory = mkdtempSync(join(tmpdir(), "codex-agent-entrypoint-"));
-    const fakeCodexPath = join(fixtureDirectory, "codex");
-    const capturePath = join(fixtureDirectory, "capture.txt");
+    const fakeNodePath = join(fixtureDirectory, "node");
     const token = "test-only-random-service-token";
     writeFileSync(
-      fakeCodexPath,
-      [
-        "#!/bin/sh",
-        "set -eu",
-        'if [ "${CODEX_REMOTE_TOKEN+x}" = x ]; then',
-        "  printf '%s\\n' token-present",
-        "else",
-        "  printf '%s\\n' token-unset",
-        'fi > "$E2E_CAPTURE_PATH"',
-        'for argument in "$@"; do',
-        '  printf \'%s\\n\' "$argument" >> "$E2E_CAPTURE_PATH"',
-        "done",
-      ].join("\n"),
+      fakeNodePath,
+      ["#!/bin/sh", "set -eu", `exec \"${shellPath(process.execPath)}\" \"$@\"`].join("\n"),
       { mode: 0o755 },
     );
-    chmodSync(fakeCodexPath, 0o755);
+    chmodSync(fakeNodePath, 0o755);
 
     try {
       const shell = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
@@ -355,16 +343,27 @@ describe("Agent runtime image policy", () => {
         encoding: "utf8",
         env: {
           ...process.env,
+          CODEX_HOME: shellFixtureDirectory,
           CODEX_REMOTE_TOKEN: token,
-          E2E_CAPTURE_PATH: `${shellFixtureDirectory}/capture.txt`,
+          CODEX_RUNTIME_CONFIG_HELPER: shellPath(
+            fileURLToPath(new URL("../../../docker/agent-runtime-config.mjs", import.meta.url)),
+          ),
+          CODEX_RUNTIME_CONFIG_DRY_RUN: "1",
           PATH: `${shellFixtureDirectory}:/usr/bin:/bin`,
         },
       });
       expect(result.status, result.stderr).toBe(0);
-      const captured = readFileSync(capturePath, "utf8").trim().split("\n");
+      const captured = z.array(z.string()).parse(JSON.parse(result.stdout));
       expect(captured).toEqual([
-        "token-unset",
         "app-server",
+        "--enable",
+        "apps",
+        "--enable",
+        "browser_use",
+        "--enable",
+        "memories",
+        "--enable",
+        "plugins",
         "--listen",
         "ws://0.0.0.0:4500",
         "--ws-auth",

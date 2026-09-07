@@ -74,8 +74,9 @@ Runtime Manager 的 `imageVersion` 由清单摘要生成，禁止用模糊 `late
 `/codex-home` 和 `/workspace` 继续使用每用户独立持久卷。入口脚本遵守以下所有权：
 
 - `/codex-home/config.toml` 是持久基础配置，只在文件不存在时创建，不再整文件覆盖。
-- 模型 Provider、默认模型和平台强制 Feature 通过受控 CLI override 传给 App Server；Token 只
-  使用环境变量引用，不写入 TOML 或命令参数。
+- 模型 Provider、默认模型和平台强制 Feature 由受控 Node 启动器通过 App Server 正式支持的
+  `-c` 和 `--enable` 参数注入。启动器使用参数数组，不经过 shell 拼接；Token 只使用环境变量
+  引用，不写入 TOML 或命令参数。
 - 平台管理的能力使用 `org__` 命名空间。Gateway Adapter 通过官方 App Server RPC 和受限文件
   API 只维护该命名空间，不修改用户自建 MCP、Skill 和 Plugin。
 - 组织 Skill 写入 `/codex-home/skills/org__<id>/<version>/`，使用临时目录加原子替换；撤销授权只
