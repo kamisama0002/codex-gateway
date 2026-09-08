@@ -116,7 +116,9 @@ describe("DataOpsPairingService", () => {
     fixture.integrations.pending.mockResolvedValue(null);
     fixture.integrations.active.mockResolvedValue(binding({ status: "active" }));
     fixture.getMcp.mockResolvedValue(null);
-    fixture.ensureMcp.mockRejectedValueOnce(new Error("database unavailable")).mockResolvedValue({});
+    fixture.ensureMcp
+      .mockRejectedValueOnce(new Error("database unavailable"))
+      .mockResolvedValue({});
 
     await expect(fixture.service.status()).resolves.toMatchObject({
       active: { status: "active" },
@@ -223,7 +225,16 @@ describe("DataOpsPairingService", () => {
     const fixture = createFixture({
       fetch: vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({ pairingId: "different-pairing", revision: 1, gateway: "ok" }),
+          JSON.stringify({
+            success: true,
+            code: 0,
+            data: {
+              pairingId: "different-pairing",
+              revision: 1,
+              gateway: "ok",
+              dataOps: "ok",
+            },
+          }),
           {
             status: 200,
           },
@@ -247,6 +258,33 @@ describe("DataOpsPairingService", () => {
       dataOps: "dataops_probe_mismatch",
     });
     expect(JSON.stringify(result)).not.toContain("fixture-shared-secret-with-at-least-32-bytes");
+  });
+
+  it("uses the Dinky portal probe endpoint and unwraps its result envelope", async () => {
+    let seenUrl = "";
+    const fixture = createFixture({
+      fetch: vi.fn<typeof globalThis.fetch>(async (url) => {
+        seenUrl = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+        return Response.json({
+          success: true,
+          code: 0,
+          data: { pairingId: "pairing-fixed", revision: 1, gateway: "ok", dataOps: "ok" },
+        });
+      }),
+    });
+    fixture.integrations.acceptedForAuthentication.mockResolvedValue([
+      binding({ status: "active" }),
+    ]);
+
+    await expect(
+      fixture.service.probe("pairing-fixed", 1, "fixture-shared-secret-with-at-least-32-bytes"),
+    ).resolves.toEqual({
+      pairingId: "pairing-fixed",
+      revision: 1,
+      gateway: "ok",
+      dataOps: "ok",
+    });
+    expect(seenUrl).toBe("https://dinky.example.test/api/codex-gateway/portal-tickets/probe");
   });
 });
 

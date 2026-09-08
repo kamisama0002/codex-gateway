@@ -185,21 +185,24 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
       };
       let response: Response;
       try {
-        response = await fetcher(`${binding.dataOpsBaseUrl}/api/codex-gateway/probe`, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${binding.sharedSecret}`,
-            "content-type": "application/json",
+        response = await fetcher(
+          `${binding.dataOpsBaseUrl}/api/codex-gateway/portal-tickets/probe`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${binding.sharedSecret}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ pairingId, revision }),
+            signal: AbortSignal.timeout(10_000),
           },
-          body: JSON.stringify({ pairingId, revision }),
-          signal: AbortSignal.timeout(10_000),
-        });
+        );
       } catch {
         return { ...result, dataOps: "dataops_unavailable" };
       }
       if (!response.ok) return { ...result, dataOps: "dataops_unavailable" };
       try {
-        const payload = probeResponseSchema.parse(JSON.parse(await response.text()));
+        const payload = probeEnvelopeSchema.parse(JSON.parse(await response.text())).data;
         if (
           payload.pairingId !== pairingId ||
           payload.revision !== revision ||
@@ -279,6 +282,12 @@ const probeResponseSchema = z.looseObject({
   pairingId: z.string(),
   revision: z.number(),
   gateway: z.literal("ok"),
+  dataOps: z.literal("ok"),
+});
+
+const probeEnvelopeSchema = z.looseObject({
+  success: z.literal(true),
+  data: probeResponseSchema,
 });
 
 function hashPairingCode(value: string) {
