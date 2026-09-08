@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultGatewayConfig } from "../../../../shared/config";
+import { MANAGED_RUNTIME_HOST_ID } from "../../../../shared/runtime/managed-runtime";
 import { userStore } from "../auth/users";
+import { runtimeService } from "../runtime-manager/runtime-service";
 import { tmuxMonitorService } from "./monitor-service";
 import { TmuxMonitorPollCoordinator } from "./poll-coordinator";
 
@@ -43,5 +45,47 @@ describe("TmuxMonitorPollCoordinator", () => {
 
     resolveRemoval();
     await expect(run).resolves.toEqual({ skipped: false, checkedHosts: 1 });
+  });
+
+  it("resolves managed Agent monitors without looking for a configured SSH host", async () => {
+    vi.spyOn(tmuxMonitorService, "pollGroups").mockResolvedValue([
+      {
+        userId: 7,
+        hostId: MANAGED_RUNTIME_HOST_ID,
+        monitors: [],
+        pendingNotifications: [],
+      },
+    ]);
+    const host = {
+      id: MANAGED_RUNTIME_HOST_ID,
+      connectionKind: "managed" as const,
+      name: "Local",
+      sshHost: "localhost",
+      username: null,
+      port: null,
+      authMode: "agent" as const,
+      privateKeyPath: null,
+      privateKey: null,
+      password: null,
+      proxyUrl: null,
+      hasPassword: false,
+      createdAt: "2026-09-08T00:00:00.000Z",
+      updatedAt: "2026-09-08T00:00:00.000Z",
+    };
+    const resolveManagedHost = vi
+      .spyOn(runtimeService, "resolveManagedHost")
+      .mockResolvedValue(host);
+    const loadConfig = vi.spyOn(userStore, "loadConfig").mockResolvedValue({
+      config: defaultGatewayConfig(),
+      revision: 1,
+    });
+
+    await expect(new TmuxMonitorPollCoordinator().run()).resolves.toEqual({
+      skipped: false,
+      checkedHosts: 1,
+    });
+
+    expect(resolveManagedHost).toHaveBeenCalledWith(7);
+    expect(loadConfig).not.toHaveBeenCalled();
   });
 });

@@ -58,6 +58,7 @@ describe("Agent runtime image policy", () => {
     expect(dockerfile).toContain("COPY docker/agent-runtime-secret-writer.mjs");
     expect(dockerfile).toContain("COPY docker/agent-runtime-oauth-callback.mjs");
     expect(dockerfile).toContain('npm install --global "pnpm@$pnpm_version"');
+    expect(dockerfile).toContain("apt-get install -y --no-install-recommends tmux");
     expect(dockerfile).toContain("node /usr/local/lib/smoke-agent-runtime.mjs");
   });
 
@@ -141,6 +142,7 @@ describe("Agent runtime image policy", () => {
         "rg",
         "fd",
         "rsync",
+        "tmux",
         "python3",
         "uv",
         "node",
@@ -222,6 +224,7 @@ describe("Agent runtime image policy", () => {
     expect(requirements.length).toBeGreaterThan(10);
     expect(requirements.every((line) => /^[A-Za-z0-9_.-]+==[^=\s]+$/u.test(line))).toBe(true);
     expect(readFileSync(agentDockerfilePath, "utf8")).toContain(" AS full");
+    expect(readFileSync(agentDockerfilePath, "utf8")).toContain("      tmux \\");
   });
 
   it("builds only the Runtime Manager package graph after suppressing root lifecycle scripts", () => {

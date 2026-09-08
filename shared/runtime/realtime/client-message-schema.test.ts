@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MANAGED_RUNTIME_HOST_ID } from "../managed-runtime";
 import { parseRealtimeClientMessage } from "../realtime";
 
 describe("realtime request cancellation message", () => {
@@ -12,6 +13,35 @@ describe("realtime request cancellation message", () => {
       type: "request.cancel",
       targetRequestId: "gateway-ws-request-1",
     });
+  });
+});
+
+describe("managed runtime tmux messages", () => {
+  it("allows tmux session discovery on the local Docker Agent", () => {
+    expect(
+      parseRealtimeClientMessage({
+        type: "tmux.sessions.subscribe",
+        requestId: "tmux-local-1",
+        hostId: MANAGED_RUNTIME_HOST_ID,
+      }),
+    ).toMatchObject({ type: "tmux.sessions.subscribe", hostId: MANAGED_RUNTIME_HOST_ID });
+  });
+
+  it("continues to reject terminal and browser SSH actions for the local Docker Agent", () => {
+    expect(() =>
+      parseRealtimeClientMessage({
+        type: "terminal.open",
+        requestId: "terminal-local-1",
+        hostId: MANAGED_RUNTIME_HOST_ID,
+        projectId: null,
+        threadId: null,
+        cwd: "/workspace",
+        title: null,
+        scope: "host",
+        cols: 80,
+        rows: 24,
+      }),
+    ).toThrow("SSH-only workspace actions are not available on the local Agent");
   });
 });
 

@@ -7,8 +7,11 @@ ARG AGENT_RUNTIME_BASE_ID=unspecified
 LABEL com.qiancheng.agent.base-image=${AGENT_RUNTIME_BASE_ID}
 
 USER root
+ARG DEBIAN_MIRROR=
 ARG NPM_REGISTRY=https://registry.npmjs.org
+COPY docker/rewrite-debian-mirror.sh /tmp/rewrite-debian-mirror.sh
 COPY docker/agent-runtime-node-tools.json /tmp/agent-runtime-node-tools.json
+COPY docker/agent-runtime-tool-manifest.json /usr/local/share/codex-agent-runtime/tool-manifest.json
 COPY docker/agent-runtime-entrypoint.sh /usr/local/bin/agent-runtime-entrypoint
 COPY docker/agent-runtime-config.mjs /usr/local/lib/agent-runtime-config.mjs
 COPY docker/agent-runtime-oauth-callback.mjs /usr/local/lib/agent-runtime-oauth-callback.mjs
@@ -16,7 +19,11 @@ COPY docker/agent-runtime-secret-writer.mjs /usr/local/lib/agent-runtime-secret-
 COPY docker/agent-runtime-healthcheck.mjs /usr/local/lib/agent-runtime-healthcheck.mjs
 COPY scripts/smoke-agent-runtime.mjs /usr/local/lib/smoke-agent-runtime.mjs
 
-RUN pnpm_version="$(node -p 'require("/tmp/agent-runtime-node-tools.json").packages.pnpm')" \
+RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends tmux \
+    && rm -rf /var/lib/apt/lists/* /tmp/rewrite-debian-mirror.sh \
+    && pnpm_version="$(node -p 'require("/tmp/agent-runtime-node-tools.json").packages.pnpm')" \
     && npm config set registry "$NPM_REGISTRY" \
     && corepack disable pnpm \
     && npm install --global "pnpm@$pnpm_version" \

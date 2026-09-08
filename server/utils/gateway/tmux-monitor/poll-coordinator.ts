@@ -1,5 +1,7 @@
 import pLimit from "p-limit";
+import { isManagedRuntimeHostId } from "~~/shared/runtime/managed-runtime";
 import { userStore } from "../auth/users";
+import { runtimeService } from "../runtime-manager/runtime-service";
 import { runWithGatewayUser } from "../state/memory";
 import { tmuxMonitorService } from "./monitor-service";
 
@@ -18,8 +20,11 @@ export class TmuxMonitorPollCoordinator {
         groups.map((group) =>
           limit(() =>
             runWithGatewayUser(group.userId, async () => {
-              const loaded = await userStore.loadConfig(group.userId);
-              const host = loaded.config.hosts.find((candidate) => candidate.id === group.hostId);
+              const host = isManagedRuntimeHostId(group.hostId)
+                ? await runtimeService.resolveManagedHost(group.userId)
+                : (await userStore.loadConfig(group.userId)).config.hosts.find(
+                    (candidate) => candidate.id === group.hostId,
+                  );
               if (!host) {
                 await tmuxMonitorService.removeHost(group.userId, group.hostId);
                 return;

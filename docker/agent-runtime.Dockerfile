@@ -72,6 +72,7 @@ RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
       tesseract-ocr-chi-sim \
       tesseract-ocr-eng \
       tini \
+      tmux \
       unzip \
       wget \
       zip \
