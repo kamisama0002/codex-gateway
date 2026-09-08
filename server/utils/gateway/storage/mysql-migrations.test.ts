@@ -12,7 +12,7 @@ describe("MySQL gateway migrations", () => {
     const tables = await db.many<{ table_name: string }>(
       "SELECT table_name AS table_name FROM information_schema.tables WHERE table_schema = DATABASE()",
     );
-    expect(tables).toHaveLength(19);
+    expect(tables).toHaveLength(21);
     expect(tables.map((row) => row.table_name).sort()).toEqual(
       expect.arrayContaining([
         "users",
@@ -33,12 +33,14 @@ describe("MySQL gateway migrations", () => {
         "credentials",
         "credential_oauth_states",
         "user_runtime_policies",
+        "platform_integrations",
+        "integration_pairing_codes",
         "schema_migrations",
       ]),
     );
     expect(
       await db.one("SELECT version, checksum FROM schema_migrations ORDER BY version DESC"),
-    ).toEqual(expect.objectContaining({ version: 14 }));
+    ).toEqual(expect.objectContaining({ version: 15 }));
   });
 
   it("rejects a changed checksum for an applied migration", async () => {
@@ -314,6 +316,7 @@ describe("MySQL gateway migrations", () => {
       { version: 12, count: 1 },
       { version: 13, count: 1 },
       { version: 14, count: 1 },
+      { version: 15, count: 1 },
     ]);
   });
 
