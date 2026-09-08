@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
   if (
     !path.startsWith("/api/") ||
     PUBLIC_API_PATHS.has(path) ||
+    path.startsWith("/api/integrations/dataops/") ||
     path.startsWith("/api/internal/providers/")
   ) {
     return;
