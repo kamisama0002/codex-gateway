@@ -32,6 +32,7 @@ export interface GatewayE2eTestDriver {
   catalog: ReturnType<typeof useGatewayCatalogStore>;
   composer: ReturnType<typeof useGatewayComposerStore>;
   config: ReturnType<typeof useGatewayConfigStore>;
+  layout: ReturnType<typeof useGatewayWorkspaceLayoutStore>;
   navigation: ReturnType<typeof useGatewayNavigationStore>;
   realtime: ReturnType<typeof useGatewayRealtimeStore>;
   runtime: ReturnType<typeof useGatewayThreadRuntimeStore>;
@@ -60,6 +61,7 @@ function createGatewayE2eTestDriver(): GatewayE2eTestDriver {
     catalog: useGatewayCatalogStore(),
     composer: useGatewayComposerStore(),
     config: useGatewayConfigStore(),
+    layout,
     navigation,
     realtime: useGatewayRealtimeStore(),
     runtime: useGatewayThreadRuntimeStore(),

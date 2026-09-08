@@ -81,6 +81,15 @@ const runtimeSecretsSchema = z
     }
   });
 
+export const runtimeResourcePolicySchema = z
+  .object({
+    memoryBytes: z.number().int().min(128 * 1024 * 1024).max(16 * 1024 * 1024 * 1024),
+    nanoCpus: z.number().int().min(250_000_000).max(8_000_000_000),
+    pidsLimit: z.number().int().min(32).max(4096),
+  })
+  .strict();
+export type RuntimeResourcePolicy = z.infer<typeof runtimeResourcePolicySchema>;
+
 export const provisionRuntimeRequestSchema = z
   .object({
     runtimeId: runtimeIdSchema,
@@ -89,6 +98,7 @@ export const provisionRuntimeRequestSchema = z
     imageAlias: imageAliasSchema,
     providerConfig: providerConfigSchema.optional(),
     runtimeSecrets: runtimeSecretsSchema.optional(),
+    resources: runtimeResourcePolicySchema.optional(),
   })
   .strict();
 export type ProvisionRuntimeRequest = z.infer<typeof provisionRuntimeRequestSchema>;
@@ -126,10 +136,16 @@ export const forwardOAuthCallbackRequestSchema = z
   .strict();
 export type ForwardOAuthCallbackRequest = z.infer<typeof forwardOAuthCallbackRequestSchema>;
 
+export const runtimeResourceActionRequestSchema = z
+  .object({ runtimeId: runtimeIdSchema, resources: runtimeResourcePolicySchema.optional() })
+  .strict();
+export type RuntimeResourceActionRequest = z.infer<typeof runtimeResourceActionRequestSchema>;
+
 export const upgradeRuntimeRequestSchema = z
   .object({
     runtimeId: runtimeIdSchema,
     imageAlias: imageAliasSchema,
+    resources: runtimeResourcePolicySchema.optional(),
   })
   .strict();
 export type UpgradeRuntimeRequest = z.infer<typeof upgradeRuntimeRequestSchema>;
@@ -145,6 +161,7 @@ export const runtimeLifecycleResultSchema = z
     imageVersion: z.string().min(1).nullable(),
     status: runtimeLifecycleStatusSchema,
     endpoint: managedRuntimeEndpointSchema.nullable(),
+    actualResources: runtimeResourcePolicySchema.nullable(),
   })
   .strict();
 export type RuntimeLifecycleResult = z.infer<typeof runtimeLifecycleResultSchema>;

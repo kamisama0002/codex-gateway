@@ -277,6 +277,29 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
     version: 9,
     statements: [
       `
+        CREATE TABLE IF NOT EXISTS user_runtime_policies (
+          user_id INT UNSIGNED NOT NULL,
+          tenant_id INT UNSIGNED NOT NULL,
+          policy_version INT UNSIGNED NOT NULL,
+          image_alias VARCHAR(64) NOT NULL,
+          memory_mib INT UNSIGNED NOT NULL,
+          cpu_millicores INT UNSIGNED NOT NULL,
+          pids_limit INT UNSIGNED NOT NULL,
+          source_issued_at VARCHAR(32) NOT NULL,
+          created_at VARCHAR(32) NOT NULL,
+          updated_at VARCHAR(32) NOT NULL,
+          PRIMARY KEY (user_id),
+          KEY idx_user_runtime_policies_tenant (tenant_id, user_id),
+          CONSTRAINT fk_user_runtime_policies_user_id
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
+      `,
+    ],
+  },
+  {
+    version: 10,
+    statements: [
+      `
         CREATE TABLE IF NOT EXISTS capability_definitions (
           id VARCHAR(128) NOT NULL,
           kind VARCHAR(16) NOT NULL,
@@ -361,7 +384,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
     ],
   },
   {
-    version: 10,
+    version: 11,
     statements: [
       `
         CREATE TABLE IF NOT EXISTS credentials (
@@ -397,7 +420,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
     ],
   },
   {
-    version: 11,
+    version: 12,
     statements: [
       `
         CREATE TABLE IF NOT EXISTS credential_oauth_states (
@@ -425,7 +448,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
     ],
   },
   {
-    version: 12,
+    version: 13,
     statements: [
       `
         INSERT IGNORE INTO capability_definitions (
@@ -463,7 +486,7 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
     ],
   },
   {
-    version: 13,
+    version: 14,
     statements: [
       `
         INSERT IGNORE INTO capability_definitions (

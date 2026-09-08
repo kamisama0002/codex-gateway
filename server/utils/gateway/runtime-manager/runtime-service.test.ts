@@ -1,13 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
   ManagedRuntimeEndpoint,
+  ManagedRuntimeStatusView,
+  RuntimeResourcePolicy,
   RuntimeStatus,
   UserAgentRuntimeRecord,
 } from "@codex-gateway/agent-runtime-contracts";
 import type { AuditEventInput } from "~~/shared/types/audit";
 import type { CapabilitySyncReason, HostRecord, UserProviderModel } from "~~/shared/types";
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
-import type { ProvisionRuntimeRequest, SyncRuntimeSecretsRequest } from "./client";
+import type {
+  ProvisionRuntimeRequest,
+  RuntimeLifecycleResult,
+  SyncRuntimeSecretsRequest,
+} from "./client";
+import type { AssignedRuntimePolicy } from "./runtime-policy";
 import { ManagedRuntimeService, ManagedRuntimeServiceError } from "./runtime-service";
 
 describe("ManagedRuntimeService", () => {
@@ -245,27 +252,256 @@ describe("ManagedRuntimeService", () => {
     expect(await fixture.store.getByUserId(7)).toBeNull();
   });
 
-  it("reprovisions a managed container on restart so current runtime configuration is applied", async () => {
+  it("restarts the existing container without provisioning when no policy snapshot exists", async () => {
     const fixture = runtimeFixture();
     await fixture.service.start(7);
+    fixture.policyStore.getByUserId.mockClear();
     fixture.manager.remove.mockClear();
     fixture.manager.provision.mockClear();
     fixture.manager.start.mockClear();
     fixture.manager.restart.mockClear();
+    fixture.manager.restart.mockImplementationOnce(async (runtimeId) => ({
+      runtimeId,
+      containerId: "container-01",
+      imageAlias: "stable",
+      imageVersion: "0.151.1",
+      status: "running" as const,
+      endpoint: {
+        runtimeId,
+        websocketUrl: "ws://runtime-01:4500",
+        serviceToken: "runtime-token",
+      },
+      actualResources: {
+        memoryBytes: 2 * 1024 * 1024 * 1024,
+        nanoCpus: 2_000_000_000,
+        pidsLimit: 256,
+      },
+    }));
 
     await expect(fixture.service.restart(7, 1)).resolves.toMatchObject({ status: "ready" });
 
-    expect(fixture.manager.remove).toHaveBeenCalledOnce();
-    expect(fixture.manager.remove.mock.calls[0]?.[0]).toMatch(/^codex_[a-f0-9]{32}$/);
-    expect(fixture.manager.provision).toHaveBeenCalledOnce();
-    const provisionRequest = fixture.manager.provision.mock.calls[0]?.[0];
-    expect(provisionRequest).toMatchObject({
-      imageAlias: "stable",
-      runtimeType: "codex-app-server",
+    expect(fixture.policyStore.getByUserId).toHaveBeenCalledOnce();
+    expect(fixture.manager.restart).toHaveBeenCalledOnce();
+    expect(fixture.manager.restart.mock.calls[0]).toHaveLength(1);
+    expect(fixture.manager.restart.mock.calls[0]?.[0]).toMatch(/^codex_[a-f0-9]{32}$/);
+    expect(fixture.manager.remove).not.toHaveBeenCalled();
+    expect(fixture.manager.provision).not.toHaveBeenCalled();
+    expect(fixture.manager.start).not.toHaveBeenCalled();
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
+      containerId: "container-01",
+      imageVersion: "0.151.1",
     });
-    expect(provisionRequest?.userHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(fixture.manager.start).toHaveBeenCalledOnce();
-    expect(fixture.manager.restart).not.toHaveBeenCalled();
+  });
+
+  it("applies the assigned image and all resource fields when starting a runtime", async () => {
+    const fixture = runtimeFixture({ assignedPolicy: assignedPolicy() });
+
+    await fixture.service.start(7);
+
+    expect(fixture.manager.provision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageAlias: "tenant-stable",
+        resources: {
+          memoryBytes: 1024 * 1024 * 1024,
+          nanoCpus: 1_500_000_000,
+          pidsLimit: 128,
+        },
+      }),
+    );
+    expect(fixture.manager.start).toHaveBeenCalledWith(expect.any(String), {
+      memoryBytes: 1024 * 1024 * 1024,
+      nanoCpus: 1_500_000_000,
+      pidsLimit: 128,
+    });
+  });
+
+  it("keeps standalone users on the default image and omits request resources", async () => {
+    const fixture = runtimeFixture();
+
+    await fixture.service.start(7);
+
+    expect(fixture.manager.provision).toHaveBeenCalledWith(
+      expect.objectContaining({ imageAlias: "stable" }),
+    );
+    expect(fixture.manager.provision.mock.calls[0]?.[0]).not.toHaveProperty("resources");
+    expect(fixture.manager.start).toHaveBeenCalledWith(expect.any(String));
+  });
+
+  it("applies resource drift on restart while leaving assigned image drift pending", async () => {
+    const fixture = runtimeFixture({ assignedPolicy: assignedPolicy() });
+    await fixture.service.start(7);
+    fixture.policyStore.getByUserId.mockClear();
+    fixture.manager.remove.mockClear();
+    fixture.manager.provision.mockClear();
+    fixture.manager.start.mockClear();
+    fixture.manager.restart.mockClear();
+    fixture.policyStore.getByUserId.mockResolvedValue(
+      assignedPolicy({
+        imageAlias: "tenant-next",
+        memoryMiB: 2048,
+        cpuMillicores: 2500,
+        pidsLimit: 256,
+      }),
+    );
+    const resources = {
+      memoryBytes: 2 * 1024 * 1024 * 1024,
+      nanoCpus: 2_500_000_000,
+      pidsLimit: 256,
+    };
+    fixture.manager.restart.mockImplementationOnce(async (runtimeId) => ({
+      runtimeId,
+      containerId: "container-01",
+      imageAlias: "tenant-stable",
+      imageVersion: "0.151.1",
+      status: "running" as const,
+      endpoint: {
+        runtimeId,
+        websocketUrl: "ws://runtime-01:4500",
+        serviceToken: "runtime-token",
+      },
+      actualResources: resources,
+    }));
+    fixture.manager.inspect.mockImplementation(async (runtimeId) => ({
+      runtimeId,
+      containerId: "container-01",
+      imageAlias: "tenant-stable",
+      imageVersion: "0.151.1",
+      status: "running" as const,
+      endpoint: {
+        runtimeId,
+        websocketUrl: "ws://runtime-01:4500",
+        serviceToken: "runtime-token",
+      },
+      actualResources: resources,
+    }));
+
+    await fixture.service.restart(7, 1);
+
+    expect(fixture.policyStore.getByUserId).toHaveBeenCalledOnce();
+    expect(fixture.manager.restart).toHaveBeenCalledWith(expect.any(String), resources);
+    expect(fixture.manager.remove).not.toHaveBeenCalled();
+    expect(fixture.manager.provision).not.toHaveBeenCalled();
+    expect(fixture.manager.start).not.toHaveBeenCalled();
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
+      containerId: "container-01",
+      imageVersion: "0.151.1",
+    });
+
+    await expect(fixture.service.getStatusView(7)).resolves.toMatchObject({
+      actualResources: resources,
+      currentImageAlias: "tenant-stable",
+      requiresRestart: false,
+      requiresUpgrade: true,
+    });
+  });
+
+  it("preserves the Runtime Manager policy ceiling error as a safe public code", async () => {
+    const fixture = runtimeFixture({ assignedPolicy: assignedPolicy() });
+    fixture.manager.provision.mockRejectedValueOnce(
+      Object.assign(new Error("deployment details"), {
+        code: "runtime_policy_exceeds_platform_limit",
+      }),
+    );
+
+    await expect(fixture.service.start(7)).rejects.toMatchObject({
+      code: "runtime_policy_exceeds_platform_limit",
+    });
+    await expect(fixture.store.getByUserId(7)).resolves.toMatchObject({
+      lastError: "runtime_policy_exceeds_platform_limit",
+    });
+  });
+
+  it("returns an absent status view without inspecting Runtime Manager", async () => {
+    const fixture = runtimeFixture({ assignedPolicy: assignedPolicy() });
+
+    await expect(fixture.service.getStatusView(7)).resolves.toEqual({
+      runtime: null,
+      assignedPolicy: {
+        imageAlias: "tenant-stable",
+        memoryMiB: 1024,
+        cpuCores: 1.5,
+        pidsLimit: 128,
+      },
+      actualResources: null,
+      currentImageAlias: null,
+      requiresRestart: false,
+      requiresUpgrade: false,
+    });
+    expect(fixture.manager.inspect).not.toHaveBeenCalled();
+  });
+
+  it("projects assigned and actual runtime state and compares every policy field", async () => {
+    const fixture = runtimeFixture({ assignedPolicy: assignedPolicy() });
+    await fixture.service.start(7);
+    const matchingResources = assignedResources();
+    fixture.manager.inspect.mockImplementation(async (runtimeId) => ({
+      ...lifecycleResult({ imageAlias: "tenant-stable", actualResources: matchingResources }),
+      runtimeId,
+    }));
+
+    const matching: ManagedRuntimeStatusView = await fixture.service.getStatusView(7);
+
+    expect(matching).toMatchObject({
+      runtime: { userId: 7, status: "ready" },
+      assignedPolicy: {
+        imageAlias: "tenant-stable",
+        memoryMiB: 1024,
+        cpuCores: 1.5,
+        pidsLimit: 128,
+      },
+      actualResources: matchingResources,
+      currentImageAlias: "tenant-stable",
+      requiresRestart: false,
+      requiresUpgrade: false,
+    });
+    expect(JSON.stringify(matching)).not.toMatch(
+      /tenantId|containerId|serviceToken|runtimeId|websocketUrl|real-image|node-address|network/i,
+    );
+
+    for (const actualResources of [
+      { ...matchingResources, memoryBytes: matchingResources.memoryBytes * 2 },
+      { ...matchingResources, nanoCpus: matchingResources.nanoCpus + 10_000_000 },
+      { ...matchingResources, pidsLimit: matchingResources.pidsLimit + 1 },
+    ]) {
+      fixture.manager.inspect.mockImplementationOnce(async (runtimeId) => ({
+        ...lifecycleResult({ imageAlias: "tenant-stable", actualResources }),
+        runtimeId,
+      }));
+      await expect(fixture.service.getStatusView(7)).resolves.toMatchObject({
+        requiresRestart: true,
+        requiresUpgrade: false,
+      });
+    }
+
+    fixture.manager.inspect.mockImplementationOnce(async (runtimeId) => ({
+      ...lifecycleResult({ imageAlias: "tenant-old", actualResources: matchingResources }),
+      runtimeId,
+    }));
+    await expect(fixture.service.getStatusView(7)).resolves.toMatchObject({
+      requiresRestart: false,
+      requiresUpgrade: true,
+    });
+  });
+
+  it("preserves stored status and does not claim drift when inspect fails", async () => {
+    const fixture = runtimeFixture({ assignedPolicy: assignedPolicy() });
+    await fixture.service.start(7);
+    fixture.manager.inspect.mockRejectedValueOnce(new Error("node-address and Docker details"));
+
+    const view = await fixture.service.getStatusView(7);
+
+    expect(view).toMatchObject({
+      runtime: { userId: 7, status: "ready" },
+      actualResources: null,
+      currentImageAlias: null,
+      requiresRestart: false,
+      requiresUpgrade: false,
+    });
+    await expect(fixture.store.getByUserId(7)).resolves.toMatchObject({
+      status: "ready",
+      lastError: null,
+    });
+    expect(JSON.stringify(view)).not.toContain("node-address");
   });
 
   it("records a safe provision failure without persisting an exception message", async () => {
@@ -318,6 +554,7 @@ describe("ManagedRuntimeService", () => {
         websocketUrl: "ws://runtime-01:4500",
         serviceToken: "runtime-token",
       },
+      actualResources: assignedResources(),
     });
 
     await expect(fixture.service.start(7)).rejects.toEqual(
@@ -507,6 +744,7 @@ function runtimeFixture(
     listProviderModels?: (userId: number) => Promise<UserProviderModel[]>;
     syncCapabilities?: ConstructorParameters<typeof ManagedRuntimeService>[0]["syncCapabilities"];
     runtimeSecretsFor?: ConstructorParameters<typeof ManagedRuntimeService>[0]["runtimeSecretsFor"];
+    assignedPolicy?: AssignedRuntimePolicy | null;
   } = {},
 ) {
   const endpoint: ManagedRuntimeEndpoint = {
@@ -516,6 +754,11 @@ function runtimeFixture(
   };
   const records = new Map<number, UserAgentRuntimeRecord>();
   const statuses: RuntimeStatus[] = [];
+  const defaultResources: RuntimeResourcePolicy = {
+    memoryBytes: 2 * 1024 * 1024 * 1024,
+    nanoCpus: 2_000_000_000,
+    pidsLimit: 256,
+  };
   const store = {
     getByUserId: vi.fn(async (userId: number) => records.get(userId) ?? null),
     list: vi.fn(async () =>
@@ -537,22 +780,25 @@ function runtimeFixture(
       imageVersion: "0.151.0",
       status: "stopped" as const,
       endpoint: { ...endpoint, runtimeId: request.runtimeId },
+      actualResources: request.resources ?? defaultResources,
     })),
-    start: vi.fn(async (runtimeId: string) => ({
+    start: vi.fn(async (runtimeId: string, resources?: RuntimeResourcePolicy) => ({
       runtimeId,
       containerId: "container-01",
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running" as const,
       endpoint: { ...endpoint, runtimeId },
+      actualResources: resources ?? defaultResources,
     })),
-    inspect: vi.fn(async (runtimeId: string) => ({
+    inspect: vi.fn(async (runtimeId: string): Promise<RuntimeLifecycleResult> => ({
       runtimeId,
       containerId: "container-01",
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running" as const,
       endpoint: { ...endpoint, runtimeId },
+      actualResources: defaultResources,
     })),
     stop: vi.fn(async (runtimeId: string) => ({
       runtimeId,
@@ -561,6 +807,7 @@ function runtimeFixture(
       imageVersion: "0.151.0",
       status: "stopped" as const,
       endpoint: { ...endpoint, runtimeId },
+      actualResources: defaultResources,
     })),
     stats: vi.fn(async (runtimeId: string) => ({
       runtimeId,
@@ -590,13 +837,14 @@ function runtimeFixture(
         maxOutputBytes: number;
       }) => ({ code: 0, stdout: "ok\n", stderr: "" }),
     ),
-    restart: vi.fn(async (runtimeId: string) => ({
+    restart: vi.fn(async (runtimeId: string, resources?: RuntimeResourcePolicy) => ({
       runtimeId,
       containerId: "container-01",
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running" as const,
       endpoint: { ...endpoint, runtimeId },
+      actualResources: resources ?? defaultResources,
     })),
     syncSecrets: vi.fn(async (input: SyncRuntimeSecretsRequest) => ({
       runtimeId: input.runtimeId,
@@ -605,6 +853,7 @@ function runtimeFixture(
       imageVersion: "0.151.0",
       status: "running" as const,
       endpoint: { ...endpoint, runtimeId: input.runtimeId },
+      actualResources: defaultResources,
     })),
     forwardOAuthCallback: vi.fn(async () => undefined),
     remove: vi.fn(async (runtimeId: string) => ({
@@ -614,6 +863,7 @@ function runtimeFixture(
       imageVersion: null,
       status: "absent" as const,
       endpoint: null,
+      actualResources: null,
     })),
   };
   const audit: AuditEventInput[] = [];
@@ -622,6 +872,9 @@ function runtimeFixture(
   });
   const providerStore = {
     listForUser: vi.fn(options.listProviderModels ?? (async () => [])),
+  };
+  const policyStore = {
+    getByUserId: vi.fn(async () => options.assignedPolicy ?? null),
   };
   const closeConnections = vi.fn();
   let probeFailures = options.probeFailures ?? 0;
@@ -642,6 +895,7 @@ function runtimeFixture(
     store,
     audit: { record: auditRecord },
     providerStore,
+    policyStore,
     identitySecret: "identity-secret",
     imageAlias: "stable",
     expectedRuntimeVersion: "0.151.0",
@@ -660,9 +914,52 @@ function runtimeFixture(
     audit,
     auditRecord,
     providerStore,
+    policyStore,
     statuses,
     closeConnections,
     probe,
+  };
+}
+
+function assignedPolicy(overrides: Partial<AssignedRuntimePolicy> = {}): AssignedRuntimePolicy {
+  return {
+    userId: 7,
+    tenantId: 42,
+    policyVersion: 1,
+    imageAlias: "tenant-stable",
+    memoryMiB: 1024,
+    cpuMillicores: 1500,
+    pidsLimit: 128,
+    sourceIssuedAt: "2026-09-07T00:00:00.000Z",
+    createdAt: "2026-09-07T00:00:01.000Z",
+    updatedAt: "2026-09-07T00:00:01.000Z",
+    ...overrides,
+  };
+}
+
+function assignedResources(): RuntimeResourcePolicy {
+  return {
+    memoryBytes: 1024 * 1024 * 1024,
+    nanoCpus: 1_500_000_000,
+    pidsLimit: 128,
+  };
+}
+
+function lifecycleResult(
+  overrides: Partial<{
+    imageAlias: string | null;
+    actualResources: RuntimeResourcePolicy | null;
+  }> = {},
+) {
+  return {
+    runtimeId: "codex_placeholder",
+    containerId: "container-01",
+    imageAlias: "tenant-stable",
+    imageVersion: "0.151.0",
+    status: "running" as const,
+    endpoint: null,
+    actualResources: assignedResources(),
+    ...overrides,
   };
 }
 

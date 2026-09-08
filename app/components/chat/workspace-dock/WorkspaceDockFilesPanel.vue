@@ -7,11 +7,11 @@ import { requireWorkspaceFilesPanelContext } from "./context";
 
 const props = defineProps<{ params: IDockviewPanelProps }>();
 const context = requireWorkspaceFilesPanelContext();
-const active = ref(props.params.api.isActive);
-const activeSubscription = props.params.api.onDidActiveChange((event) => {
-  active.value = event.isActive;
+const visible = ref(props.params.api.isVisible);
+const visibilitySubscription = props.params.api.onDidVisibilityChange((event) => {
+  visible.value = event.isVisible;
 });
-onBeforeUnmount(() => activeSubscription.dispose());
+onBeforeUnmount(() => visibilitySubscription.dispose());
 </script>
 
 <template>
@@ -23,7 +23,7 @@ onBeforeUnmount(() => activeSubscription.dispose());
       :project-id="context.selectedProjectId.value"
       :thread-id="context.selectedThreadId.value"
       :root-path="context.rootPath.value"
-      :active="active"
+      :active="visible"
     />
   </div>
 </template>

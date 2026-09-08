@@ -4,6 +4,7 @@ import { storeToRefs } from "pinia";
 import { Toaster } from "@codex-gateway/ui/sonner";
 import DataOpsAuthState from "@/components/auth/DataOpsAuthState.vue";
 import LoginScreen from "@/components/auth/LoginScreen.vue";
+import GatewayPet from "@/components/pet/GatewayPet.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { refreshGatewayClient } from "@/stores/gateway-bootstrap/refresh";
@@ -168,5 +169,8 @@ watch(
     :message="embeddedAuthMessage"
   />
   <LoginScreen v-else-if="mounted && !isAuthenticated" />
-  <NuxtLayout v-else :name="layoutName" />
+  <template v-else>
+    <NuxtLayout :name="layoutName" />
+    <GatewayPet />
+  </template>
 </template>

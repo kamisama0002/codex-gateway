@@ -29,7 +29,7 @@ services:
 
   agent-runtime-image:
     profiles: ["image-build"]
-    image: codex-agent-runtime:0.153.4
+    image: ${E2E_AGENT_IMAGE:-codex-agent-runtime:0.153.4}
     build:
       context: ../..
       dockerfile: docker/agent-runtime.Dockerfile
@@ -39,7 +39,7 @@ services:
         PYPI_INDEX_URL: ${PYPI_INDEX_URL:-https://pypi.org/simple}
 
   agent-runtime-manager:
-    image: codex-runtime-manager-e2e:0.153.4
+    image: ${E2E_RUNTIME_MANAGER_IMAGE:-codex-runtime-manager-e2e:0.153.4}
     build:
       context: ../..
       dockerfile: docker/runtime-manager.Dockerfile
@@ -47,9 +47,10 @@ services:
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
     environment:
       NODE_ENV: test
+      RUNTIME_MANAGER_E2E_INSPECTION: "1"
       RUNTIME_MANAGER_AGENT_NETWORK: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
       RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: ${E2E_AGENT_EGRESS_NETWORK_NAME:-codex-gateway-e2e-agent-egress}
-      RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"codex-agent-runtime:0.153.4","imageVersion":"0.153.4"}}'
+      RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"${E2E_AGENT_IMAGE:-codex-agent-runtime:0.153.4}","imageVersion":"0.153.4"}}'
       RUNTIME_MANAGER_PORT: "8787"
       RUNTIME_MANAGER_RESOURCE_LABELS: '{"com.codex-gateway.e2e-managed":"${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}"}'
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
@@ -232,7 +233,7 @@ services:
     <<: *ssh-target
 
   build-runner:
-    image: codex-gateway-e2e-runner
+    image: ${E2E_RUNNER_IMAGE:-codex-gateway-e2e-runner}
     mem_limit: 2g
     build:
       context: ../..
@@ -251,7 +252,7 @@ services:
       - build-output:/e2e-output
 
   gateway-under-test:
-    image: codex-gateway-e2e-runner
+    image: ${E2E_RUNNER_IMAGE:-codex-gateway-e2e-runner}
     mem_limit: 2g
     restart: unless-stopped
     depends_on:
@@ -338,7 +339,7 @@ services:
       retries: 30
 
   test-runner:
-    image: codex-gateway-e2e-runner
+    image: ${E2E_RUNNER_IMAGE:-codex-gateway-e2e-runner}
     mem_limit: 2g
     network_mode: service:gateway-under-test
     depends_on:
@@ -346,6 +347,8 @@ services:
         condition: service_healthy
     environment:
       CI: ${CI:-}
+      E2E_GATEWAY_USERNAME: ${E2E_GATEWAY_USERNAME:-e2e}
+      E2E_GATEWAY_PASSWORD: ${E2E_GATEWAY_PASSWORD:-codex-gateway-e2e-password}
       E2E_CONTAINERIZED: "1"
       E2E_DATABASE_PREPARED: "1"
       DATABASE_URL: mysql://codex_gateway_e2e:codex-gateway-e2e-password@mysql:3306/${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
@@ -366,6 +369,7 @@ services:
       E2E_MANAGED_LABEL_VALUE: ${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}
       E2E_MANAGED_RUNTIME_ENABLED: "1"
       E2E_RUNTIME_SECRET_FIXTURE: ${E2E_RUNTIME_SECRET_FIXTURE:-full-e2e-runtime-secret-fixture}
+      E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE: ${E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE:?E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE is required}
       PLAYWRIGHT_BASE_URL: http://codex.127.0.0.1.nip.io:3100
       RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}

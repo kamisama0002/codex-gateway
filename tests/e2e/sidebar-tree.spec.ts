@@ -12,12 +12,10 @@ import {
   realtimeThreadStartRequests,
 } from "./helpers/realtime-route";
 
-test("desktop workspace toolbar exposes only runtime monitoring and sidebar collapse", async ({
-  page,
-}) => {
+test("desktop workspace toolbar exposes only sidebar collapse", async ({ page }) => {
   await openApp(page);
 
-  await expect(page.getByTestId("open-host-monitor-button")).toBeVisible();
+  await expect(page.getByTestId("open-host-monitor-button")).toHaveCount(0);
   await expect(page.getByTestId("desktop-sidebar-collapse")).toBeVisible();
   await expect(page.getByTestId("desktop-sidebar-collapse").locator("..")).toHaveCSS(
     "border-bottom-width",
@@ -150,7 +148,7 @@ test("marks completed threads as needing review until they are opened", async ({
 test("shows a new conversation action instead of recent activity", async ({ page }) => {
   await openApp(page);
   await expect(page.getByTestId("new-conversation-button")).toBeVisible();
-  await expect(page.getByText("新会话", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("new-conversation-button")).toContainText("新会话");
   await expect(page.getByText("最近运行", { exact: true })).toHaveCount(0);
   await expect(page.getByText("工作区", { exact: true }).first()).toBeVisible();
 });
@@ -193,7 +191,7 @@ test("labels an empty conversation without exposing its internal id", async ({ p
   });
 
   await expect(page.getByTestId(`thread-button-${emptyThreadId}`)).toContainText("新会话");
-  await expect(page.getByTestId("thread-chat-header")).toContainText("新会话");
+  await expect(page.getByTestId("workspace-agent-header")).toContainText("新会话");
   await expect(page.getByText(emptyThreadId, { exact: true })).toHaveCount(0);
 });
 
@@ -308,7 +306,7 @@ test("reopens the newest empty conversation instead of starting another thread",
   await expect
     .poll(() => page.evaluate(() => window.__codexGatewayE2e?.navigation.selectedThreadId ?? null))
     .toBe(emptyThreadId);
-  await expect(page.getByTestId("thread-chat-header")).toContainText("新会话");
+  await expect(page.getByTestId("workspace-agent-header")).toContainText("新会话");
   await page.getByTestId("new-conversation-button").click();
 
   await expect.poll(() => realtimeThreadStartRequests(page).length).toBe(0);

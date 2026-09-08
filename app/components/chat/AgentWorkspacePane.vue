@@ -3,11 +3,9 @@ import { FolderIcon, Loader2Icon } from "@lucide/vue";
 import { computed } from "vue";
 import ChatComposer from "@/components/chat/ChatComposer.vue";
 import ChatPanelScrollArea from "@/components/chat/ChatPanelScrollArea.vue";
-import ThreadChatHeader from "@/components/thread/ThreadChatHeader.vue";
 import ThreadVirtualTimeline from "@/components/thread/ThreadVirtualTimeline.vue";
 import ActiveSubAgentsBar from "@/components/thread/subagent/ActiveSubAgentsBar.vue";
 import MisalignmentRecoveryCard from "@/components/thread/MisalignmentRecoveryCard.vue";
-import GatewayPet from "@/components/pet/GatewayPet.vue";
 import McpRuntimeStatusBar from "@/components/thread/McpRuntimeStatusBar.vue";
 import RealtimeConnectionIndicator from "@/components/sidebar/RealtimeConnectionIndicator.vue";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
@@ -47,7 +45,6 @@ const showThreadLoading = computed(
 <template>
   <div class="relative flex min-h-0 flex-1 overflow-hidden">
     <div data-testid="chat-main-pane" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <ThreadChatHeader />
       <RealtimeConnectionIndicator class="mx-3 self-end" />
       <ActiveSubAgentsBar
         v-if="selectedThreadId"
@@ -111,6 +108,5 @@ const showThreadLoading = computed(
       <MisalignmentRecoveryCard v-if="selectedThreadId" />
       <ChatComposer v-if="selectedThreadId && historyTurns.length > 0" placement="docked" />
     </div>
-    <GatewayPet />
   </div>
 </template>

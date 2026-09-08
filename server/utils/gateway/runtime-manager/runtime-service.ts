@@ -2,9 +2,12 @@ import { createHash, createHmac } from "node:crypto";
 import { Mutex } from "async-mutex";
 import pRetry, { type Options as RetryOptions } from "p-retry";
 import {
+  managedRuntimeStatusViewSchema,
   serializeManagedRuntimeStatus,
   type ManagedRuntimeEndpoint,
   type ManagedRuntimeStatus,
+  type ManagedRuntimeStatusView,
+  type RuntimeResourcePolicy,
   type RuntimeStatus,
   type UserAgentRuntimeRecord,
 } from "@codex-gateway/agent-runtime-contracts";
@@ -19,6 +22,8 @@ import { runWithGatewayUser } from "../state/memory";
 import { threadBroker } from "../runtime/broker";
 import { auditStore } from "../audit/audit-store";
 import { userStore } from "../auth/users";
+import { runtimePolicyStore } from "./runtime-policy-store";
+import type { AssignedRuntimePolicy } from "./runtime-policy";
 import { runtimeStore } from "./runtime-store";
 import { providerStore, type ProviderStore } from "../providers/provider-store";
 import { issueRuntimeModelToken } from "../providers/runtime-token";
@@ -46,9 +51,9 @@ interface RuntimeManagerPort {
     timeoutMs: number;
     maxOutputBytes: number;
   }): Promise<{ code: number | null; stdout: string; stderr: string }>;
-  start(runtimeId: string): Promise<RuntimeLifecycleResult>;
+  start(runtimeId: string, resources?: RuntimeResourcePolicy): Promise<RuntimeLifecycleResult>;
   stop(runtimeId: string): Promise<RuntimeLifecycleResult>;
-  restart(runtimeId: string): Promise<RuntimeLifecycleResult>;
+  restart(runtimeId: string, resources?: RuntimeResourcePolicy): Promise<RuntimeLifecycleResult>;
   syncSecrets(input: SyncRuntimeSecretsRequest): Promise<RuntimeLifecycleResult>;
   remove(runtimeId: string): Promise<RuntimeLifecycleResult>;
   forwardOAuthCallback(input: ForwardOAuthCallbackRequest): Promise<void>;
@@ -65,6 +70,10 @@ interface AuditStorePort {
   record(input: AuditEventInput): Promise<unknown>;
 }
 
+interface RuntimePolicyStorePort {
+  getByUserId(userId: number): Promise<AssignedRuntimePolicy | null>;
+}
+
 interface RuntimeCompatibilitySnapshot {
   runtimeVersion: string;
   schemaHash: string;
@@ -75,6 +84,7 @@ interface ManagedRuntimeServiceOptions {
   manager: RuntimeManagerPort;
   store: RuntimeStorePort;
   audit: AuditStorePort;
+  policyStore: RuntimePolicyStorePort;
   providerStore?: Pick<ProviderStore, "listForUser">;
   identitySecret: string;
   imageAlias: string;
@@ -107,6 +117,7 @@ const safeManagerErrorCodes = new Set([
   "runtime_manager_request_failed",
   "runtime_manager_timeout",
   "runtime_manager_unavailable",
+  "runtime_policy_exceeds_platform_limit",
   "managed_rpc_handshake_timeout",
   "runtime_not_found",
   "unauthorized",
@@ -143,6 +154,28 @@ export class ManagedRuntimeService {
   async getStatus(userId: number): Promise<ManagedRuntimeStatus | null> {
     const runtime = await this.options.store.getByUserId(positiveUserId(userId));
     return runtime === null ? null : serializeManagedRuntimeStatus(runtime);
+  }
+
+  async getStatusView(userId: number): Promise<ManagedRuntimeStatusView> {
+    const targetUserId = positiveUserId(userId);
+    const [runtime, policy] = await Promise.all([
+      this.options.store.getByUserId(targetUserId),
+      this.options.policyStore.getByUserId(targetUserId),
+    ]);
+    return await this.statusView(runtime, policy);
+  }
+
+  async listStatusViews(): Promise<ManagedRuntimeStatusView[]> {
+    const runtimes = await this.options.store.list();
+    return await Promise.all(
+      runtimes.map(
+        async (runtime) =>
+          await this.statusView(
+            runtime,
+            await this.options.policyStore.getByUserId(runtime.userId),
+          ),
+      ),
+    );
   }
 
   async listStatuses(): Promise<Array<ManagedRuntimeStatus & { username: string }>> {
@@ -223,6 +256,8 @@ export class ManagedRuntimeService {
     const targetUserId = positiveUserId(userId);
     const actor = positiveUserId(actorUserId);
     return this.lockFor(targetUserId).runExclusive(async () => {
+      const policy = await this.options.policyStore.getByUserId(targetUserId);
+      const resources = policy === null ? undefined : managerResources(policy);
       let runtime = await this.requiredRuntime(targetUserId);
       const identity = this.identity(targetUserId);
       runtime = await this.persistTransition(runtime, "restart");
@@ -230,14 +265,17 @@ export class ManagedRuntimeService {
       let restarted: RuntimeLifecycleResult;
       try {
         this.options.closeConnections?.(targetUserId);
-        const removed = await this.options.manager.remove(identity.runtimeId);
-        this.assertRuntimeResult(identity.runtimeId, removed, "absent");
-        const provisioned = await this.options.manager.provision(
-          await this.provisionRequest(targetUserId, identity),
-        );
-        this.assertRuntimeResult(identity.runtimeId, provisioned);
-        requiredImageVersion(provisioned);
-        restarted = await this.options.manager.start(identity.runtimeId);
+        if (this.options.runtimeSecretsFor !== undefined) {
+          const provisioned = await this.options.manager.provision(
+            await this.provisionRequest(targetUserId, identity, policy),
+          );
+          this.assertRuntimeResult(identity.runtimeId, provisioned);
+          requiredImageVersion(provisioned);
+        }
+        restarted =
+          resources === undefined
+            ? await this.options.manager.restart(identity.runtimeId)
+            : await this.options.manager.restart(identity.runtimeId, resources);
         endpoint = this.runningEndpoint(identity.runtimeId, restarted);
         requiredImageVersion(restarted);
       } catch (error) {
@@ -413,6 +451,8 @@ export class ManagedRuntimeService {
 
   private async startLocked(userId: number, actorUserId: number): Promise<ManagedRuntimeStatus> {
     const identity = this.identity(userId);
+    const policy = await this.options.policyStore.getByUserId(userId);
+    const resources = policy === null ? undefined : managerResources(policy);
     const existing = await this.options.store.getByUserId(userId);
     if (existing?.status === "ready") {
       try {
@@ -440,7 +480,7 @@ export class ManagedRuntimeService {
     let provisioned: RuntimeLifecycleResult;
     try {
       provisioned = await this.options.manager.provision(
-        await this.provisionRequest(userId, identity),
+        await this.provisionRequest(userId, identity, policy),
       );
       this.assertRuntimeResult(identity.runtimeId, provisioned);
       runtime = await this.persist(runtime, "provisioning", {
@@ -474,7 +514,10 @@ export class ManagedRuntimeService {
     let endpoint: ManagedRuntimeEndpoint;
     let started: RuntimeLifecycleResult;
     try {
-      started = await this.options.manager.start(identity.runtimeId);
+      started =
+        resources === undefined
+          ? await this.options.manager.start(identity.runtimeId)
+          : await this.options.manager.start(identity.runtimeId, resources);
       endpoint = this.runningEndpoint(identity.runtimeId, started);
       requiredImageVersion(started);
     } catch (error) {
@@ -644,13 +687,15 @@ export class ManagedRuntimeService {
   private async provisionRequest(
     userId: number,
     identity: { userHash: string; runtimeId: string },
+    policy: AssignedRuntimePolicy | null,
   ): Promise<ProvisionRuntimeRequest> {
     const request: ProvisionRuntimeRequest = {
       runtimeId: identity.runtimeId,
       userHash: identity.userHash,
       runtimeType: "codex-app-server",
-      imageAlias: this.options.imageAlias,
+      imageAlias: policy?.imageAlias ?? this.options.imageAlias,
     };
+    if (policy !== null) request.resources = managerResources(policy);
     const providerConfig = await providerConfigForUser(
       userId,
       identity.runtimeId,
@@ -660,6 +705,50 @@ export class ManagedRuntimeService {
     const runtimeSecrets = await this.options.runtimeSecretsFor?.(userId, null);
     if (runtimeSecrets !== undefined) request.runtimeSecrets = runtimeSecrets;
     return request;
+  }
+
+  private async statusView(
+    runtime: UserAgentRuntimeRecord | null,
+    policy: AssignedRuntimePolicy | null,
+  ): Promise<ManagedRuntimeStatusView> {
+    let actualResources: RuntimeResourcePolicy | null = null;
+    let currentImageAlias: string | null = null;
+    if (runtime !== null) {
+      try {
+        const identity = this.identity(runtime.userId);
+        const inspected = await this.options.manager.inspect(identity.runtimeId);
+        this.assertRuntimeResult(identity.runtimeId, inspected);
+        actualResources = inspected.actualResources;
+        currentImageAlias = inspected.imageAlias;
+      } catch {
+        // The stored lifecycle status remains authoritative while inspection is unavailable.
+      }
+    }
+
+    const assignedPolicy =
+      policy === null
+        ? null
+        : {
+            imageAlias: policy.imageAlias,
+            memoryMiB: policy.memoryMiB,
+            cpuCores: policy.cpuMillicores / 1000,
+            pidsLimit: policy.pidsLimit,
+          };
+    const expectedResources = policy === null ? null : managerResources(policy);
+    return managedRuntimeStatusViewSchema.parse({
+      runtime: runtime === null ? null : serializeManagedRuntimeStatus(runtime),
+      assignedPolicy,
+      actualResources,
+      currentImageAlias,
+      requiresRestart:
+        expectedResources !== null && actualResources !== null
+          ? !sameResources(expectedResources, actualResources)
+          : false,
+      requiresUpgrade:
+        policy !== null && currentImageAlias !== null
+          ? policy.imageAlias !== currentImageAlias
+          : false,
+    });
   }
 
   private runningEndpoint(runtimeId: string, result: RuntimeLifecycleResult) {
@@ -735,6 +824,12 @@ export const runtimeService = {
   getStatus(userId: number) {
     return defaultRuntimeService().getStatus(userId);
   },
+  getStatusView(userId: number) {
+    return defaultRuntimeService().getStatusView(userId);
+  },
+  listStatusViews() {
+    return defaultRuntimeService().listStatusViews();
+  },
   listStatuses() {
     return defaultRuntimeService().listStatuses();
   },
@@ -784,6 +879,7 @@ function defaultRuntimeService(): ManagedRuntimeService {
     }),
     store: runtimeStore,
     audit: auditStore,
+    policyStore: runtimePolicyStore,
     identitySecret: secret,
     imageAlias: requiredEnvironment("RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS"),
     expectedRuntimeVersion: SUPPORTED_CODEX_VERSION,
@@ -859,6 +955,22 @@ async function providerConfigForUser(
       modelId: model.modelId,
     }),
   };
+}
+
+function managerResources(policy: AssignedRuntimePolicy): RuntimeResourcePolicy {
+  return {
+    memoryBytes: policy.memoryMiB * 1024 * 1024,
+    nanoCpus: policy.cpuMillicores * 1_000_000,
+    pidsLimit: policy.pidsLimit,
+  };
+}
+
+function sameResources(left: RuntimeResourcePolicy, right: RuntimeResourcePolicy): boolean {
+  return (
+    left.memoryBytes === right.memoryBytes &&
+    left.nanoCpus === right.nanoCpus &&
+    left.pidsLimit === right.pidsLimit
+  );
 }
 
 function auditMetadata(

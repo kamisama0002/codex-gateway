@@ -6,6 +6,7 @@ import {
   GitCompareArrowsIcon,
   GlobeIcon,
   MonitorIcon,
+  PlusIcon,
   TerminalIcon,
 } from "@lucide/vue";
 import type { WorkspacePanelKind } from "./types";
@@ -24,7 +25,13 @@ export const workspacePanelRegistry = {
     closable: false,
     dynamic: false,
   },
-  files: { component: "WorkspaceDockFilesPanel", icon: FilesIcon, closable: false, dynamic: false },
+  toolHome: {
+    component: "WorkspaceDockToolHomePanel",
+    icon: PlusIcon,
+    closable: false,
+    dynamic: false,
+  },
+  files: { component: "WorkspaceDockFilesPanel", icon: FilesIcon, closable: true, dynamic: false },
   gitReview: {
     component: "WorkspaceDockGitReviewPanel",
     icon: GitCompareArrowsIcon,

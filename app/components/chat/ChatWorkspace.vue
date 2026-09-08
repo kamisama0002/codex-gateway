@@ -32,8 +32,8 @@ const scopeKey = computed(() =>
       removePanel()/fromJSON() transaction inside one Dockview instance.
     -->
     <WorkspaceDock :key="scopeKey" :layout="layout">
-      <template #mobile-header-start>
-        <slot name="mobile-header-start" />
+      <template #mobile-header-start="{ toolsOpen }">
+        <slot name="mobile-header-start" :tools-open="toolsOpen" />
       </template>
     </WorkspaceDock>
   </section>

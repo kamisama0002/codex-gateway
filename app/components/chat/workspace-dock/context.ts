@@ -1,6 +1,7 @@
 import type { IDockviewPanel } from "dockview-vue";
 
 import { inject, type ComputedRef, type InjectionKey, type Ref } from "vue";
+import type { WorkspaceToolCatalogItem } from "@/components/chat/workspace-tools/tool-catalog";
 
 export interface WorkspaceFilesPanelContext {
   layout: Ref<"desktop" | "mobile">;
@@ -12,6 +13,9 @@ export interface WorkspaceFilesPanelContext {
 
 export interface WorkspaceDockUiContext {
   layout: Ref<"desktop" | "mobile">;
+  toolCatalog: ComputedRef<WorkspaceToolCatalogItem[]>;
+  toolSidebarOpen: ComputedRef<boolean>;
+  toggleToolSidebar: () => void;
   closePanel: (panel: IDockviewPanel) => void;
 }
 

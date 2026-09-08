@@ -60,7 +60,17 @@ export interface EngineContainerState {
   runtimeType: RuntimeType;
   serviceToken: string;
   userHash: string;
+  memoryBytes: number;
   nanoCpus: number;
+  pidsLimit: number;
+}
+
+export interface E2eDockerInspection {
+  containerId: string;
+  memoryBytes: number;
+  nanoCpus: number;
+  pidsLimit: number;
+  workspaceVolume: string;
 }
 
 export interface DockerEngine {
@@ -79,7 +89,7 @@ export interface DockerEngine {
   updateContainerResources(
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
-  ): Promise<void>;
+  ): Promise<EngineContainerState>;
   writeRuntimeSecrets(containerId: string, secrets: RuntimeSecret[]): Promise<void>;
   forwardOAuthCallback(containerId: string, pathAndQuery: string): Promise<void>;
 }
@@ -236,12 +246,37 @@ export class DockerodeEngine implements DockerEngine {
   async updateContainerResources(
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
-  ): Promise<void> {
+  ): Promise<EngineContainerState> {
     await this.docker.getContainer(containerId).update({
       Memory: resources.Memory,
       NanoCPUs: resources.NanoCpus,
       PidsLimit: resources.PidsLimit,
     });
+    return this.inspectContainer(containerId);
+  }
+
+  async inspectRuntimeForE2e(runtimeId: string): Promise<E2eDockerInspection> {
+    const state = await this.findManagedContainer(runtimeId);
+    if (state === null) throw new Error("managed runtime is missing");
+    const inspected = await this.docker.getContainer(state.containerId).inspect();
+    const workspaceVolumes = inspected.Mounts.flatMap((mount) =>
+      mount.Type === "volume" &&
+      mount.Destination === "/workspace" &&
+      typeof mount.Name === "string" &&
+      mount.Name.length > 0
+        ? [mount.Name]
+        : [],
+    );
+    if (workspaceVolumes.length !== 1) {
+      throw new Error("managed runtime workspace volume is invalid");
+    }
+    return {
+      containerId: state.containerId,
+      memoryBytes: state.memoryBytes,
+      nanoCpus: state.nanoCpus,
+      pidsLimit: state.pidsLimit,
+      workspaceVolume: workspaceVolumes[0],
+    };
   }
 
   private async ensureManagedVolume(spec: DockerManagedVolumeSpec): Promise<void> {
@@ -297,7 +332,9 @@ export class DockerodeEngine implements DockerEngine {
       runtimeType: runtimeTypeSchema.parse(required(labels[runtimeResourceLabels.runtimeType])),
       serviceToken: required(environment.get("CODEX_REMOTE_TOKEN")),
       userHash: required(labels[runtimeResourceLabels.userHash]),
+      memoryBytes: Math.max(0, inspected.HostConfig.Memory ?? 0),
       nanoCpus: Math.max(0, inspected.HostConfig.NanoCpus ?? 0),
+      pidsLimit: Math.max(0, inspected.HostConfig.PidsLimit ?? 0),
     };
   }
 }

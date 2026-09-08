@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { createHmac } from "node:crypto";
+
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  expectDataOpsTicketRejected,
+  inspectManagedRuntimeDocker,
   loginGatewayUser,
   listManagedRuntimeThreads,
   materializeManagedRuntimeThread,
   readManagedRuntimeStatus,
+  recordManagedRuntimeResourceExpectations,
   restartGateway,
   restartManagedRuntimeAsAdmin,
   startManagedRuntime,
@@ -26,6 +31,18 @@ const readyRuntimeStatus = {
   lastError: null,
   createdAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:01.000Z",
+};
+const readyRuntimeView = {
+  runtime: readyRuntimeStatus,
+  assignedPolicy: null,
+  actualResources: {
+    memoryBytes: 2 * 1024 * 1024 * 1024,
+    nanoCpus: 2_000_000_000,
+    pidsLimit: 256,
+  },
+  currentImageAlias: "stable",
+  requiresRestart: false,
+  requiresUpgrade: false,
 };
 
 describe("managed Runtime E2E helper", () => {
@@ -137,7 +154,7 @@ describe("managed Runtime E2E helper", () => {
     const request = {
       async get(url: string) {
         urls.push(url);
-        if (url.endsWith("/api/runtime/me")) return response(readyRuntimeStatus);
+        if (url.endsWith("/api/runtime/me")) return response(readyRuntimeView);
         if (url.endsWith("/api/e2e/gateway-process")) {
           bootReadCount += 1;
           return response({
@@ -158,9 +175,9 @@ describe("managed Runtime E2E helper", () => {
             user: { id: 7, username: "runtime-a", role: "admin" },
           });
         }
-        if (url.endsWith("/api/runtime/start")) return response(readyRuntimeStatus);
+        if (url.endsWith("/api/runtime/start")) return response(readyRuntimeView);
         if (url.endsWith("/api/admin/runtimes/7/restart")) {
-          return response(readyRuntimeStatus);
+          return response(readyRuntimeView);
         }
         if (url.endsWith("/api/e2e/gateway-restart")) return response({}, 202);
         throw new Error(`Unexpected POST ${url}`);
@@ -183,5 +200,145 @@ describe("managed Runtime E2E helper", () => {
       "http://gateway-under-test:3100/api/e2e/gateway-restart",
       "http://gateway-under-test:3100/api/e2e/gateway-process",
     ]);
+  });
+
+  it("parses only sanitized Docker inspection fields from the test-only Runtime Manager route", async () => {
+    vi.stubEnv("RUNTIME_MANAGER_BASE_URL", "http://runtime-manager:8787");
+    vi.stubEnv("RUNTIME_MANAGER_SHARED_SECRET", "shared-secret");
+    const inspected = await inspectManagedRuntimeDocker(
+      {
+        token: "gateway-session-token",
+        expiresAt: "2026-10-01T00:00:00.000Z",
+        user: { id: 7, username: "runtime-a", role: "user" },
+      },
+      async () =>
+        new Response(
+          JSON.stringify({
+            containerId: "container-policy",
+            memoryBytes: 1024 * 1024 * 1024,
+            nanoCpus: 1_000_000_000,
+            pidsLimit: 128,
+            workspaceVolume: "workspace-policy",
+          }),
+          { status: 200 },
+        ),
+    );
+
+    expect(inspected).toEqual({
+      containerId: "container-policy",
+      memoryBytes: 1024 * 1024 * 1024,
+      nanoCpus: 1_000_000_000,
+      pidsLimit: 128,
+      workspaceVolume: "workspace-policy",
+    });
+    await expect(
+      inspectManagedRuntimeDocker(
+        {
+          token: "gateway-session-token",
+          expiresAt: "2026-10-01T00:00:00.000Z",
+          user: { id: 7, username: "runtime-a", role: "user" },
+        },
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...inspected,
+              serviceToken: "must-not-cross-the-test-boundary",
+            }),
+            { status: 200 },
+          ),
+      ),
+    ).rejects.toMatchObject({ name: "ZodError" });
+  });
+
+  it("requires DataOps Ticket replays to be rejected through the Gateway", async () => {
+    const calls: Array<{ url: string; data: unknown }> = [];
+    await expectDataOpsTicketRejected(
+      {
+        async get() {
+          throw new Error("Unexpected GET");
+        },
+        async post(url, options) {
+          calls.push({ url, data: options?.data });
+          return { ok: () => false, status: () => 401, json: async () => ({}) };
+        },
+      },
+      "one-time-ticket",
+    );
+
+    expect(calls).toEqual([
+      {
+        url: "http://gateway-under-test:3100/api/auth/dataops",
+        data: { ticket: "one-time-ticket" },
+      },
+    ]);
+  });
+
+  it("records only runtime ids and exact policy resources for the Docker postcondition", async () => {
+    vi.stubEnv("RUNTIME_MANAGER_SHARED_SECRET", "shared-secret");
+    vi.stubEnv(
+      "E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE",
+      "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations-project-a-101.json",
+    );
+    const writes: Array<{ path: unknown; data: unknown; encoding: unknown }> = [];
+    const session = {
+      token: "gateway-session-token",
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      user: { id: 7, username: "runtime-a", role: "user" as const },
+    };
+    const artifact = await recordManagedRuntimeResourceExpectations(
+      [
+        {
+          session,
+          resources: {
+            memoryBytes: 1280 * 1024 * 1024,
+            nanoCpus: 1_250_000_000,
+            pidsLimit: 160,
+          },
+        },
+      ],
+      async (path, data, encoding) => {
+        writes.push({ path, data, encoding });
+      },
+    );
+    const runtimeId = `codex_${createHmac("sha256", "shared-secret")
+      .update("codex-runtime-user:7")
+      .digest("hex")
+      .slice(0, 32)}`;
+
+    expect(artifact).toEqual({
+      [runtimeId]: {
+        memoryBytes: 1280 * 1024 * 1024,
+        nanoCpus: 1_250_000_000,
+        pidsLimit: 160,
+      },
+    });
+    expect(writes).toEqual([
+      {
+        path: "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations-project-a-101.json",
+        data: `${JSON.stringify(artifact, null, 2)}\n`,
+        encoding: "utf8",
+      },
+    ]);
+    expect(JSON.stringify(artifact)).not.toContain(session.token);
+  });
+
+  it("writes concurrent projects to distinct Runtime expectation artifacts", async () => {
+    vi.stubEnv("RUNTIME_MANAGER_SHARED_SECRET", "shared-secret");
+    const paths: unknown[] = [];
+    for (const projectName of ["project-a-101", "project-b-202"]) {
+      vi.stubEnv(
+        "E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE",
+        `/workspace/codex-gateway/test-results/managed-runtime-resource-expectations-${projectName}.json`,
+      );
+      await recordManagedRuntimeResourceExpectations([], async (path) => {
+        paths.push(path);
+      });
+    }
+
+    expect(paths).toEqual([
+      "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations-project-a-101.json",
+      "/workspace/codex-gateway/test-results/managed-runtime-resource-expectations-project-b-202.json",
+    ]);
+    expect(new Set(paths).size).toBe(2);
   });
 });

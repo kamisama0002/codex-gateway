@@ -24,6 +24,17 @@ const providerIdSchema = z
   .max(128)
   .regex(/^[a-z0-9][a-z0-9_-]*$/);
 const runtimeActionRequestSchema = z.object({ runtimeId: runtimeIdSchema }).strict();
+export const runtimeResourcePolicySchema = z
+  .object({
+    memoryBytes: z.number().int().min(128 * 1024 * 1024).max(16 * 1024 * 1024 * 1024),
+    nanoCpus: z.number().int().min(250_000_000).max(8_000_000_000),
+    pidsLimit: z.number().int().min(32).max(4096),
+  })
+  .strict();
+export type RuntimeResourcePolicy = z.infer<typeof runtimeResourcePolicySchema>;
+const runtimeResourceActionRequestSchema = z
+  .object({ runtimeId: runtimeIdSchema, resources: runtimeResourcePolicySchema.optional() })
+  .strict();
 const provisionRuntimeRequestSchema = z
   .object({
     runtimeId: runtimeIdSchema,
@@ -72,10 +83,15 @@ const provisionRuntimeRequestSchema = z
       )
       .max(64)
       .optional(),
+    resources: runtimeResourcePolicySchema.optional(),
   })
   .strict();
 const upgradeRuntimeRequestSchema = z
-  .object({ runtimeId: runtimeIdSchema, imageAlias: imageAliasSchema })
+  .object({
+    runtimeId: runtimeIdSchema,
+    imageAlias: imageAliasSchema,
+    resources: runtimeResourcePolicySchema.optional(),
+  })
   .strict();
 const forwardOAuthCallbackRequestSchema = z
   .object({
@@ -117,6 +133,7 @@ const runtimeLifecycleResultSchema = z
     imageVersion: z.string().min(1).nullable(),
     status: z.enum(["absent", "stopped", "running"]),
     endpoint: internalManagedRuntimeEndpointSchema.nullable(),
+    actualResources: runtimeResourcePolicySchema.nullable(),
   })
   .strict();
 const agentContainerStatsSchema = z
@@ -182,6 +199,7 @@ export interface ProvisionRuntimeRequest {
     token: string;
   };
   runtimeSecrets?: ResolvedRuntimeSecret[];
+  resources?: RuntimeResourcePolicy;
 }
 
 export interface SyncRuntimeSecretsRequest {
@@ -201,6 +219,7 @@ export interface RuntimeLifecycleResult {
   imageVersion: string | null;
   status: "absent" | "stopped" | "running";
   endpoint: ManagedRuntimeEndpoint | null;
+  actualResources: RuntimeResourcePolicy | null;
 }
 
 export type AgentRuntimeStatsResult = z.infer<typeof agentRuntimeStatsResultSchema>;
@@ -306,27 +325,37 @@ export class RuntimeManagerClient {
     );
   }
 
-  start(runtimeId: string): Promise<RuntimeLifecycleResult> {
-    return this.action("start", runtimeId);
+  start(
+    runtimeId: string,
+    resources?: RuntimeResourcePolicy,
+  ): Promise<RuntimeLifecycleResult> {
+    return this.resourceAction("start", runtimeId, resources);
   }
 
   stop(runtimeId: string): Promise<RuntimeLifecycleResult> {
     return this.action("stop", runtimeId);
   }
 
-  restart(runtimeId: string): Promise<RuntimeLifecycleResult> {
-    return this.action("restart", runtimeId);
+  restart(
+    runtimeId: string,
+    resources?: RuntimeResourcePolicy,
+  ): Promise<RuntimeLifecycleResult> {
+    return this.resourceAction("restart", runtimeId, resources);
   }
 
   remove(runtimeId: string): Promise<RuntimeLifecycleResult> {
     return this.action("remove", runtimeId);
   }
 
-  upgrade(runtimeId: string, imageAlias: string): Promise<RuntimeLifecycleResult> {
+  upgrade(
+    runtimeId: string,
+    imageAlias: string,
+    resources?: RuntimeResourcePolicy,
+  ): Promise<RuntimeLifecycleResult> {
     return this.request(
       "POST",
       "/v1/runtimes/upgrade",
-      upgradeRuntimeRequestSchema.parse({ runtimeId, imageAlias }),
+      upgradeRuntimeRequestSchema.parse({ runtimeId, imageAlias, resources }),
     );
   }
 
@@ -335,6 +364,18 @@ export class RuntimeManagerClient {
       "POST",
       `/v1/runtimes/${action}`,
       runtimeActionRequestSchema.parse({ runtimeId }),
+    );
+  }
+
+  private resourceAction(
+    action: "start" | "restart",
+    runtimeId: string,
+    resources?: RuntimeResourcePolicy,
+  ) {
+    return this.request(
+      "POST",
+      `/v1/runtimes/${action}`,
+      runtimeResourceActionRequestSchema.parse({ runtimeId, resources }),
     );
   }
 

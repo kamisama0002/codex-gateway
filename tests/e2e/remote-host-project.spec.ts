@@ -243,7 +243,6 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
   const terminalMarker = `codex-gateway-terminal-${Date.now()}`;
   await runTerminalCommand(page, `echo ${terminalMarker}`);
   await expectTerminalContains(page, terminalMarker);
-  await page.getByRole("tab", { name: /Agent/ }).click();
   await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
   await page.getByRole("tab", { name: project.name }).click();
   await expectTerminalContains(page, terminalMarker);

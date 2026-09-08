@@ -165,7 +165,7 @@ test("full Agent runtime exposes tools, search, business MCP, Skills, credential
   const beforeRestart = runtimeA.containerId;
   await restartManagedRuntimeAsAdmin(request, admin, userA);
   const restarted = await inspectManagedRuntime(userA);
-  expect(restarted.containerId).not.toBe(beforeRestart);
+  expect(restarted.containerId).toBe(beforeRestart);
   const persisted = await execManagedRuntime(
     userA,
     'test "$(cat /codex-home/memories/full-e2e)" = persisted && ' +
