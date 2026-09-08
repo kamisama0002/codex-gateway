@@ -232,28 +232,37 @@ services:
 
 networks:
   web-common:
-    external: true
+    name: ${WEB_COMMON_NETWORK_NAME:-web-common}
+    ipam:
+      config:
+        - subnet: ${WEB_COMMON_NETWORK_SUBNET:-172.15.249.0/24}
   gateway-database:
     internal: true
+    ipam:
+      config:
+        - subnet: ${GATEWAY_DATABASE_NETWORK_SUBNET:-172.15.254.0/24}
   runtime-manager:
     name: ${RUNTIME_MANAGER_NETWORK_NAME:-runtime-manager}
     internal: true
     ipam:
       config:
-        - subnet: ${RUNTIME_MANAGER_NETWORK_SUBNET:-10.254.250.0/24}
+        - subnet: ${RUNTIME_MANAGER_NETWORK_SUBNET:-172.15.250.0/24}
   agent-runtime:
     name: ${RUNTIME_MANAGER_AGENT_NETWORK:-agent-runtime}
     internal: true
     ipam:
       config:
-        - subnet: ${RUNTIME_MANAGER_AGENT_NETWORK_SUBNET:-10.254.251.0/24}
+        - subnet: ${RUNTIME_MANAGER_AGENT_NETWORK_SUBNET:-172.15.251.0/24}
   agent-egress:
     name: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK:-agent-egress}
     ipam:
       config:
-        - subnet: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK_SUBNET:-10.254.252.0/24}
+        - subnet: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK_SUBNET:-172.15.252.0/24}
   search-backend:
     internal: true
+    ipam:
+      config:
+        - subnet: ${SEARCH_BACKEND_NETWORK_SUBNET:-172.15.253.0/24}
 
 volumes:
   capability-data:
