@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getValidatedQuery } from "h3";
 import type { WorkspaceUploadResult } from "~~/shared/types";
-import { remoteFiles } from "../../utils/gateway/infra/host-services";
 import { defineGatewayEventHandler } from "../../utils/gateway/http/errors";
 import { streamMultipartUploads } from "../../utils/gateway/http/multipart-uploads";
 import { requireRecord } from "../../utils/gateway/http/validation/common";
 import { workspaceUploadQuerySchema } from "../../utils/gateway/http/validation/workspace-uploads";
 import { uploadWorkspaceFiles } from "../../utils/gateway/http/workspace-upload-service";
+import { workspaceUploadFilesForHost } from "../../utils/gateway/http/workspace-upload-files";
 import { requireWorkspaceHost } from "../../utils/gateway/runtime-manager/local-workspace";
 import { projectStore } from "../../utils/gateway/state/projects";
 
@@ -33,7 +33,7 @@ export default defineGatewayEventHandler(async (event): Promise<WorkspaceUploadR
       project,
       parts,
       overwrite: query.overwrite,
-      remoteFiles,
+      remoteFiles: workspaceUploadFilesForHost(host),
     });
   } finally {
     await rm(tempDir, { recursive: true, force: true });

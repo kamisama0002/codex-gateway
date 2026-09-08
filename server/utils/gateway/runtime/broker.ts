@@ -217,6 +217,10 @@ class ThreadBroker {
     return this.files.createDirectory(host, path);
   }
 
+  async existingFilePaths(host: HostRecord, paths: string[]) {
+    return this.files.existingPaths(host, paths);
+  }
+
   async openFile(host: HostRecord, path: string, options: { maxSize: number }) {
     return this.files.openFile(host, path, options);
   }
