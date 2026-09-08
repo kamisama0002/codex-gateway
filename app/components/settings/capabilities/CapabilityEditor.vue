@@ -23,11 +23,15 @@ import {
 import { Switch } from "@codex-gateway/ui/switch";
 import { Textarea } from "@codex-gateway/ui/textarea";
 
-const props = defineProps<{
-  open: boolean;
-  capability: CapabilityDefinition | null;
-  saving: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    capability: CapabilityDefinition | null;
+    saving: boolean;
+    mcpOnly?: boolean;
+  }>(),
+  { mcpOnly: false },
+);
 const emit = defineEmits<{
   "update:open": [open: boolean];
   save: [payload: { input: CapabilityCreateInput; skillContent: string }];
@@ -39,7 +43,10 @@ watch(
   () => [props.open, props.capability] as const,
   ([open, capability]) => {
     if (!open) return;
-    Object.assign(form, capability === null ? emptyForm() : formFromCapability(capability));
+    Object.assign(
+      form,
+      capability === null ? emptyForm(props.mcpOnly) : formFromCapability(capability),
+    );
   },
   { immediate: true },
 );
@@ -49,17 +56,26 @@ function submit() {
 }
 
 function buildInput(): CapabilityCreateInput {
-  const common = {
-    id: form.id,
-    kind: form.kind,
-    displayName: form.displayName,
-    description: form.description,
-    version: form.version,
-    source: { type: form.sourceType, locator: form.sourceLocator },
-    sensitiveFields: form.sensitiveFields
+  const bearerTokenEnvVar = form.bearerTokenEnvVar.trim();
+  const sensitiveFields = [
+    ...form.sensitiveFields
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean),
+    ...(form.transport === "streamable_http" && bearerTokenEnvVar !== ""
+      ? [bearerTokenEnvVar]
+      : []),
+  ];
+  const common = {
+    id: form.id,
+    kind: props.mcpOnly ? ("mcp" as const) : form.kind,
+    displayName: form.displayName,
+    description: form.description,
+    version: form.version,
+    source: props.mcpOnly
+      ? ({ type: "internal", locator: "personal-mcp" } as const)
+      : { type: form.sourceType, locator: form.sourceLocator },
+    sensitiveFields: [...new Set(sensitiveFields)],
     enabled: form.enabled,
   };
   switch (form.kind) {
@@ -93,7 +109,11 @@ function buildInput(): CapabilityCreateInput {
                 command: form.command,
                 args: form.args.split("\n").filter(Boolean),
               }
-            : { transport: "streamable_http", url: form.url },
+            : {
+                transport: "streamable_http",
+                url: form.url,
+                ...(bearerTokenEnvVar === "" ? {} : { bearerTokenEnvVar }),
+              },
       };
     case "search":
       return {
@@ -104,7 +124,7 @@ function buildInput(): CapabilityCreateInput {
   }
 }
 
-function emptyForm() {
+function emptyForm(_mcpOnly = false) {
   return {
     id: "org__",
     kind: "mcp" as CapabilityKind,
@@ -121,6 +141,7 @@ function emptyForm() {
     appId: "",
     transport: "streamable_http" as "streamable_http" | "stdio",
     url: "",
+    bearerTokenEnvVar: "",
     command: "node",
     args: "",
     skillContent: "",
@@ -150,6 +171,7 @@ function formFromCapability(capability: CapabilityDefinition) {
       next.args = config.args.join("\n");
     } else {
       next.url = config.url;
+      next.bearerTokenEnvVar = config.bearerTokenEnvVar ?? "";
     }
   }
   return next;
@@ -166,7 +188,11 @@ function formFromCapability(capability: CapabilityDefinition) {
         <DialogDescription>{{ t("app.capabilityEditorDescription") }}</DialogDescription>
       </DialogHeader>
       <form class="space-y-4" @submit.prevent="submit">
-        <div v-if="form.kind !== 'skill'" class="grid gap-3 sm:grid-cols-2">
+        <div v-if="mcpOnly" class="space-y-1.5">
+          <Label for="capability-id">{{ t("app.capabilityId") }}</Label>
+          <Input id="capability-id" v-model="form.id" :disabled="capability !== null" />
+        </div>
+        <div v-else-if="form.kind !== 'skill'" class="grid gap-3 sm:grid-cols-2">
           <div class="space-y-1.5">
             <Label for="capability-id">{{ t("app.capabilityId") }}</Label>
             <Input id="capability-id" v-model="form.id" :disabled="capability !== null" />
@@ -201,7 +227,7 @@ function formFromCapability(capability: CapabilityDefinition) {
           <Label for="capability-description">{{ t("app.description") }}</Label>
           <Textarea id="capability-description" v-model="form.description" />
         </div>
-        <div class="grid gap-3 sm:grid-cols-2">
+        <div v-if="!mcpOnly" class="grid gap-3 sm:grid-cols-2">
           <div class="space-y-1.5">
             <Label for="capability-source-type">{{ t("app.capabilitySourceType") }}</Label>
             <Select v-model="form.sourceType">
@@ -263,6 +289,13 @@ function formFromCapability(capability: CapabilityDefinition) {
           </div>
           <div v-if="form.transport === 'streamable_http'" class="space-y-1.5">
             <Label for="mcp-url">URL</Label><Input id="mcp-url" v-model="form.url" />
+            <Label for="mcp-bearer-env">{{ t("app.personalMcpBearerEnv") }}</Label>
+            <Input
+              id="mcp-bearer-env"
+              v-model="form.bearerTokenEnvVar"
+              placeholder="MCP_BEARER_TOKEN"
+            />
+            <p class="text-xs text-ink-faint">{{ t("app.personalMcpBearerEnvHint") }}</p>
           </div>
           <div v-else class="grid gap-3 sm:grid-cols-2">
             <div class="space-y-1.5">

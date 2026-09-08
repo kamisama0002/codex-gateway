@@ -17,7 +17,13 @@ export async function loginWithDataOpsForEvent(
   const input = await readValidatedBody(event, (body) => inputSchema.parse(body));
   try {
     const claims = await client.exchange(input.ticket);
-    return await identities.loginDataOps(claims);
+    const session = await identities.loginDataOps(claims);
+    try {
+      await client.bootstrapMcpCredential(claims);
+    } catch {
+      // Default business MCP bootstrap is best-effort and must not block the workbench login.
+    }
+    return session;
   } catch (error) {
     if (!(error instanceof DataOpsSsoError)) throw error;
     const statusCode = dataOpsErrorStatus(error.code);

@@ -21,10 +21,11 @@ import { Switch } from "@codex-gateway/ui/switch";
 
 type CatalogItem = AdminCapabilityCatalogItem | UserCapabilityCatalogItem;
 
-defineProps<{
+const props = defineProps<{
   items: CatalogItem[];
   users: CapabilityAdminUser[];
   admin: boolean;
+  currentUserId: number | null;
   busyId: string | null;
 }>();
 
@@ -59,7 +60,19 @@ function deploymentStatus(item: CatalogItem): CapabilityDeploymentStatus {
 }
 
 function isSystemCapability(item: CatalogItem) {
-  return item.id === "org__dinky_mcp";
+  return item.id === "org__dinky_mcp" || item.id === "org__infinity";
+}
+
+function isPersonalMcp(item: CatalogItem) {
+  return (
+    item.kind === "mcp" &&
+    item.createdByUserId !== null &&
+    item.createdByUserId === props.currentUserId
+  );
+}
+
+function canManage(item: CatalogItem) {
+  return (props.admin && !isSystemCapability(item)) || isPersonalMcp(item);
 }
 </script>
 
@@ -92,7 +105,7 @@ function isSystemCapability(item: CatalogItem) {
             </span>
           </div>
         </div>
-        <div v-if="admin && !isSystemCapability(item)" class="flex shrink-0 items-center gap-1">
+        <div v-if="canManage(item)" class="flex shrink-0 items-center gap-1">
           <Switch
             :model-value="item.enabled"
             :disabled="busyId !== null"
@@ -101,6 +114,7 @@ function isSystemCapability(item: CatalogItem) {
             @update:model-value="emit('toggle', item, $event)"
           />
           <Button
+            v-if="admin"
             type="button"
             variant="ghost"
             size="icon-sm"
@@ -150,7 +164,7 @@ function isSystemCapability(item: CatalogItem) {
           {{ userName(users, assignment.userId) }}
           <span v-if="assignment.projectId !== null">· P{{ assignment.projectId }}</span>
           <Button
-            v-if="!isSystemCapability(item)"
+            v-if="admin && !isSystemCapability(item)"
             type="button"
             variant="ghost"
             size="icon-sm"
@@ -175,7 +189,7 @@ function isSystemCapability(item: CatalogItem) {
             {{ t("app.revoked") }}
           </span>
           <Button
-            v-if="admin && !isSystemCapability(item) && credential.revokedAt === null"
+            v-if="canManage(item) && credential.revokedAt === null"
             type="button"
             variant="ghost"
             size="icon-sm"

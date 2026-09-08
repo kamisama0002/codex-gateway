@@ -31,9 +31,12 @@ export function createDinkyMcpCapabilityService(store: CapabilityStore) {
           transport: "streamable_http" as const,
           url,
           bearerTokenEnvVar: "INFINITY_USER_TOKEN",
-          envHttpHeaders: { "X-INFINITY-TENANT-ID": "INFINITY_TENANT_ID" },
+          envHttpHeaders: {
+            "X-INFINITY-TENANT-ID": "INFINITY_TENANT_ID",
+            "X-INFINITY-DEFAULT-PROJECT-ID": "INFINITY_PROJECT_ID",
+          },
         },
-        sensitiveFields: ["INFINITY_TENANT_ID", "INFINITY_USER_TOKEN"],
+        sensitiveFields: ["INFINITY_PROJECT_ID", "INFINITY_TENANT_ID", "INFINITY_USER_TOKEN"],
         enabled: true,
         createdByUserId: null,
       };

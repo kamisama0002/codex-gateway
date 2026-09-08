@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createDataOpsSsoClient } from "./dataops-client";
-import { dataOpsClaimsSchema } from "./dataops-claims";
+import { dataOpsClaimsSchema, type DataOpsClaims } from "./dataops-claims";
 
-const claims = {
+const claims: DataOpsClaims = {
   audience: "codex-gateway",
   tenantId: 1,
   userId: 9,
@@ -50,6 +50,44 @@ describe("DataOps SSO client", () => {
     await expect(client.exchange("pct_once")).resolves.toEqual(claims);
     expect(seenUrl).toBe("http://dataops.internal:8888/api/codex-gateway/portal-tickets/exchange");
     expect(seenAuthorization).toBe("Bearer shared-secret");
+  });
+
+  it("requests default DataOps MCP bootstrap without returning the user credential", async () => {
+    let seenBody: unknown;
+    const client = createDataOpsSsoClient({
+      baseUrl: "http://dataops.internal:8888",
+      sharedSecret: "shared-secret",
+      pairingId: "pairing-fixed",
+      revision: 7,
+      fetch: async (url, init) => {
+        const requestUrl =
+          typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+        expect(requestUrl).toBe(
+          "http://dataops.internal:8888/api/codex-gateway/mcp-credential/bootstrap",
+        );
+        expect(new Headers(init?.headers).get("authorization")).toBe("Bearer shared-secret");
+        expect(typeof init?.body).toBe("string");
+        seenBody = JSON.parse(typeof init?.body === "string" ? init.body : "null");
+        return Response.json({
+          success: true,
+          code: 0,
+          data: { status: "runtime_not_ready", errorCode: "runtime_not_ready" },
+        });
+      },
+    });
+
+    await expect(client.bootstrapMcpCredential(claims)).resolves.toEqual({
+      status: "runtime_not_ready",
+      errorCode: "runtime_not_ready",
+    });
+    expect(seenBody).toEqual({
+      pairingId: "pairing-fixed",
+      revision: 7,
+      tenantId: 1,
+      dataOpsUserId: 9,
+      projectId: 4,
+    });
+    expect(JSON.stringify(seenBody)).not.toMatch(/token|secret/i);
   });
 
   it("accepts a strict version 1 runtime policy", () => {

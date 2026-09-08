@@ -13,6 +13,7 @@ const identitySchema = z
     revision: z.number().int().positive(),
     tenantId: z.number().int().positive(),
     dataOpsUserId: z.number().int().positive(),
+    projectId: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -79,25 +80,27 @@ export function createDataOpsMcpCredentialService(options: ServiceOptions) {
       const input = dataOpsMcpCredentialBindSchema.parse(value);
       const userId = await authenticatedUser(options, input, bearerSecret);
       const boundToken = boundTokenFromInput(input);
+      const projectId = input.projectId ?? null;
       await options.credentials.upsert(
-        credentialInput(userId, input.tenantId, input.token, boundToken),
+        credentialInput(userId, input.tenantId, projectId, input.token, boundToken),
       );
-      await options.capabilities.assign(assignment(userId));
-      return await synchronize(options, userId, input, boundToken);
+      await options.capabilities.assign(assignment(userId, projectId));
+      return await synchronize(options, userId, projectId, input, boundToken);
     },
 
     async unbind(value: unknown, bearerSecret: string): Promise<PublicStatus> {
       const input = dataOpsMcpCredentialIdentitySchema.parse(value);
       const userId = await authenticatedUser(options, input, bearerSecret);
-      const credential = await options.credentials.get(credentialId(userId));
+      const projectId = input.projectId ?? null;
+      const credential = await options.credentials.get(credentialId(userId, projectId));
       if (credential !== null && credential.revokedAt === null) {
         await options.credentials.revoke(credential.id);
       }
-      await options.capabilities.unassign(assignment(userId));
+      await options.capabilities.unassign(assignment(userId, projectId));
       const runtime = await options.runtime.getStatus(userId);
       if (runtime?.status === "ready") {
         try {
-          await options.runtime.syncSecrets(userId, null, userId);
+          await options.runtime.syncSecrets(userId, projectId, userId);
         } catch {
           return status(input, "sync_failed", "sync_failed");
         }
@@ -108,9 +111,16 @@ export function createDataOpsMcpCredentialService(options: ServiceOptions) {
     async probe(value: unknown, bearerSecret: string): Promise<PublicStatus> {
       const input = dataOpsMcpCredentialIdentitySchema.parse(value);
       const userId = await authenticatedUser(options, input, bearerSecret);
-      const credential = await options.credentials.get(credentialId(userId));
+      const projectId = input.projectId ?? null;
+      const credential = await options.credentials.get(credentialId(userId, projectId));
       if (credential === null || credential.revokedAt !== null) return status(input, "unbound");
-      return await synchronize(options, userId, input, await storedBoundToken(options, userId));
+      return await synchronize(
+        options,
+        userId,
+        projectId,
+        input,
+        await storedBoundToken(options, userId, projectId),
+      );
     },
   };
 }
@@ -138,6 +148,7 @@ async function authenticatedUser(
 async function synchronize(
   options: ServiceOptions,
   userId: number,
+  projectId: number | null,
   input: IdentityInput,
   boundToken?: BoundToken,
 ): Promise<PublicStatus> {
@@ -149,7 +160,7 @@ async function synchronize(
     return status(input, "runtime_not_ready", "runtime_not_ready", boundToken);
   }
   try {
-    await options.runtime.syncSecrets(userId, null, userId);
+    await options.runtime.syncSecrets(userId, projectId, userId);
     return status(input, "ready", undefined, boundToken);
   } catch {
     return status(input, "sync_failed", "sync_failed", boundToken);
@@ -159,18 +170,20 @@ async function synchronize(
 function credentialInput(
   userId: number,
   tenantId: number,
+  projectId: number | null,
   token: string,
   boundToken?: BoundToken,
 ): CredentialCreateInput {
   return {
-    id: credentialId(userId),
+    id: credentialId(userId, projectId),
     capabilityId: DINKY_MCP_CAPABILITY_ID,
     userId,
-    projectId: null,
+    projectId,
     kind: "token",
     secret: {
       token,
       tenantId: String(tenantId),
+      ...(projectId === null ? {} : { projectId: String(projectId) }),
       ...(boundToken === undefined
         ? {}
         : { tokenId: String(boundToken.tokenId), tokenLabel: boundToken.tokenLabel }),
@@ -178,18 +191,26 @@ function credentialInput(
     mappings: [
       { field: "token", target: { type: "env", name: "INFINITY_USER_TOKEN" } },
       { field: "tenantId", target: { type: "env", name: "INFINITY_TENANT_ID" } },
+      ...(projectId === null
+        ? []
+        : [
+            {
+              field: "projectId",
+              target: { type: "env" as const, name: "INFINITY_PROJECT_ID" },
+            },
+          ]),
     ],
     notBefore: null,
     expiresAt: null,
   };
 }
 
-function assignment(userId: number) {
-  return { capabilityId: DINKY_MCP_CAPABILITY_ID, userId, projectId: null };
+function assignment(userId: number, projectId: number | null) {
+  return { capabilityId: DINKY_MCP_CAPABILITY_ID, userId, projectId };
 }
 
-function credentialId(userId: number) {
-  return `cred__dinky_mcp_${userId}`;
+function credentialId(userId: number, projectId: number | null) {
+  return projectId === null ? `cred__dinky_mcp_${userId}` : `cred__dinky_mcp_${userId}_${projectId}`;
 }
 
 function status(
@@ -217,12 +238,13 @@ function boundTokenFromInput(
 async function storedBoundToken(
   options: ServiceOptions,
   userId: number,
+  projectId: number | null,
 ): Promise<BoundToken | undefined> {
   const credentials = await options.credentials.resolveSecretsForContext(
-    { userId, projectId: null },
+    { userId, projectId },
     [DINKY_MCP_CAPABILITY_ID],
   );
-  const credential = credentials.find((item) => item.id === credentialId(userId));
+  const credential = credentials.find((item) => item.id === credentialId(userId, projectId));
   const tokenId = Number(credential?.secret.tokenId);
   const tokenLabel = credential?.secret.tokenLabel?.trim();
   if (!Number.isSafeInteger(tokenId) || tokenId <= 0 || tokenLabel === undefined || tokenLabel === "") {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCapabilityCreateInput } from "./schemas";
+import { parseCapabilityCreateInput, parseCapabilityUpdateInput } from "./schemas";
 
 const dinkyDefinition = {
   id: "org__dinky_mcp",
@@ -56,5 +56,9 @@ describe("capability schemas", () => {
         },
       }),
     ).toThrow();
+  });
+
+  it("does not clear sensitive fields when an update only changes enabled state", () => {
+    expect(parseCapabilityUpdateInput({ enabled: false })).toEqual({ enabled: false });
   });
 });

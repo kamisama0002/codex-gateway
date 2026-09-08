@@ -7,6 +7,14 @@ const exchangeEnvelopeSchema = z.looseObject({
   msg: z.string().optional(),
   data: z.unknown().optional(),
 });
+const bootstrapEnvelopeSchema = z.looseObject({
+  success: z.boolean(),
+  data: z.unknown().optional(),
+});
+const bootstrapStatusSchema = z.looseObject({
+  status: z.string().trim().min(1).max(64),
+  errorCode: z.string().trim().min(1).max(128).optional(),
+});
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -20,12 +28,17 @@ export class DataOpsSsoError extends Error {
 interface DataOpsSsoClientOptions {
   baseUrl: string;
   sharedSecret: string;
+  pairingId?: string;
+  revision?: number;
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
 }
 
+export type DataOpsMcpBootstrapStatus = z.infer<typeof bootstrapStatusSchema>;
+
 export interface DataOpsSsoClient {
   exchange(ticket: string): Promise<DataOpsClaims>;
+  bootstrapMcpCredential(claims: DataOpsClaims): Promise<DataOpsMcpBootstrapStatus>;
 }
 
 export function createDataOpsSsoClient(options: DataOpsSsoClientOptions): DataOpsSsoClient {
@@ -69,6 +82,43 @@ export function createDataOpsSsoClient(options: DataOpsSsoClientOptions): DataOp
       const claims = dataOpsClaimsSchema.safeParse(envelope.data.data);
       if (!claims.success) throw new DataOpsSsoError("dataops_invalid_response");
       return claims.data;
+    },
+
+    async bootstrapMcpCredential(claims) {
+      const pairingId = options.pairingId?.trim() ?? "";
+      const revision = options.revision;
+      if (pairingId === "" || !Number.isSafeInteger(revision) || Number(revision) <= 0) {
+        throw new DataOpsSsoError("dataops_pairing_identity_missing");
+      }
+      let response: Response;
+      try {
+        response = await fetcher(`${baseUrl}/api/codex-gateway/mcp-credential/bootstrap`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${options.sharedSecret}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            pairingId,
+            revision,
+            tenantId: claims.tenantId,
+            dataOpsUserId: claims.userId,
+            projectId: claims.projectId,
+          }),
+          signal: AbortSignal.timeout(Math.min(timeoutMs, 5_000)),
+        });
+      } catch {
+        throw new DataOpsSsoError("dataops_mcp_bootstrap_unavailable");
+      }
+      if (!response.ok) throw new DataOpsSsoError("dataops_mcp_bootstrap_unavailable");
+      try {
+        const envelope = bootstrapEnvelopeSchema.parse(JSON.parse(await response.text()));
+        if (!envelope.success) throw new DataOpsSsoError("dataops_mcp_bootstrap_rejected");
+        return bootstrapStatusSchema.parse(envelope.data);
+      } catch (error) {
+        if (error instanceof DataOpsSsoError) throw error;
+        throw new DataOpsSsoError("dataops_mcp_bootstrap_invalid_response");
+      }
     },
   };
 }

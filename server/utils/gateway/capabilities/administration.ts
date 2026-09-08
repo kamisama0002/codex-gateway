@@ -20,6 +20,7 @@ import { reconcileUserRuntime } from "./reconciler";
 import { capabilityStore } from "./store";
 import { capabilitySyncStore } from "./sync-store";
 import { DINKY_MCP_CAPABILITY_ID } from "../integrations/dataops-mcp-capability";
+import { DEFAULT_INFINITY_MCP_CAPABILITY_ID } from "~~/shared/types/capabilities";
 
 interface CapabilityStorePort {
   create(input: CapabilityCreateInput): Promise<CapabilityDefinition>;
@@ -87,7 +88,7 @@ export class CapabilityAdministrationService {
       this.options.listUsers(),
     ]);
     const capabilities = await Promise.all(
-      definitions.map(async (definition) => {
+      definitions.filter(isVisibleCapability).map(async (definition) => {
         const assignments = await this.options.capabilities.listAssignments(definition.id);
         return {
           ...definition,
@@ -107,8 +108,9 @@ export class CapabilityAdministrationService {
       this.options.syncs.get(userId, projectId),
     ]);
     return {
+      userId,
       projectId,
-      capabilities: definitions.map((definition) => {
+      capabilities: definitions.filter(isVisibleCapability).map((definition) => {
         const matchingCredentials = credentials.filter(
           (credential) =>
             credential.capabilityId === definition.id &&
@@ -137,6 +139,94 @@ export class CapabilityAdministrationService {
       metadata: { capabilityId: capability.id },
     });
     return capability;
+  }
+
+  async createPersonalMcp(input: CapabilityCreateInput, actorUserId: number) {
+    this.assertPersonalMcpInput(input);
+    const capability = await this.options.capabilities.create({
+      ...input,
+      kind: "mcp",
+      source: { type: "internal", locator: `personal-mcp:${actorUserId}` },
+      createdByUserId: actorUserId,
+    });
+    let assignment: CapabilityAssignment;
+    try {
+      assignment = await this.options.capabilities.assign({
+        capabilityId: capability.id,
+        userId: actorUserId,
+        projectId: null,
+      });
+    } catch (error) {
+      await this.options.capabilities.delete(capability.id).catch(() => false);
+      throw error;
+    }
+    await this.options.audit.record({
+      actorUserId,
+      userId: actorUserId,
+      action: "personal_mcp.create",
+      outcome: "success",
+      metadata: { capabilityId: capability.id },
+    });
+    return {
+      capability,
+      assignment,
+      sync: await this.tryReconcile(actorUserId, null),
+    };
+  }
+
+  async updatePersonalMcp(id: string, input: CapabilityUpdateInput, actorUserId: number) {
+    await this.requiredPersonalMcp(id, actorUserId);
+    const { source: _source, ...safeInput } = input;
+    const assignments = await this.options.capabilities.listAssignments(id);
+    const capability = await this.options.capabilities.update(id, safeInput);
+    await this.options.audit.record({
+      actorUserId,
+      userId: actorUserId,
+      action: "personal_mcp.update",
+      outcome: "success",
+      metadata: { capabilityId: id },
+    });
+    return { capability, syncs: await this.reconcileAssignments(assignments) };
+  }
+
+  async deletePersonalMcp(id: string, actorUserId: number) {
+    await this.requiredPersonalMcp(id, actorUserId);
+    const assignments = await this.options.capabilities.listAssignments(id);
+    if (!(await this.options.capabilities.delete(id))) {
+      throw new CapabilityAdministrationError("Capability not found", 404);
+    }
+    await this.options.audit.record({
+      actorUserId,
+      userId: actorUserId,
+      action: "personal_mcp.delete",
+      outcome: "success",
+      metadata: { capabilityId: id },
+    });
+    return { deleted: true, syncs: await this.reconcileAssignments(assignments) };
+  }
+
+  async createPersonalCredential(input: CredentialCreateInput, actorUserId: number) {
+    await this.requiredPersonalMcp(input.capabilityId, actorUserId);
+    const credential = await this.options.credentials.create({
+      ...input,
+      userId: actorUserId,
+      projectId: null,
+    });
+    await this.auditCredential("personal_mcp.credential.create", credential, actorUserId);
+    return {
+      credential,
+      runtimeSync: await this.trySyncSecrets(credential, actorUserId),
+    };
+  }
+
+  async revokePersonalCredential(id: string, actorUserId: number) {
+    const current = await this.requiredPersonalCredential(id, actorUserId);
+    const credential = await this.options.credentials.revoke(id);
+    await this.auditCredential("personal_mcp.credential.revoke", credential, actorUserId);
+    return {
+      credential,
+      runtimeSync: await this.trySyncSecrets(current, actorUserId),
+    };
   }
 
   async updateCapability(id: string, input: CapabilityUpdateInput, actorUserId: number) {
@@ -251,6 +341,41 @@ export class CapabilityAdministrationService {
     }
   }
 
+  private assertPersonalMcpInput(input: CapabilityCreateInput) {
+    if (input.kind !== "mcp") {
+      throw new CapabilityAdministrationError("personal_capability_kind_invalid", 400);
+    }
+    if (isManagedPlatformMcp(input.id)) {
+      throw new CapabilityAdministrationError("system_capability_read_only", 403);
+    }
+  }
+
+  private async requiredPersonalMcp(id: string, actorUserId: number) {
+    if (isManagedPlatformMcp(id)) {
+      throw new CapabilityAdministrationError("system_capability_read_only", 403);
+    }
+    const capability = await this.options.capabilities.get(id);
+    if (capability === null) {
+      throw new CapabilityAdministrationError("personal_capability_not_found", 404);
+    }
+    if (capability.kind !== "mcp" || capability.createdByUserId !== actorUserId) {
+      throw new CapabilityAdministrationError("personal_capability_forbidden", 403);
+    }
+    return capability;
+  }
+
+  private async requiredPersonalCredential(id: string, actorUserId: number) {
+    const credential = await this.options.credentials.get(id);
+    if (credential === null) {
+      throw new CapabilityAdministrationError("personal_credential_not_found", 404);
+    }
+    if (credential.userId !== actorUserId) {
+      throw new CapabilityAdministrationError("personal_credential_forbidden", 403);
+    }
+    await this.requiredPersonalMcp(credential.capabilityId, actorUserId);
+    return credential;
+  }
+
   private async tryReconcile(userId: number, projectId: number | null) {
     try {
       return await this.options.reconcile({ userId, projectId, reason: "assignmentChanged" });
@@ -360,4 +485,12 @@ function credentialStatus(
       (credential.expiresAt === null || Date.parse(credential.expiresAt) > now),
   );
   return active ? ("configured" as const) : ("expired" as const);
+}
+
+function isVisibleCapability(definition: CapabilityDefinition) {
+  return !isManagedPlatformMcp(definition.id);
+}
+
+function isManagedPlatformMcp(id: string) {
+  return id === DINKY_MCP_CAPABILITY_ID || id === DEFAULT_INFINITY_MCP_CAPABILITY_ID;
 }

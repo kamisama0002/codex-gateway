@@ -46,6 +46,8 @@ export function createDataOpsIntegrationProvider(
                   createClient({
                     baseUrl: binding.dataOpsBaseUrl,
                     sharedSecret: binding.sharedSecret,
+                    pairingId: binding.pairingId,
+                    revision: binding.revision,
                   }),
                 ),
               ),
@@ -90,6 +92,11 @@ function fallbackClient(clients: DataOpsSsoClient[]): DataOpsSsoClient {
         }
       }
       throw rejected ?? new DataOpsSsoError("dataops_not_configured");
+    },
+    async bootstrapMcpCredential(claims: DataOpsClaims) {
+      const active = clients[0];
+      if (active === undefined) throw new DataOpsSsoError("dataops_not_configured");
+      return await active.bootstrapMcpCredential(claims);
     },
   };
 }

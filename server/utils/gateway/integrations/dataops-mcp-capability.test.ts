@@ -20,7 +20,13 @@ describe("Dinky MCP capability", () => {
     });
     expect(result).toMatchObject({
       id: DINKY_MCP_CAPABILITY_ID,
-      config: { url: "https://dinky.example.test/api/infinity/mcp/transport" },
+      config: {
+        url: "https://dinky.example.test/api/infinity/mcp/transport",
+        envHttpHeaders: {
+          "X-INFINITY-TENANT-ID": "INFINITY_TENANT_ID",
+          "X-INFINITY-DEFAULT-PROJECT-ID": "INFINITY_PROJECT_ID",
+        },
+      },
     });
     expect(JSON.stringify(store.create.mock.calls)).not.toContain("secret");
     await service.ensure({

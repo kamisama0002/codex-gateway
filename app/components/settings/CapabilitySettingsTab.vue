@@ -49,7 +49,7 @@ const busyId = ref<string | null>(null);
 const editorOpen = ref(false);
 const editing = ref<CapabilityDefinition | null>(null);
 const credentialOpen = ref(false);
-const credentialCapability = ref<AdminCapabilityCatalogItem | null>(null);
+const credentialCapability = ref<CatalogItem | null>(null);
 const assignmentOpen = ref(false);
 const assignmentCapability = ref<CatalogItem | null>(null);
 const assignmentUserId = ref("");
@@ -62,6 +62,7 @@ const items = computed<CatalogItem[]>(() =>
   ),
 );
 const users = computed(() => adminCatalog.value?.users ?? []);
+const currentUserId = computed(() => userCatalog.value?.userId ?? null);
 
 onMounted(() => void load());
 
@@ -75,6 +76,7 @@ async function load() {
 }
 
 function openCreate() {
+  if (!isAdmin.value && activeKind.value !== "mcp") return;
   editing.value = null;
   editorOpen.value = true;
 }
@@ -89,8 +91,10 @@ async function saveCapability(payload: { input: CapabilityCreateInput; skillCont
   error.value = "";
   try {
     const { input, skillContent } = payload;
-    if (editing.value === null) await store.createCapability(input);
-    else {
+    if (editing.value === null) {
+      if (isAdmin.value) await store.createCapability(input);
+      else await store.createPersonalMcp(input);
+    } else {
       const update: CapabilityUpdateInput = {
         displayName: input.displayName,
         description: input.description,
@@ -100,9 +104,10 @@ async function saveCapability(payload: { input: CapabilityCreateInput; skillCont
         sensitiveFields: input.sensitiveFields,
         enabled: input.enabled,
       };
-      await store.updateCapability(editing.value.id, update);
+      if (isAdmin.value) await store.updateCapability(editing.value.id, update);
+      else await store.updatePersonalMcp(editing.value.id, update);
     }
-    if (input.kind === "skill" && skillContent.trim() !== "") {
+    if (isAdmin.value && input.kind === "skill" && skillContent.trim() !== "") {
       await store.uploadSkillArtifact(input.id, skillContent);
     }
     editorOpen.value = false;
@@ -116,7 +121,8 @@ async function saveCapability(payload: { input: CapabilityCreateInput; skillCont
 async function toggleCapability(item: CatalogItem, enabled: boolean) {
   busyId.value = item.id;
   try {
-    await store.updateCapability(item.id, { enabled });
+    if (isAdmin.value) await store.updateCapability(item.id, { enabled });
+    else await store.updatePersonalMcp(item.id, { enabled });
   } catch (caught: unknown) {
     error.value = gatewayErrorMessage(caught, t("app.capabilitySaveFailed"));
   } finally {
@@ -165,7 +171,13 @@ async function removeAssignment(item: CatalogItem, assignment: CapabilityAssignm
 }
 
 function openCredential(item: CatalogItem) {
-  if (!("assignments" in item)) return;
+  if (isAdmin.value && !("assignments" in item)) return;
+  if (
+    !isAdmin.value &&
+    (item.kind !== "mcp" || item.createdByUserId !== currentUserId.value)
+  ) {
+    return;
+  }
   credentialCapability.value = item;
   credentialOpen.value = true;
 }
@@ -173,7 +185,8 @@ function openCredential(item: CatalogItem) {
 async function saveCredential(input: CredentialCreateInput) {
   saving.value = true;
   try {
-    await store.createCredential(input);
+    if (isAdmin.value) await store.createCredential(input);
+    else await store.createPersonalCredential(input);
     credentialOpen.value = false;
   } catch (caught: unknown) {
     error.value = gatewayErrorMessage(caught, t("app.credentialSaveFailed"));
@@ -185,7 +198,14 @@ async function saveCredential(input: CredentialCreateInput) {
 async function revokeCredential(id: string) {
   busyId.value = id;
   try {
-    await store.revokeCredential(id);
+    if (isAdmin.value) await store.revokeCredential(id);
+    else {
+      const capability = items.value.find((item) =>
+        item.credentials.some((credential) => credential.id === id),
+      );
+      if (capability === undefined) return;
+      await store.revokePersonalCredential(capability.id, id);
+    }
   } catch (caught: unknown) {
     error.value = gatewayErrorMessage(caught, t("app.credentialRevokeFailed"));
   } finally {
@@ -197,7 +217,8 @@ async function confirmDelete() {
   if (deleting.value === null) return;
   saving.value = true;
   try {
-    await store.deleteCapability(deleting.value.id);
+    if (isAdmin.value) await store.deleteCapability(deleting.value.id);
+    else await store.deletePersonalMcp(deleting.value.id);
     deleting.value = null;
   } catch (caught: unknown) {
     error.value = gatewayErrorMessage(caught, t("app.capabilityDeleteFailed"));
@@ -231,13 +252,15 @@ async function confirmDelete() {
           @click="load"
           ><RefreshCwIcon class="size-4" /></Button
         ><Button
-          v-if="isAdmin"
+          v-if="isAdmin || activeKind === 'mcp'"
           type="button"
           size="sm"
           class="gap-1.5"
           data-testid="add-capability"
           @click="openCreate"
-          ><PlusIcon class="size-4" />{{ t("app.addCapability") }}</Button
+          ><PlusIcon class="size-4" />{{
+            t(isAdmin ? "app.addCapability" : "app.addPersonalMcp")
+          }}</Button
         >
       </div>
     </div>
@@ -263,6 +286,7 @@ async function confirmDelete() {
         :items="items"
         :users="users"
         :admin="isAdmin"
+        :current-user-id="currentUserId"
         :busy-id="busyId"
         @edit="openEdit"
         @delete="deleting = $event"
@@ -277,6 +301,7 @@ async function confirmDelete() {
       v-model:open="editorOpen"
       :capability="editing"
       :saving="saving"
+      :mcp-only="!isAdmin"
       @save="saveCapability"
     />
     <CredentialEditor
@@ -284,6 +309,7 @@ async function confirmDelete() {
       :capability="credentialCapability"
       :users="users"
       :saving="saving"
+      :personal-user-id="isAdmin ? null : currentUserId"
       @save="saveCredential"
     />
     <Dialog v-model:open="assignmentOpen"

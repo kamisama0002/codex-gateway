@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { CredentialCreateInput } from "~~/shared/types";
 import { createDataOpsMcpCredentialService } from "./dataops-mcp-credential-service";
 
 describe("DataOpsMcpCredentialService", () => {
@@ -71,6 +72,40 @@ describe("DataOpsMcpCredentialService", () => {
     });
     expect(fixture.credentials.upsert).toHaveBeenCalled();
     expect(fixture.runtime.syncSecrets).not.toHaveBeenCalled();
+  });
+
+  it("scopes an automatically bootstrapped Dinky MCP credential to the DataOps project", async () => {
+    const fixture = createFixture();
+
+    await fixture.service.bind(
+      {
+        pairingId: "pairing-fixed",
+        revision: 3,
+        tenantId: 7,
+        dataOpsUserId: 42,
+        projectId: 4,
+        token: "login-session-dinky-token",
+      },
+      "paired-secret",
+    );
+
+    expect(fixture.capabilities.assign).toHaveBeenCalledWith({
+      capabilityId: "org__dinky_mcp",
+      userId: 9,
+      projectId: 4,
+    });
+    const persisted = fixture.credentials.upsert.mock.calls[0]?.[0];
+    expect(persisted).toMatchObject({
+      id: "cred__dinky_mcp_9_4",
+      userId: 9,
+      projectId: 4,
+      secret: { tenantId: "7", projectId: "4" },
+    });
+    expect(persisted?.mappings).toContainEqual({
+      field: "projectId",
+      target: { type: "env", name: "INFINITY_PROJECT_ID" },
+    });
+    expect(fixture.runtime.syncSecrets).toHaveBeenCalledWith(9, 4, 9);
   });
 
   it("reports pending sync while the user's runtime is starting", async () => {
@@ -250,7 +285,16 @@ function createFixture() {
       revokedAt: null,
       version: 1,
     }),
-    upsert: vi.fn().mockResolvedValue({ id: "cred__dinky_mcp_9", version: 2, revokedAt: null }),
+    upsert: vi.fn(async (input: CredentialCreateInput) => {
+      const { secret: _secret, ...descriptor } = input;
+      return {
+        ...descriptor,
+        version: 2,
+        revokedAt: null,
+        createdAt: "now",
+        updatedAt: "now",
+      };
+    }),
     revoke: vi.fn().mockResolvedValue({ id: "cred__dinky_mcp_9", version: 2, revokedAt: "now" }),
     resolveSecretsForContext: vi.fn().mockResolvedValue([]),
   };
