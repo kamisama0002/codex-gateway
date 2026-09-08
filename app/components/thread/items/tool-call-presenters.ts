@@ -46,14 +46,10 @@ export interface ToolCallPresentation {
   title: string;
   icon: ToolCallIcon;
   details: ToolCallDetailSection[];
-  retryable: boolean;
 }
 
 type Translate = (key: string) => string;
-type ToolCallPresenter = (
-  item: ToolCallItem,
-  t: Translate,
-) => Omit<ToolCallPresentation, "retryable"> & { retryable?: boolean };
+type ToolCallPresenter = (item: ToolCallItem, t: Translate) => ToolCallPresentation;
 
 const emptyDetails: ToolCallDetailSection[] = [];
 
@@ -67,7 +63,6 @@ const toolCallPresenters: Record<string, ToolCallPresenter> = {
         title: t("app.businessDataUnavailable"),
         icon: "tool",
         details: emptyDetails,
-        retryable: true,
       };
     }
     return {
@@ -121,8 +116,7 @@ export function presentToolCall(item: ToolCallItem, t: Translate): ToolCallPrese
     typeof item.type === "string"
       ? (toolCallPresenters[item.type] ?? defaultToolCallPresenter)
       : defaultToolCallPresenter;
-  const presentation = presenter(item, t);
-  return { ...presentation, retryable: presentation.retryable ?? false };
+  return presenter(item, t);
 }
 
 function defaultToolCallPresenter(item: ToolCallItem): ToolCallPresentation {
@@ -130,7 +124,6 @@ function defaultToolCallPresenter(item: ToolCallItem): ToolCallPresentation {
     title: trimmedOrFallback(item.type, "Tool call"),
     icon: "tool",
     details: emptyDetails,
-    retryable: false,
   };
 }
 
@@ -156,7 +149,6 @@ function webSearchPresentation(item: ToolCallItem, t: Translate): ToolCallPresen
         : null,
       links.length > 0 ? { label: t("app.result"), kind: "links", links } : null,
     ]),
-    retryable: false,
   };
 }
 

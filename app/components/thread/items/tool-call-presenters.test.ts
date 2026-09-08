@@ -31,7 +31,6 @@ describe("MCP tool call presentation", () => {
 
       expect(presentation).toMatchObject({
         title: "业务数据服务暂时不可用",
-        retryable: true,
       });
       expect(JSON.stringify(presentation)).not.toContain(server);
       expect(JSON.stringify(presentation)).not.toContain("ECONNREFUSED");
@@ -53,7 +52,6 @@ describe("MCP tool call presentation", () => {
     );
 
     expect(presentation.title).toBe("业务数据服务 · query_revenue");
-    expect(presentation.retryable).toBe(false);
     expect(JSON.stringify(presentation)).not.toContain("org__dinky_mcp");
   });
 
@@ -70,7 +68,6 @@ describe("MCP tool call presentation", () => {
     );
 
     expect(presentation.title).toBe("personal_docs · search");
-    expect(presentation.retryable).toBe(false);
     expect(presentation.details).toContainEqual({
       label: "错误",
       kind: "markdown",
