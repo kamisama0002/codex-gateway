@@ -190,6 +190,39 @@ test("full Agent runtime exposes tools, search, business MCP, Skills, credential
   }
 });
 
+test("managed Runtime completes a deterministic real Turn", async ({ request }) => {
+  test.setTimeout(5 * 60_000);
+  const [admin, user] = await Promise.all([
+    loginGatewayUser(request, E2E_USERNAME, E2E_PASSWORD),
+    loginGatewayUser(request, MANAGED_RUNTIME_A_USERNAME, MANAGED_RUNTIME_PASSWORD),
+  ]);
+  await configureProvider(request, admin, user);
+  await startManagedRuntime(request, user);
+  const runtime = await inspectManagedRuntime(user);
+  const rpc = new ManagedRuntimeRpcSession(user.user.id, runtime.endpoint);
+  try {
+    await rpc.connect();
+    const threadId = await rpc.startThread();
+    const completed = rpc.waitForNotification("turn/completed", 4 * 60_000);
+    await rpc.request(
+      "turn/start",
+      buildTurnStartParams(
+        threadId,
+        "focused-real-turn-e2e",
+        {
+          text: "回复：FOCUSED_REAL_TURN_OK",
+          cwd: "/workspace",
+          approvalPolicy: "never",
+        },
+        { managedRuntime: true },
+      ),
+    );
+    expect(JSON.stringify(await completed)).toContain("FOCUSED_REAL_TURN_OK");
+  } finally {
+    rpc.close();
+  }
+});
+
 async function configureProvider(
   request: APIRequestContext,
   admin: GatewaySession,

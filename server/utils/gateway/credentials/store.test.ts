@@ -90,4 +90,35 @@ describe("CredentialStore", () => {
       "second-token",
     );
   });
+
+  it("upserts a deterministic credential, increments its version, and revives a revoked row", async () => {
+    const input = {
+      id: "cred__dinky_mcp_7",
+      capabilityId: "org__business",
+      userId: 7,
+      projectId: null,
+      kind: "token" as const,
+      secret: { token: "first-dinky-token", tenantId: "11" },
+      mappings: [
+        { field: "token", target: { type: "env" as const, name: "INFINITY_USER_TOKEN" } },
+        { field: "tenantId", target: { type: "env" as const, name: "INFINITY_TENANT_ID" } },
+      ],
+      notBefore: null,
+      expiresAt: null,
+    };
+
+    await expect(store.upsert(input)).resolves.toMatchObject({ version: 1, revokedAt: null });
+    await store.revoke(input.id);
+    await expect(
+      store.upsert({ ...input, secret: { token: "second-dinky-token", tenantId: "11" } }),
+    ).resolves.toMatchObject({ version: 2, revokedAt: null });
+
+    const resolved = await store.resolveSecretsForContext({ userId: 7, projectId: null }, [
+      "org__business",
+    ]);
+    expect(resolved[0]?.secret).toEqual({ token: "second-dinky-token", tenantId: "11" });
+    expect(JSON.stringify(await db.many("SELECT * FROM credentials"))).not.toContain(
+      "second-dinky-token",
+    );
+  });
 });

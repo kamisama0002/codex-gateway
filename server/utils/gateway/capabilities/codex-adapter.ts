@@ -450,9 +450,7 @@ function desiredMcpConfig(config: McpCapabilityConfig): Record<string, unknown> 
           ? {}
           : { bearer_token_env_var: config.bearerTokenEnvVar }),
         ...(config.httpHeaders === undefined ? {} : { http_headers: config.httpHeaders }),
-        ...(config.envHttpHeaders === undefined
-          ? {}
-          : { env_http_headers: config.envHttpHeaders }),
+        ...(config.envHttpHeaders === undefined ? {} : { env_http_headers: config.envHttpHeaders }),
       };
 }
 

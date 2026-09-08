@@ -179,6 +179,9 @@ importers:
       h3:
         specifier: 1.15.11
         version: 1.15.11(srvx@0.12.4)
+      ioredis:
+        specifier: ^5.11.1
+        version: 5.11.1(supports-color@10.2.2)
       isbinaryfile:
         specifier: ^6.0.0
         version: 6.0.0

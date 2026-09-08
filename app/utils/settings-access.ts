@@ -9,6 +9,7 @@ export const ALL_SETTINGS_PANELS = [
   "hosts",
   "notifications",
   "config",
+  "integrations",
 ] as const;
 
 export type SettingsPanelKind = (typeof ALL_SETTINGS_PANELS)[number];
@@ -27,5 +28,7 @@ export function settingsPanelsForUser(
   if (user === null || user === undefined || (user.dataOps && user.role !== "admin")) {
     return [...PERSONAL_SETTINGS_PANELS];
   }
-  return [...ALL_SETTINGS_PANELS];
+  return user.role === "admin"
+    ? [...ALL_SETTINGS_PANELS]
+    : ALL_SETTINGS_PANELS.filter((panel) => panel !== "integrations");
 }

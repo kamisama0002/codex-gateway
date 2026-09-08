@@ -57,8 +57,19 @@ describe("MySQL capability schema", () => {
     expect(sql).toContain("INSERT IGNORE INTO capability_assignments");
   });
 
-  it("adds runtime nodes and rolling placement columns in migration 16", () => {
+  it("adds versioned DataOps integration pairing state in migration 16", () => {
     const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 16);
+    const sql = migration?.statements.join("\n") ?? "";
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS platform_integrations");
+    expect(sql).toContain("encrypted_shared_secret LONGTEXT NOT NULL");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS integration_pairing_codes");
+    expect(sql).toContain("code_hash CHAR(64) NOT NULL");
+    expect(sql).toContain("uq_platform_integrations_active_provider");
+    expect(sql).toContain("uq_integration_pairing_codes_active_provider");
+  });
+
+  it("adds runtime nodes and rolling placement columns in migration 17", () => {
+    const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 17);
     const sql = migration?.statements.join("\n") ?? "";
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS runtime_nodes");
     expect(sql).toContain("base_url VARCHAR(2048) CHARACTER SET ascii COLLATE ascii_bin NOT NULL");

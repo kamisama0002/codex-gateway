@@ -576,6 +576,67 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
     version: 16,
     statements: [
       `
+        CREATE TABLE IF NOT EXISTS platform_integrations (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          provider VARCHAR(64) NOT NULL,
+          pairing_id VARCHAR(64) NOT NULL,
+          base_url VARCHAR(2048) NOT NULL,
+          encrypted_shared_secret LONGTEXT NOT NULL,
+          status VARCHAR(16) NOT NULL,
+          revision BIGINT UNSIGNED NOT NULL,
+          grace_expires_at VARCHAR(32) NULL,
+          created_at VARCHAR(32) NOT NULL,
+          updated_at VARCHAR(32) NOT NULL,
+          active_provider VARCHAR(64)
+            GENERATED ALWAYS AS (IF(status = 'active', provider, NULL)) STORED,
+          pending_provider VARCHAR(64)
+            GENERATED ALWAYS AS (IF(status = 'pending', provider, NULL)) STORED,
+          grace_provider VARCHAR(64)
+            GENERATED ALWAYS AS (IF(status = 'grace', provider, NULL)) STORED,
+          PRIMARY KEY (id),
+          UNIQUE KEY uq_platform_integrations_pairing_id (pairing_id),
+          UNIQUE KEY uq_platform_integrations_active_provider (active_provider),
+          UNIQUE KEY uq_platform_integrations_pending_provider (pending_provider),
+          UNIQUE KEY uq_platform_integrations_grace_provider (grace_provider),
+          KEY idx_platform_integrations_provider_revision (provider, revision DESC),
+          CONSTRAINT chk_platform_integrations_provider CHECK (provider = 'dataops'),
+          CONSTRAINT chk_platform_integrations_status
+            CHECK (status IN ('pending', 'active', 'grace', 'retired')),
+          CONSTRAINT chk_platform_integrations_revision CHECK (revision > 0)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
+      `,
+      `
+        CREATE TABLE IF NOT EXISTS integration_pairing_codes (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          provider VARCHAR(64) NOT NULL,
+          code_hash CHAR(64) NOT NULL,
+          expires_at VARCHAR(32) NOT NULL,
+          consumed_at VARCHAR(32) NULL,
+          revoked_at VARCHAR(32) NULL,
+          created_by_user_id INT UNSIGNED NOT NULL,
+          pairing_id VARCHAR(64) NULL,
+          created_at VARCHAR(32) NOT NULL,
+          active_provider VARCHAR(64)
+            GENERATED ALWAYS AS (
+              IF(consumed_at IS NULL AND revoked_at IS NULL, provider, NULL)
+            ) STORED,
+          PRIMARY KEY (id),
+          UNIQUE KEY uq_integration_pairing_codes_hash (code_hash),
+          UNIQUE KEY uq_integration_pairing_codes_active_provider (active_provider),
+          KEY idx_integration_pairing_codes_expiry (provider, expires_at),
+          CONSTRAINT chk_integration_pairing_codes_provider CHECK (provider = 'dataops'),
+          CONSTRAINT chk_integration_pairing_codes_hash
+            CHECK (code_hash REGEXP '^[a-f0-9]{64}$'),
+          CONSTRAINT fk_integration_pairing_codes_created_by
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
+      `,
+    ],
+  },
+  {
+    version: 17,
+    statements: [
+      `
         CREATE TABLE IF NOT EXISTS runtime_nodes (
           id VARCHAR(128) NOT NULL,
           name VARCHAR(255) NOT NULL,

@@ -1,10 +1,7 @@
 import { createError, defineEventHandler, readValidatedBody, type H3Event } from "h3";
 import { z } from "zod";
-import {
-  dataOpsSsoClientFromEnvironment,
-  DataOpsSsoError,
-  type DataOpsSsoClient,
-} from "../../utils/gateway/auth/dataops-client";
+import { DataOpsSsoError, type DataOpsSsoClient } from "../../utils/gateway/auth/dataops-client";
+import { dataOpsIntegrationProvider } from "../../utils/gateway/integrations/dataops-integration-provider";
 import {
   externalIdentityStore,
   type ExternalIdentityStore,
@@ -20,7 +17,13 @@ export async function loginWithDataOpsForEvent(
   const input = await readValidatedBody(event, (body) => inputSchema.parse(body));
   try {
     const claims = await client.exchange(input.ticket);
-    return await identities.loginDataOps(claims);
+    const session = await identities.loginDataOps(claims);
+    try {
+      await client.bootstrapMcpCredential(claims);
+    } catch {
+      // Default business MCP bootstrap is best-effort and must not block the workbench login.
+    }
+    return session;
   } catch (error) {
     if (!(error instanceof DataOpsSsoError)) throw error;
     const statusCode = dataOpsErrorStatus(error.code);
@@ -28,18 +31,28 @@ export async function loginWithDataOpsForEvent(
   }
 }
 
-export default defineEventHandler(async (event) => {
-  let client: DataOpsSsoClient;
-  try {
-    client = dataOpsSsoClientFromEnvironment();
-  } catch {
+export async function loginWithCurrentDataOpsForEvent(
+  event: H3Event,
+  provider: { current(): Promise<{ client: DataOpsSsoClient } | null> },
+  identities: Pick<ExternalIdentityStore, "loginDataOps">,
+) {
+  const integration = await provider.current();
+  if (integration === null) {
     throw createError({
       statusCode: 503,
       statusMessage: "dataops_not_configured",
       message: "dataops_not_configured",
     });
   }
-  return await loginWithDataOpsForEvent(event, client, externalIdentityStore);
+  return await loginWithDataOpsForEvent(event, integration.client, identities);
+}
+
+export default defineEventHandler(async (event) => {
+  return await loginWithCurrentDataOpsForEvent(
+    event,
+    dataOpsIntegrationProvider,
+    externalIdentityStore,
+  );
 });
 
 function dataOpsErrorStatus(code: string): number {

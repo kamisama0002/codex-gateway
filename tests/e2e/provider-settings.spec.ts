@@ -52,6 +52,7 @@ test("administrator can inspect and update a private-network model provider", as
 
   await page.getByTestId("settings-toggle").click();
   const settings = page.getByTestId("settings-panel");
+  await expect(settings.getByRole("tab", { name: "平台集成" })).toBeVisible();
   await settings.getByRole("tab", { name: "模型提供方" }).click();
   const providerToggle = settings.getByRole("button", {
     name: "展开或收起 E2E Private Provider 的模型",

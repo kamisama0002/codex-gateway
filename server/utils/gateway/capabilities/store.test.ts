@@ -3,6 +3,7 @@ import { freshMysqlTestDatabase } from "../../../../tests/mysql/helpers";
 import type { GatewayDb } from "../storage/contracts";
 import { migrateMysqlGatewayDatabase } from "../storage/mysql-migrations";
 import { createCapabilityStore, type CapabilityStore } from "./store";
+import { parseCapabilityCreateInput } from "./schemas";
 
 describe("CapabilityStore", () => {
   let db: GatewayDb;
@@ -108,6 +109,40 @@ describe("CapabilityStore", () => {
         source: { type: "git", locator: "https://token@github.com/example/skills.git" },
       }),
     ).rejects.toThrow(/credentials/i);
+    expect(() =>
+      parseCapabilityCreateInput({
+        ...httpMcpDefinition("org__stdio_auth", "https://mcp.example.test"),
+        config: { transport: "stdio", command: "node", args: [], bearerTokenEnvVar: "TOKEN" },
+      }),
+    ).toThrow();
+    await expect(
+      store.create({
+        ...httpMcpDefinition("org__bad_env", "https://mcp.example.test"),
+        config: {
+          transport: "streamable_http",
+          url: "https://mcp.example.test",
+          bearerTokenEnvVar: "token",
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("accepts authenticated HTTP MCP environment fields", async () => {
+    await expect(
+      store.create({
+        ...httpMcpDefinition(
+          "org__dinky_mcp",
+          "https://dinky.example.test/api/infinity/mcp/transport",
+        ),
+        sensitiveFields: ["INFINITY_USER_TOKEN", "INFINITY_TENANT_ID"],
+        config: {
+          transport: "streamable_http",
+          url: "https://dinky.example.test/api/infinity/mcp/transport",
+          bearerTokenEnvVar: "INFINITY_USER_TOKEN",
+          envHttpHeaders: { "X-INFINITY-TENANT-ID": "INFINITY_TENANT_ID" },
+        },
+      }),
+    ).resolves.toMatchObject({ kind: "mcp" });
   });
 });
 

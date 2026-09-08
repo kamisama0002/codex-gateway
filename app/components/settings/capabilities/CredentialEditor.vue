@@ -6,6 +6,7 @@ import type {
   CapabilityAdminUser,
   CredentialCreateInput,
   CredentialKind,
+  UserCapabilityCatalogItem,
 } from "~~/shared/types";
 import { Button } from "@codex-gateway/ui/button";
 import {
@@ -27,12 +28,18 @@ import {
 } from "@codex-gateway/ui/select";
 import { Textarea } from "@codex-gateway/ui/textarea";
 
-const props = defineProps<{
-  open: boolean;
-  capability: AdminCapabilityCatalogItem | null;
-  users: CapabilityAdminUser[];
-  saving: boolean;
-}>();
+type CatalogItem = AdminCapabilityCatalogItem | UserCapabilityCatalogItem;
+
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    capability: CatalogItem | null;
+    users?: CapabilityAdminUser[];
+    saving: boolean;
+    personalUserId?: number | null;
+  }>(),
+  { users: () => [], personalUserId: null },
+);
 const emit = defineEmits<{
   "update:open": [open: boolean];
   save: [input: CredentialCreateInput];
@@ -41,13 +48,15 @@ const { t } = useI18n();
 const form = reactive(emptyForm());
 
 watch(
-  () => [props.open, props.capability, props.users] as const,
-  ([open, capability, users]) => {
+  () => [props.open, props.capability, props.users, props.personalUserId] as const,
+  ([open, capability, users, personalUserId]) => {
     if (!open || capability === null) return;
     Object.assign(form, emptyForm());
     form.capabilityId = capability.id;
     form.id = `cred__${capability.id.replace(/^org__/u, "")}`;
-    form.userId = String(capability.assignments[0]?.userId ?? users[0]?.id ?? "");
+    const assignedUserId =
+      "assignments" in capability ? capability.assignments[0]?.userId : undefined;
+    form.userId = String(personalUserId ?? assignedUserId ?? users[0]?.id ?? "");
     form.target = capability.sensitiveFields[0] ?? "CAPABILITY_TOKEN";
   },
   { immediate: true },
@@ -157,7 +166,11 @@ function emptyForm() {
         }}</DialogDescription></DialogHeader
       >
       <form class="space-y-4" @submit.prevent="submit">
-        <div class="grid gap-3 sm:grid-cols-2">
+        <div v-if="personalUserId !== null" class="space-y-1.5">
+          <Label for="credential-id">{{ t("app.credentialId") }}</Label>
+          <Input id="credential-id" v-model="form.id" />
+        </div>
+        <div v-if="personalUserId === null" class="grid gap-3 sm:grid-cols-2">
           <div class="space-y-1.5">
             <Label for="credential-id">{{ t("app.credentialId") }}</Label
             ><Input id="credential-id" v-model="form.id" />
@@ -175,7 +188,7 @@ function emptyForm() {
           </div>
         </div>
         <div class="grid gap-3 sm:grid-cols-2">
-          <div class="space-y-1.5">
+          <div v-if="personalUserId === null" class="space-y-1.5">
             <Label for="credential-project">{{ t("app.projectIdOptional") }}</Label
             ><Input id="credential-project" v-model="form.projectId" inputmode="numeric" />
           </div>

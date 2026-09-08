@@ -37,13 +37,13 @@
 
 **Interfaces:**
 - Produces `RuntimeNodeRecord`, `RuntimeNodeSchedulingState`, `RuntimePlacementRecord`, and their Zod parsers.
-- Adds MySQL migration 16 with `runtime_nodes` and nullable rolling-deployment placement columns on `user_agent_runtimes`.
+- Adds MySQL migration 17 with `runtime_nodes` and nullable rolling-deployment placement columns on `user_agent_runtimes`.
 
 - [x] **Step 1: Write the failing schema tests**
 
 ```ts
-it("adds runtime nodes and placement columns in migration 16", () => {
-  const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 16);
+it("adds runtime nodes and placement columns in migration 17", () => {
+  const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 17);
   const sql = migration?.statements.join("\n") ?? "";
   expect(sql).toContain("CREATE TABLE IF NOT EXISTS runtime_nodes");
   expect(sql).toContain("runtime_node_id VARCHAR(128) NULL");
@@ -72,11 +72,11 @@ Run:
 pnpm exec vitest run server/utils/gateway/storage/mysql-schema.test.ts server/utils/gateway/runtime-manager/runtime-node-types.test.ts
 ```
 
-Expected: migration 16 and `runtimeNodeRecordSchema` are missing.
+Expected: migration 17 and `runtimeNodeRecordSchema` are missing.
 
-- [x] **Step 3: Add migration 16 and internal schemas**
+- [x] **Step 3: Add migration 17 and internal schemas**
 
-Migration 16 creates this table:
+Migration 17 creates this table:
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_nodes (
@@ -126,7 +126,7 @@ ALTER TABLE user_agent_runtimes
 pnpm exec vitest run server/utils/gateway/storage/mysql-schema.test.ts server/utils/gateway/storage/mysql-migrations.test.ts server/utils/gateway/runtime-manager/runtime-node-types.test.ts
 ```
 
-Expected: migration version 16, 20 tables, and placement columns with the specified types.
+Expected: migration version 17, 22 tables, and placement columns with the specified types.
 
 - [x] **Step 5: Commit**
 
@@ -699,7 +699,7 @@ git commit -m "test(e2e): verify two runtime nodes"
 
 - [x] **Step 1: Document the current-node bootstrap commands**
 
-The runbook records backup, migration 16, default node bootstrap, placement verification, relay smoke, and rollback commands. It explicitly forbids registering node B until every current user has node A placement and relay RPC succeeds.
+The runbook records backup, migration 17, default node bootstrap, placement verification, relay smoke, and rollback commands. It explicitly forbids registering node B until every current user has node A placement and relay RPC succeeds.
 
 - [x] **Step 2: Verify a local production-shaped single-node deployment**
 
@@ -713,7 +713,7 @@ Use external MySQL and the existing Runtime Manager. Verify current runtime IDs,
 
 - [x] **Step 3: Verify rollback boundary**
 
-Before any node B placement exists, restore the pre-routing Gateway image while preserving migration 16 and default-node data. Confirm the old image remains blocked from production use if it cannot interpret placement-routed remote nodes.
+Before any node B placement exists, restore the pre-routing Gateway image while preserving migration 17 and default-node data. Confirm the old image remains blocked from production use if it cannot interpret placement-routed remote nodes.
 
 - [x] **Step 4: Commit the rollout gate**
 

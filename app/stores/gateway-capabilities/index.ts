@@ -91,6 +91,42 @@ export const useGatewayCapabilitiesStore = defineStore("gateway-capabilities", (
     await load();
   }
 
+  async function createPersonalMcp(input: CapabilityCreateInput) {
+    await gatewayApi("/api/capabilities/mcp", { method: "POST", body: input });
+    await load();
+  }
+
+  async function updatePersonalMcp(id: string, input: CapabilityUpdateInput) {
+    await gatewayApi(`/api/capabilities/mcp/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: input,
+    });
+    await load();
+  }
+
+  async function deletePersonalMcp(id: string) {
+    await gatewayApi(`/api/capabilities/mcp/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    await load();
+  }
+
+  async function createPersonalCredential(input: CredentialCreateInput) {
+    await gatewayApi(
+      `/api/capabilities/mcp/${encodeURIComponent(input.capabilityId)}/credentials`,
+      { method: "POST", body: input },
+    );
+    await load();
+  }
+
+  async function revokePersonalCredential(capabilityId: string, credentialId: string) {
+    await gatewayApi(
+      `/api/capabilities/mcp/${encodeURIComponent(capabilityId)}/credentials/${encodeURIComponent(credentialId)}`,
+      { method: "DELETE" },
+    );
+    await load();
+  }
+
   return {
     adminCatalog,
     userCatalog,
@@ -106,5 +142,10 @@ export const useGatewayCapabilitiesStore = defineStore("gateway-capabilities", (
     createCredential,
     rotateCredential,
     revokeCredential,
+    createPersonalMcp,
+    updatePersonalMcp,
+    deletePersonalMcp,
+    createPersonalCredential,
+    revokePersonalCredential,
   };
 });

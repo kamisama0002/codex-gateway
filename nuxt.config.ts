@@ -1,7 +1,7 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import tailwindcss from "@tailwindcss/vite";
 
-export default defineNuxtConfig({
+export default {
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
   sourcemap: {
@@ -59,4 +59,4 @@ export default defineNuxtConfig({
       { code: "en", name: "English", file: "en.json" },
     ],
   },
-});
+};

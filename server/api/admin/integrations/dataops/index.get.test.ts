@@ -1,0 +1,25 @@
+import { describe, expect, it } from "vitest";
+import { getDataOpsIntegrationStatusForEvent } from "./index.get";
+import { dataOpsAdmin, eventForUser, localAdmin } from "../../../integrations/dataops/test-utils";
+
+describe("GET /api/admin/integrations/dataops", () => {
+  it("allows administrators to read redacted status", async () => {
+    const service = {
+      status: async () => ({
+        pairingCode: {
+          expiresAt: "2026-09-08T00:10:00.000Z",
+          createdAt: "2026-09-08T00:00:00.000Z",
+        },
+        active: { pairingId: "pairing-fixed", revision: 1, status: "active" },
+        errorCode: null,
+      }),
+    };
+
+    const status = await getDataOpsIntegrationStatusForEvent(eventForUser(localAdmin), service);
+    expect(status.active).toEqual({ pairingId: "pairing-fixed", revision: 1, status: "active" });
+    expect(Object.hasOwn(status.active ?? {}, "sharedSecret")).toBe(false);
+    await expect(
+      getDataOpsIntegrationStatusForEvent(eventForUser(dataOpsAdmin), service),
+    ).resolves.toEqual(status);
+  });
+});

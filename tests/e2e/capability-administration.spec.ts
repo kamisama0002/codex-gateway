@@ -1,5 +1,16 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "@playwright/test";
 import { authenticatedFetch, openApp } from "./helpers/app";
+import {
+  execManagedRuntime,
+  loginGatewayUser,
+  MANAGED_RUNTIME_A_USERNAME,
+  MANAGED_RUNTIME_PASSWORD,
+  startManagedRuntime,
+  type GatewaySession,
+} from "./helpers/managed-runtime";
+
+const gatewayOrigin =
+  process.env.E2E_MANAGED_RUNTIME_GATEWAY_URL ?? "http://gateway-under-test:3100";
 
 test("administrator manages capability assignments and credentials without exposing secrets", async ({
   page,
@@ -64,3 +75,85 @@ test("administrator manages capability assignments and credentials without expos
     () => null,
   );
 });
+
+test("ordinary users manage only their personal MCP while managed platform MCP stays hidden", async ({
+  request,
+}) => {
+  test.setTimeout(4 * 60_000);
+  const user = await loginGatewayUser(
+    request,
+    MANAGED_RUNTIME_A_USERNAME,
+    MANAGED_RUNTIME_PASSWORD,
+  );
+  const capabilityId = "org__e2e_personal_mcp";
+  const credentialId = "cred__e2e_personal_mcp";
+
+  await userApi(request, user, "/api/capabilities/mcp", "POST", {
+    id: capabilityId,
+    kind: "mcp",
+    displayName: "Personal E2E MCP",
+    description: "User-owned E2E MCP",
+    version: "1.0.0",
+    source: { type: "internal", locator: "ignored-by-server" },
+    config: { transport: "streamable_http", url: "http://test-business-mcp:8789/mcp" },
+    sensitiveFields: ["PERSONAL_E2E_TOKEN"],
+    enabled: true,
+  });
+  try {
+    await userApi(
+      request,
+      user,
+      `/api/capabilities/mcp/${capabilityId}/credentials`,
+      "POST",
+      {
+        id: credentialId,
+        capabilityId,
+        userId: 999,
+        projectId: 999,
+        kind: "token",
+        secret: { token: "personal-e2e-secret" },
+        mappings: [
+          { field: "token", target: { type: "env", name: "PERSONAL_E2E_TOKEN" } },
+        ],
+        notBefore: null,
+        expiresAt: null,
+      },
+    );
+    const catalog = await userApi(request, user, "/api/capabilities", "GET");
+    const catalogText = JSON.stringify(catalog);
+    expect(catalogText).toContain(capabilityId);
+    expect(catalogText).not.toContain("org__dinky_mcp");
+    expect(catalogText).not.toContain("org__infinity");
+    expect(catalogText).not.toContain("personal-e2e-secret");
+
+    await startManagedRuntime(request, user);
+    const configured = await execManagedRuntime(user, "codex mcp list");
+    expect(configured.code, configured.stderr).toBe(0);
+    expect(configured.stdout).toContain(capabilityId);
+  } finally {
+    await userApi(request, user, `/api/capabilities/mcp/${capabilityId}`, "DELETE");
+  }
+});
+
+async function userApi(
+  request: APIRequestContext,
+  session: GatewaySession,
+  path: string,
+  method: "GET" | "POST" | "DELETE",
+  data?: unknown,
+) {
+  const options = {
+    headers: { authorization: `Bearer ${session.token}` },
+    ...(data === undefined ? {} : { data }),
+  };
+  const url = `${gatewayOrigin}${path}`;
+  const response =
+    method === "GET"
+      ? await request.get(url, options)
+      : method === "POST"
+        ? await request.post(url, options)
+        : await request.delete(url, options);
+  const text = await response.text();
+  expect(response.ok(), text).toBe(true);
+  return text === "" ? {} : (JSON.parse(text) as unknown);
+}

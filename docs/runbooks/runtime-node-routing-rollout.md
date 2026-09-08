@@ -57,7 +57,7 @@ docker run --rm --pull never \
 
 Record the backup directory, SHA-256 files, and the local image IDs you started with. If any checksum step fails, stop here.
 
-## 2. Run migration 16
+## 2. Run migration 17
 
 Use the existing compose file and the already-present image. Do not rebuild or pull anything.
 
@@ -75,7 +75,7 @@ docker compose up -d --pull never --no-build database-migrate
 docker compose logs --no-color --tail=100 database-migrate
 ```
 
-Proceed only when the migration log reports `MySQL schema version 16`.
+Proceed only when the migration log reports `MySQL schema version 17`.
 
 ## 3. Bootstrap the default node
 
@@ -161,7 +161,7 @@ If the socket does not open, stop and investigate before any second node work.
 
 ## 6. Rollback boundary
 
-Before any node B placement exists, rollback is limited to the previous Gateway image while keeping the MySQL schema at migration 16 and preserving the named volumes.
+Before any node B placement exists, rollback is limited to the previous Gateway image while keeping the MySQL schema at migration 17 and preserving the named volumes.
 
 ```bash
 docker compose stop codex-gateway agent-runtime-manager

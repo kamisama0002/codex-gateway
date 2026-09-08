@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { CapabilityCreateInput, CapabilityDefinition } from "~~/shared/types";
 import { CapabilityAdministrationService } from "./administration";
 
 describe("CapabilityAdministrationService", () => {
@@ -59,11 +60,146 @@ describe("CapabilityAdministrationService", () => {
     expect(fixture.syncSecrets).toHaveBeenNthCalledWith(2, 7, 10, 1);
     expect(fixture.syncSecrets).toHaveBeenNthCalledWith(3, 7, 10, 1);
   });
+
+  it("rejects generic mutations for the protected Dinky MCP capability", async () => {
+    const fixture = administrationFixture();
+    await expect(fixture.service.updateCapability("org__dinky_mcp", {}, 1)).rejects.toMatchObject({
+      message: "system_capability_read_only",
+    });
+    await expect(fixture.service.deleteCapability("org__dinky_mcp", 1)).rejects.toMatchObject({
+      message: "system_capability_read_only",
+    });
+    await expect(
+      fixture.service.setAssignment(
+        { capabilityId: "org__dinky_mcp", userId: 7, projectId: null, assigned: true },
+        1,
+      ),
+    ).rejects.toMatchObject({ message: "system_capability_read_only" });
+    await expect(
+      fixture.service.createCredential(
+        { ...credentialInput(), capabilityId: "org__dinky_mcp" },
+        1,
+      ),
+    ).rejects.toMatchObject({ message: "system_capability_read_only" });
+
+    fixture.credentials.get.mockResolvedValue({
+      ...credentialDescriptor(),
+      capabilityId: "org__dinky_mcp",
+    });
+    await expect(
+      fixture.service.rotateCredential("cred__business", { token: "rotated" }, 1),
+    ).rejects.toMatchObject({ message: "system_capability_read_only" });
+    await expect(fixture.service.revokeCredential("cred__business", 1)).rejects.toMatchObject({
+      message: "system_capability_read_only",
+    });
+  });
+
+  it("hides managed platform MCP capabilities from user and admin catalogs", async () => {
+    const fixture = administrationFixture();
+    const platformMcp = (id: string) => ({
+      ...storedCapability(),
+      id,
+      source: { type: "internal" as const, locator: "managed-platform-mcp" },
+    });
+    fixture.capabilities.list.mockResolvedValue([
+      storedCapability(),
+      platformMcp("org__dinky_mcp"),
+      platformMcp("org__infinity"),
+    ]);
+    fixture.capabilities.listDesiredForContext.mockResolvedValue([
+      storedCapability(),
+      platformMcp("org__dinky_mcp"),
+      platformMcp("org__infinity"),
+    ]);
+
+    await expect(fixture.service.listAdminCatalog()).resolves.toMatchObject({
+      capabilities: [{ id: "org__business" }],
+    });
+    await expect(fixture.service.listUserCatalog(7, 10)).resolves.toMatchObject({
+      userId: 7,
+      capabilities: [{ id: "org__business" }],
+    });
+  });
+
+  it("creates a personal MCP owned and assigned only to the current user", async () => {
+    const fixture = administrationFixture();
+    fixture.capabilities.create.mockImplementation(async (input) => storedFromInput(input));
+
+    await fixture.service.createPersonalMcp(capabilityDefinition(), 7);
+
+    expect(fixture.capabilities.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "mcp",
+        createdByUserId: 7,
+        source: { type: "internal", locator: "personal-mcp:7" },
+      }),
+    );
+    expect(fixture.capabilities.assign).toHaveBeenCalledWith({
+      capabilityId: "org__business",
+      userId: 7,
+      projectId: null,
+    });
+  });
+
+  it("removes a personal MCP if its automatic self-assignment fails", async () => {
+    const fixture = administrationFixture();
+    fixture.capabilities.assign.mockRejectedValue(new Error("assignment unavailable"));
+
+    await expect(
+      fixture.service.createPersonalMcp(capabilityDefinition(), 7),
+    ).rejects.toThrow("assignment unavailable");
+    expect(fixture.capabilities.delete).toHaveBeenCalledWith("org__business");
+  });
+
+  it("rejects personal MCP mutations owned by another user", async () => {
+    const fixture = administrationFixture();
+    fixture.capabilities.get.mockResolvedValue({
+      ...storedCapability(),
+      createdByUserId: 8,
+    });
+
+    await expect(
+      fixture.service.updatePersonalMcp("org__business", { enabled: false }, 7),
+    ).rejects.toMatchObject({ message: "personal_capability_forbidden", statusCode: 403 });
+    await expect(fixture.service.deletePersonalMcp("org__business", 7)).rejects.toMatchObject({
+      message: "personal_capability_forbidden",
+      statusCode: 403,
+    });
+  });
+
+  it("forces personal MCP credentials into the current user global scope", async () => {
+    const fixture = administrationFixture();
+    fixture.capabilities.get.mockResolvedValue({
+      ...storedCapability(),
+      createdByUserId: 7,
+    });
+
+    await fixture.service.createPersonalCredential(
+      { ...credentialInput(), userId: 99, projectId: 10 },
+      7,
+    );
+
+    expect(fixture.credentials.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilityId: "org__business",
+        userId: 7,
+        projectId: null,
+      }),
+    );
+
+    await fixture.service.revokePersonalCredential("cred__business", 7);
+    expect(fixture.credentials.revoke).toHaveBeenCalledWith("cred__business");
+
+    fixture.credentials.get.mockResolvedValue({ ...credentialDescriptor(), userId: 8 });
+    await expect(
+      fixture.service.revokePersonalCredential("cred__business", 7),
+    ).rejects.toMatchObject({ message: "personal_credential_forbidden", statusCode: 403 });
+  });
 });
 
 function administrationFixture() {
   const capabilities = {
-    create: vi.fn(async () => storedCapability()),
+    create: vi.fn(async (input: CapabilityCreateInput) => storedFromInput(input)),
     get: vi.fn(async () => storedCapability()),
     list: vi.fn(async () => [storedCapability()]),
     update: vi.fn(async () => storedCapability()),
@@ -134,11 +270,22 @@ function capabilityDefinition() {
     sensitiveFields: ["BUSINESS_TOKEN"],
     enabled: true,
     createdByUserId: null,
-  };
+  } satisfies CapabilityCreateInput;
 }
 
-function storedCapability() {
+function storedCapability(): CapabilityDefinition {
   return { ...capabilityDefinition(), createdAt: "now", updatedAt: "now" };
+}
+
+function storedFromInput(input: CapabilityCreateInput): CapabilityDefinition {
+  return {
+    ...input,
+    sensitiveFields: input.sensitiveFields ?? [],
+    enabled: input.enabled ?? true,
+    createdByUserId: input.createdByUserId ?? null,
+    createdAt: "now",
+    updatedAt: "now",
+  };
 }
 
 function credentialInput() {

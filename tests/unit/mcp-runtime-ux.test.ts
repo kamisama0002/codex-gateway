@@ -12,11 +12,11 @@ describe("MCP runtime user experience", () => {
     expect(source).not.toContain("mcp-runtime-status");
   });
 
-  it("lets the user retry a failed business MCP call from the timeline", () => {
+  it("does not offer a misleading last-turn retry for an individual MCP item", () => {
     const source = readFileSync(resolve("app/components/thread/items/ToolCallItem.vue"), "utf8");
 
-    expect(source).toContain("presentation.retryable");
-    expect(source).toContain("threadTurns.retryLastTurn()");
-    expect(source).toContain('t("app.retry")');
+    expect(source).not.toContain("presentation.retryable");
+    expect(source).not.toContain("threadTurns.retryLastTurn()");
+    expect(source).not.toContain("retry-business-mcp-call");
   });
 });

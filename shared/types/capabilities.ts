@@ -306,6 +306,7 @@ export interface UserCapabilityCatalogItem extends CapabilityDefinition {
 }
 
 export interface UserCapabilityCatalog {
+  userId: number;
   capabilities: UserCapabilityCatalogItem[];
   projectId: number | null;
 }

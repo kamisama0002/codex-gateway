@@ -1,0 +1,63 @@
+export const DATAOPS_INTEGRATION_REDIS_CHANNEL = "codex-gateway:dataops-integration:changed";
+
+interface RedisSubscriber {
+  on(event: "message", listener: (channel: string, payload: string) => void): unknown;
+  subscribe(channel: string): Promise<unknown>;
+  quit(): Promise<unknown>;
+}
+
+interface RedisPublisher {
+  publish(channel: string, payload: string): Promise<unknown>;
+}
+
+export function createDataOpsIntegrationPublisher(publisher: RedisPublisher) {
+  return async (payload: { revision: number; pairingId: string }): Promise<void> => {
+    try {
+      await publisher.publish(DATAOPS_INTEGRATION_REDIS_CHANNEL, JSON.stringify(payload));
+    } catch {
+      console.warn("[gateway] DataOps integration Redis publish unavailable");
+    }
+  };
+}
+
+export function createDataOpsIntegrationInvalidation(options: {
+  provider: { invalidate(revision?: number): void };
+  subscriber: RedisSubscriber;
+}) {
+  return {
+    async start(): Promise<void> {
+      options.subscriber.on("message", (channel, payload) => {
+        if (channel !== DATAOPS_INTEGRATION_REDIS_CHANNEL) return;
+        try {
+          const parsed: unknown = JSON.parse(payload);
+          if (isPayload(parsed)) {
+            options.provider.invalidate(parsed.revision);
+          }
+        } catch {
+          // Invalid cross-node notifications are ignored; MySQL TTL refresh remains authoritative.
+        }
+      });
+      try {
+        await options.subscriber.subscribe(DATAOPS_INTEGRATION_REDIS_CHANNEL);
+      } catch {
+        console.warn("[gateway] DataOps integration Redis refresh unavailable");
+      }
+    },
+    async stop(): Promise<void> {
+      await options.subscriber.quit();
+    },
+  };
+}
+
+function isPayload(value: unknown): value is { revision: number; pairingId: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "revision" in value &&
+    "pairingId" in value &&
+    typeof value.revision === "number" &&
+    Number.isSafeInteger(value.revision) &&
+    value.revision > 0 &&
+    typeof value.pairingId === "string"
+  );
+}

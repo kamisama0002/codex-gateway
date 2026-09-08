@@ -76,6 +76,10 @@ const stdioMcpConfigSchema = z
   .strict();
 
 const environmentNameSchema = z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u);
+const sensitiveFieldsSchema = z
+  .array(environmentNameSchema)
+  .max(32)
+  .transform((values) => [...new Set(values)].sort());
 const httpHeaderNameSchema = z
   .string()
   .min(1)
@@ -121,11 +125,7 @@ const commonDefinitionShape = {
   description: z.string().trim().min(1).max(2_000),
   version: capabilityVersionSchema,
   source: capabilitySourceSchema,
-  sensitiveFields: z
-    .array(z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u))
-    .max(32)
-    .default([])
-    .transform((values) => [...new Set(values)].sort()),
+  sensitiveFields: sensitiveFieldsSchema.default([]),
   enabled: z.boolean().default(true),
   createdByUserId: z.number().int().positive().nullable().default(null),
 };
@@ -157,7 +157,7 @@ const capabilityUpdateInputSchema = z
     version: capabilityVersionSchema.optional(),
     source: capabilitySourceSchema.optional(),
     config: capabilityConfigSchema.optional(),
-    sensitiveFields: commonDefinitionShape.sensitiveFields.optional(),
+    sensitiveFields: sensitiveFieldsSchema.optional(),
     enabled: z.boolean().optional(),
   })
   .strict();

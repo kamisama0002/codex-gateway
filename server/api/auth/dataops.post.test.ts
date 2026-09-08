@@ -1,8 +1,8 @@
 import { createEvent } from "h3";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
-import { describe, expect, it } from "vitest";
-import { loginWithDataOpsForEvent } from "./dataops.post";
+import { describe, expect, it, vi } from "vitest";
+import { loginWithCurrentDataOpsForEvent, loginWithDataOpsForEvent } from "./dataops.post";
 import { DataOpsSsoError } from "../../utils/gateway/auth/dataops-client";
 
 describe("POST /api/auth/dataops", () => {
@@ -31,11 +31,56 @@ describe("POST /api/auth/dataops", () => {
       expiresAt: "2026-10-04T00:00:00.000Z",
       user: { id: 2, username: "dataops-1-9", role: "user" as const },
     };
+    const bootstrapMcpCredential = vi.fn(async () => ({ status: "ready" }));
 
     await expect(
       loginWithDataOpsForEvent(
         event,
-        { exchange: async (ticket: string) => (expect(ticket).toBe("pct_once"), claims) },
+        {
+          exchange: async (ticket: string) => (expect(ticket).toBe("pct_once"), claims),
+          bootstrapMcpCredential,
+        },
+        { loginDataOps: async () => session },
+      ),
+    ).resolves.toEqual(session);
+    expect(bootstrapMcpCredential).toHaveBeenCalledWith(claims);
+  });
+
+  it("does not block DataOps login when default MCP bootstrap is temporarily unavailable", async () => {
+    const event = eventWithJson({ ticket: "pct_once" });
+    const claims = {
+      audience: "codex-gateway" as const,
+      tenantId: 1,
+      userId: 9,
+      username: "operator",
+      externalSubject: "dataops:1:9",
+      contextType: "PROJECT" as const,
+      projectId: 4,
+      runtimeProfile: "DEVELOPMENT",
+      platformAdmin: false,
+      canDevelopAgents: false,
+      canManageAgentStatus: false,
+      canManageAgentRuntimeConfig: false,
+      permissions: ["agent-center:view"],
+      authzVersion: 3,
+      issuedAt: "2026-09-04T00:00:00.000Z",
+      ticket: null,
+    };
+    const session = {
+      token: "gateway-token",
+      expiresAt: "2026-10-04T00:00:00.000Z",
+      user: { id: 2, username: "dataops-1-9", role: "user" as const },
+    };
+
+    await expect(
+      loginWithDataOpsForEvent(
+        event,
+        {
+          exchange: async () => claims,
+          bootstrapMcpCredential: async () => {
+            throw new Error("dataops_mcp_bootstrap_unavailable");
+          },
+        },
         { loginDataOps: async () => session },
       ),
     ).resolves.toEqual(session);
@@ -51,6 +96,9 @@ describe("POST /api/auth/dataops", () => {
         exchange: async () => {
           exchanged = true;
           throw new Error("must not exchange");
+        },
+        bootstrapMcpCredential: async () => {
+          throw new Error("must not bootstrap");
         },
       },
       {
@@ -73,7 +121,12 @@ describe("POST /api/auth/dataops", () => {
     const event = eventWithJson({ ticket: "pct_private" });
     const error = await loginWithDataOpsForEvent(
       event,
-      { exchange: async () => Promise.reject(new DataOpsSsoError(code)) },
+      {
+        exchange: async () => Promise.reject(new DataOpsSsoError(code)),
+        bootstrapMcpCredential: async () => {
+          throw new Error("must not bootstrap");
+        },
+      },
       {
         loginDataOps: async () => {
           throw new Error("must not login");
@@ -83,6 +136,16 @@ describe("POST /api/auth/dataops", () => {
 
     expect(error).toMatchObject({ statusCode, statusMessage: code });
     expect(String(error)).not.toContain("pct_private");
+  });
+
+  it("returns 503 dataops_not_configured when only pending bindings exist", async () => {
+    const error = await loginWithCurrentDataOpsForEvent(
+      eventWithJson({ ticket: "pct_once" }),
+      { current: async () => null },
+      { loginDataOps: async () => { throw new Error("must not login"); } },
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ statusCode: 503, statusMessage: "dataops_not_configured" });
   });
 });
 

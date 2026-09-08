@@ -196,6 +196,11 @@ process.stdin.on("end", () => {
       throw new Error(`${name} must receive the isolated Runtime Manager secret`);
     }
   }
+  for (const name of ["gateway-under-test", "test-runner"]) {
+    if (services[name]?.environment?.RUNTIME_IDENTITY_SECRET !== process.env.RUNTIME_IDENTITY_SECRET) {
+      throw new Error(`${name} must receive the independent Runtime identity secret`);
+    }
+  }
   if (services["agent-runtime-manager-b"]?.environment?.RUNTIME_MANAGER_SHARED_SECRET !== process.env.RUNTIME_MANAGER_B_SHARED_SECRET) {
     throw new Error("agent-runtime-manager-b must receive the isolated node B secret");
   }
@@ -494,9 +499,11 @@ cleanup() {
   if [ "$status" -ne 0 ]; then
     docker compose -p "$project_name" -f "$compose_file" logs --no-color \
       mysql agent-runtime-manager gateway-under-test model-target search-mcp searxng \
-      agent-runtime-manager-b \
+      agent-runtime-manager-b dataops-target \
       test-business-mcp ssh-target >&2 || true
   fi
+  docker compose -p "$project_name" -f "$compose_file" stop \
+    gateway-under-test agent-runtime-manager agent-runtime-manager-b >/dev/null 2>&1 || true
   cleanup_managed_resources
   docker compose -p "$project_name" -f "$compose_file" down --volumes --remove-orphans >/dev/null 2>&1 || true
   cleanup_generated_images
@@ -543,6 +550,11 @@ docker compose -p "$project_name" -f "$compose_file" run --rm --no-deps build-ru
   bash -lc 'rm -rf .output .nuxt /e2e-output/* && pnpm exec nuxt build --extends ./tests/e2e/nuxt-layer && cp -a .output/. /e2e-output/ && node scripts/database/migrate.mjs && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD" --role admin && node scripts/create-user.mjs runtime-a managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-b managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-c managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-d managed-runtime-e2e-password --role user'
 docker compose -p "$project_name" -f "$compose_file" up -d --wait \
   agent-runtime-manager agent-runtime-manager-b gateway-under-test browser-preview-ingress
+docker compose -p "$project_name" -f "$compose_file" exec -T \
+  -e E2E_GATEWAY_USERNAME="$E2E_GATEWAY_USERNAME" \
+  -e E2E_GATEWAY_PASSWORD="$E2E_GATEWAY_PASSWORD" \
+  gateway-under-test \
+  node -e '(async () => { const login = await fetch("http://127.0.0.1:3100/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: process.env.E2E_GATEWAY_USERNAME, password: process.env.E2E_GATEWAY_PASSWORD }) }); if (!login.ok) throw new Error(`Gateway E2E login failed: ${login.status} ${await login.text()}`); const session = await login.json(); const seed = await fetch("http://127.0.0.1:3100/api/e2e/dataops-integration", { method: "POST", headers: { authorization: `Bearer ${session.token}` } }); if (!seed.ok) throw new Error(`DataOps E2E seed failed: ${seed.status} ${await seed.text()}`); })().catch((error) => { console.error(error); process.exit(1); })'
 docker compose -p "$project_name" -f "$compose_file" run --rm test-runner \
   bash -lc 'if [ -e /var/run/docker.sock ]; then echo "test-runner must not receive the Docker socket" >&2; exit 1; fi; exec pnpm exec playwright test "$@"' \
   e2e "$@"
