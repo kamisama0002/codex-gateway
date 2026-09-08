@@ -106,6 +106,9 @@ describe("DataOpsPairingService", () => {
       fixture.service.confirm("pairing-fixed", 1, "fixture-shared-secret-with-at-least-32-bytes"),
     ).resolves.toEqual({ pairingId: "pairing-fixed", revision: 1, status: "active" });
     expect(fixture.integrations.confirm).not.toHaveBeenCalled();
+    expect(fixture.ensureMcp).toHaveBeenCalledWith(
+      expect.objectContaining({ pairingId: "pairing-fixed" }),
+    );
   });
 
   it("rejects pending bindings for authenticated protocol actions", async () => {

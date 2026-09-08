@@ -25,5 +25,12 @@ describe("Dinky MCP capability", () => {
       config: { url: "https://dinky.example.test/api/infinity/mcp/transport" },
     });
     expect(JSON.stringify(store.create.mock.calls)).not.toContain("secret");
+    await service.ensure({
+      pairingId: "pairing-fixed",
+      revision: 4,
+      dataOpsBaseUrl: "https://dinky.example.test",
+      sharedSecret: "secret",
+    });
+    expect(store.update).not.toHaveBeenCalled();
   });
 });

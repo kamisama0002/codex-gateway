@@ -1,4 +1,6 @@
 import type { CapabilityDefinition } from "~~/shared/types";
+import type { DataOpsIntegrationSnapshot } from "./dataops-integration-provider";
+import { capabilityStore } from "../capabilities/store";
 
 export const DINKY_MCP_CAPABILITY_ID = "org__dinky_mcp";
 
@@ -49,4 +51,26 @@ export function createDinkyMcpCapabilityService(store: CapabilityStore) {
       return await store.update(DINKY_MCP_CAPABILITY_ID, input);
     },
   };
+}
+
+export function dinkyMcpCapabilityMatches(
+  capability: CapabilityDefinition | null,
+  binding: { revision: number; dataOpsBaseUrl: string },
+) {
+  const config = capability?.config;
+  return (
+    capability?.id === DINKY_MCP_CAPABILITY_ID &&
+    capability.version === String(binding.revision) &&
+    config !== undefined &&
+    "transport" in config &&
+    config.transport === "streamable_http" &&
+    "url" in config &&
+    config.url === new URL("/api/infinity/mcp/transport", binding.dataOpsBaseUrl).toString()
+  );
+}
+
+export async function ensureDinkyMcpCapability(
+  binding: DataOpsIntegrationSnapshot,
+): Promise<CapabilityDefinition> {
+  return await createDinkyMcpCapabilityService(capabilityStore).ensure(binding);
 }

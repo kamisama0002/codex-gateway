@@ -4,7 +4,10 @@ import { createDataOpsIntegrationRepository } from "./dataops-integration-reposi
 import { normalizeDataOpsBaseUrl, positiveSafeRevision } from "./dataops-types";
 import { createPairingCodeRepository } from "./pairing-code-repository";
 import { capabilityStore } from "../capabilities/store";
-import { createDinkyMcpCapabilityService } from "./dataops-mcp-capability";
+import {
+  createDinkyMcpCapabilityService,
+  dinkyMcpCapabilityMatches,
+} from "./dataops-mcp-capability";
 
 const PAIRING_CODE_TTL_MS = 10 * 60_000;
 const GRACE_TTL_MS = 5 * 60_000;
@@ -70,18 +73,23 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
   const fetcher = options.fetch ?? globalThis.fetch;
   const rateLimit = options.rateLimit ?? defaultPairRateLimit();
   const publish = options.publish ?? (() => undefined);
-  const ensureService = createDinkyMcpCapabilityService(capabilityStore);
-  const ensureMcp = options.ensureMcp ?? (async (binding) => await ensureService.ensure(binding));
+  const mcpService = createDinkyMcpCapabilityService(capabilityStore);
+  const ensureMcp = options.ensureMcp ?? (async (binding) => await mcpService.ensure(binding));
 
   return {
     async status() {
-      const [pairingCode, active] = await Promise.all([
+      const [pairingCode, active, capability] = await Promise.all([
         codes.activeStatus(now().toISOString()),
         integrations.active(),
+        capabilityStore.get("org__dinky_mcp"),
       ]);
       return {
         pairingCode,
         active: active === null ? null : publicBinding(active),
+        errorCode:
+          active !== null && !dinkyMcpCapabilityMatches(capability, active)
+            ? "dinky_mcp_sync_failed"
+            : null,
       };
     },
 
@@ -141,6 +149,7 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
       }
       const active = await integrations.active();
       if (active !== null && matchesBinding(active, pairingId, revision, bearerSecret)) {
+        await ensureDinkyMcp(ensureMcp, active);
         return publicBinding(active);
       }
       throw new DataOpsPairingError("integration_secret_rejected", 401);
@@ -160,6 +169,11 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
 
     async probe(pairingId: string, revision: number, bearerSecret: string) {
       const binding = await acceptedBinding(integrations, now, pairingId, revision, bearerSecret);
+      try {
+        await ensureDinkyMcp(ensureMcp, binding);
+      } catch {
+        return { pairingId, revision, gateway: "ok" as const, dataOps: "dinky_mcp_sync_failed" };
+      }
       const result = {
         pairingId,
         revision,
