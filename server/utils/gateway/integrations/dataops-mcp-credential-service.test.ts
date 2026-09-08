@@ -60,6 +60,25 @@ describe("DataOpsMcpCredentialService", () => {
     expect(fixture.runtime.syncSecrets).not.toHaveBeenCalled();
   });
 
+  it("reports pending sync while the user's runtime is starting", async () => {
+    const fixture = createFixture();
+    fixture.runtime.getStatus.mockResolvedValue({ status: "syncing_capabilities" });
+
+    await expect(
+      fixture.service.bind(
+        {
+          pairingId: "pairing-fixed",
+          revision: 3,
+          tenantId: 7,
+          dataOpsUserId: 42,
+          token: "long-lived-dinky-token",
+        },
+        "paired-secret",
+      ),
+    ).resolves.toEqual({ status: "pending_sync", pairingId: "pairing-fixed", revision: 3 });
+    expect(fixture.runtime.syncSecrets).not.toHaveBeenCalled();
+  });
+
   it("rejects an unknown DataOps identity before writing credentials", async () => {
     const fixture = createFixture();
     fixture.resolveUser.mockResolvedValue(null);

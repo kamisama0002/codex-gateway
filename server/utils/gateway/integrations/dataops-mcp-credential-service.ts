@@ -32,6 +32,14 @@ type PublicStatus = {
   errorCode?: "runtime_not_ready" | "sync_failed";
 };
 
+const pendingRuntimeStatuses = new Set([
+  "provisioning",
+  "starting",
+  "schema_checking",
+  "syncing_capabilities",
+  "restarting",
+]);
+
 interface ServiceOptions {
   authenticate(pairingId: string, revision: number, bearerSecret: string): Promise<void>;
   resolveUser(tenantId: number, dataOpsUserId: number): Promise<number | null>;
@@ -115,6 +123,9 @@ async function synchronize(
   input: IdentityInput,
 ): Promise<PublicStatus> {
   const runtime = await options.runtime.getStatus(userId);
+  if (runtime !== null && pendingRuntimeStatuses.has(runtime.status)) {
+    return status(input, "pending_sync");
+  }
   if (runtime?.status !== "ready") {
     return status(input, "runtime_not_ready", "runtime_not_ready");
   }
