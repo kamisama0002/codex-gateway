@@ -490,6 +490,8 @@
     "misalignmentRecoveryTitle": "Codex needs confirmation to continue",
     "misalignmentRecoveryConfirm": "Send correction",
     "mcpConnections": "MCP connections",
+    "businessDataService": "Business data service",
+    "businessDataUnavailable": "Business data service is temporarily unavailable",
     "collabTool": {
       "spawnAgent": "Start subagent",
       "sendInput": "Send input",
