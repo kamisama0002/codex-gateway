@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { RealtimeClientMessage } from "../../types";
 import { MANAGED_RUNTIME_HOST_ID } from "../managed-runtime";
+import { queuedUserInputSchema } from "../app-server";
 import {
   nonEmptyString,
   nonNegativeId,
@@ -48,6 +49,7 @@ const collaborationMode = z
 export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z
   .discriminatedUnion("type", [
     z.object({ type: z.literal("auth.authenticate"), token: nonEmptyString }).strict(),
+    z.object({ type: z.literal("request.cancel"), targetRequestId: nonEmptyString }).strict(),
     z.object({ type: z.literal("host.lifecycle.subscribe") }).strict(),
     z.object({ type: z.literal("host.lifecycle.unsubscribe") }).strict(),
     z
@@ -163,6 +165,60 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z
           )
           .max(10)
           .optional(),
+      })
+      .strict(),
+    z
+      .object({ type: z.literal("thread.queue.list"), ...requestIdField, ...threadScopeFields })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.add"),
+        ...requestIdField,
+        ...threadScopeFields,
+        input: z.array(queuedUserInputSchema).min(1).max(64),
+        clientUserMessageId: nonEmptyString,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.update"),
+        ...requestIdField,
+        ...threadScopeFields,
+        queuedSubmissionId: nonEmptyString,
+        input: z.array(queuedUserInputSchema).min(1).max(64),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.delete"),
+        ...requestIdField,
+        ...threadScopeFields,
+        queuedSubmissionId: nonEmptyString,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.reorder"),
+        ...requestIdField,
+        ...threadScopeFields,
+        queuedSubmissionIds: z.array(nonEmptyString).min(1).max(100),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.start"),
+        ...requestIdField,
+        ...threadScopeFields,
+        queuedSubmissionId: nullableString,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.steer"),
+        ...requestIdField,
+        ...threadScopeFields,
+        queuedSubmissionId: nonEmptyString,
+        expectedTurnId: nonEmptyString,
       })
       .strict(),
     z
@@ -347,7 +403,5 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z
   }, "SSH-only workspace actions are not available on the local Agent");
 
 function isSshOnlyManagedHostMessage(type: string) {
-  return (
-    type.startsWith("tmux.") || type.startsWith("terminal.") || type.startsWith("browser.")
-  );
+  return type.startsWith("terminal.") || type.startsWith("browser.");
 }

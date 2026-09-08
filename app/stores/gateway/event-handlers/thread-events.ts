@@ -7,6 +7,7 @@ import { gatewayDomainEvents } from "../domain-events";
 import { threadIdFromParams } from "../thread-utils/identity";
 import { runtimeStatusFromAppThreadStatus } from "../thread-utils/status";
 import { runtimePhaseFromAppThreadStatus } from "~~/shared/thread-runtime-status";
+import { stringFromUnknown } from "~~/shared/utils/records";
 import type { GatewayEventHandlerRegistry } from "./types";
 
 export const threadEventHandlers: GatewayEventHandlerRegistry = {
@@ -41,6 +42,17 @@ export const threadEventHandlers: GatewayEventHandlerRegistry = {
       });
     }
   },
+  "thread/name/updated": (event, params) => {
+    const threadId = threadIdFromParams(params);
+    const title = stringFromUnknown(params.threadName)?.trim();
+    if (threadId !== null && title !== undefined && title !== "") {
+      gatewayDomainEvents.emit("thread-title-detected", {
+        hostId: event.hostId,
+        threadId: String(threadId),
+        title,
+      });
+    }
+  },
   "thread/tokenUsage/updated": (event, params) => {
     const threadId = threadIdFromParams(params);
     const tokenUsage = normalizeTokenUsage(params.tokenUsage);
@@ -49,6 +61,15 @@ export const threadEventHandlers: GatewayEventHandlerRegistry = {
         hostId: event.hostId,
         threadId: String(threadId),
         tokenUsage,
+      });
+    }
+  },
+  "thread/queue/changed": (event, params) => {
+    const threadId = threadIdFromParams(params);
+    if (threadId !== null) {
+      gatewayDomainEvents.emit("thread-queue-invalidated", {
+        hostId: event.hostId,
+        threadId,
       });
     }
   },

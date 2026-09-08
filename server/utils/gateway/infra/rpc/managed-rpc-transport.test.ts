@@ -39,21 +39,17 @@ describe("createCodexRpcTransport", () => {
     ).toThrow("reserved");
     expect(() =>
       assertGatewayHostConnectionIdentity(
-        createManagedRuntimeHost(7, runtimeRecordTimes(), {
-          runtimeId: "runtime_01",
-          websocketUrl: "ws://runtime-01:4500",
-          serviceToken: "runtime-token",
-        }),
+        createManagedRuntimeHost(7, runtimeRecordTimes(), relayTarget("ws://runtime-01:4500")),
       ),
     ).not.toThrow();
   });
 
   it("selects the managed websocket transport without opening SSH", () => {
-    const host = createManagedRuntimeHost(7, runtimeRecordTimes(), {
-      runtimeId: "runtime_01",
-      websocketUrl: "ws://runtime-01:4500",
-      serviceToken: "runtime-token",
-    });
+    const host = createManagedRuntimeHost(
+      7,
+      runtimeRecordTimes(),
+      relayTarget("ws://runtime-01:4500"),
+    );
 
     expect(createCodexRpcTransport(host, transportOptions())).toBeInstanceOf(
       ManagedCodexRpcTransport,
@@ -62,26 +58,37 @@ describe("createCodexRpcTransport", () => {
 });
 
 describe("ManagedCodexRpcTransport", () => {
-  it("authenticates the direct internal websocket with a bearer token", async () => {
+  it("authenticates the Runtime Manager relay with fresh signed headers and no bearer token", async () => {
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     servers.push(server);
     await once(server, "listening");
     const port = serverPort(server);
-    const authorization = new Promise<string | undefined>((resolve) => {
-      server.once("connection", (_socket, request) => {
-        resolve(request.headers.authorization);
-      });
-    });
+    const receivedHeaders = new Promise<Record<string, string | string[] | undefined>>(
+      (resolve) => {
+        server.once("connection", (_socket, request) => {
+          resolve(request.headers);
+        });
+      },
+    );
+    const headers = vi.fn(() => ({
+      "x-runtime-body-sha256": "a".repeat(64),
+      "x-runtime-nonce": "relay-nonce",
+      "x-runtime-signature": "b".repeat(64),
+      "x-runtime-timestamp": "1788134400000",
+    }));
     const host = createManagedRuntimeHost(7, runtimeRecordTimes(), {
       runtimeId: "runtime_01",
       websocketUrl: `ws://127.0.0.1:${port}`,
-      serviceToken: "runtime-token",
+      headers,
     });
     const transport = createCodexRpcTransport(host, transportOptions());
 
     await transport.connect();
 
-    expect(await authorization).toBe("Bearer runtime-token");
+    const received = await receivedHeaders;
+    expect(received.authorization).toBeUndefined();
+    expect(received["x-runtime-nonce"]).toBe("relay-nonce");
+    expect(headers).toHaveBeenCalledOnce();
     transport.close();
   });
 
@@ -107,11 +114,11 @@ describe("ManagedCodexRpcTransport", () => {
     const ensureVersion = vi
       .spyOn(codexRuntime, "ensureCodexVersion")
       .mockRejectedValue(new Error("SSH version workflow must not run"));
-    const host = createManagedRuntimeHost(7, runtimeRecordTimes(), {
-      runtimeId: "runtime_01",
-      websocketUrl: `ws://127.0.0.1:${port}`,
-      serviceToken: "runtime-token",
-    });
+    const host = createManagedRuntimeHost(
+      7,
+      runtimeRecordTimes(),
+      relayTarget(`ws://127.0.0.1:${port}`),
+    );
     const client = new CodexRpcClient(host);
 
     await client.connect();
@@ -135,7 +142,7 @@ describe("ManagedCodexRpcTransport", () => {
     const endpoint = {
       runtimeId: "runtime_01",
       websocketUrl: `ws://127.0.0.1:${address.port}/rpc?token=secret-query-token`,
-      serviceToken: "runtime-token",
+      headers: () => ({ "x-runtime-nonce": "runtime-token" }),
     };
     const host = createManagedRuntimeHost(7, runtimeRecordTimes(), endpoint);
     const transport = new ManagedCodexRpcTransport(host, endpoint, transportOptions(), 10);
@@ -208,4 +215,8 @@ function rawDataToString(data: RawData): string {
   if (Buffer.isBuffer(data)) return data.toString("utf8");
   if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
   return Buffer.from(data).toString("utf8");
+}
+
+function relayTarget(websocketUrl: string) {
+  return { runtimeId: "runtime_01", websocketUrl, headers: () => ({}) };
 }

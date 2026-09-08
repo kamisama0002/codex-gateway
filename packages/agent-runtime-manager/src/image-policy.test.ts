@@ -1,21 +1,30 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 const policyPath = fileURLToPath(
   new URL("../../../docker/agent-runtime-policy.json", import.meta.url),
+);
+const agentDockerfilePath = fileURLToPath(
+  new URL("../../../docker/agent-runtime.Dockerfile", import.meta.url),
+);
+const agentOverlayDockerfilePath = fileURLToPath(
+  new URL("../../../docker/agent-runtime-overlay.Dockerfile", import.meta.url),
+);
+const toolManifestPath = fileURLToPath(
+  new URL("../../../docker/agent-runtime-tool-manifest.json", import.meta.url),
+);
+const nodeToolsPath = fileURLToPath(
+  new URL("../../../docker/agent-runtime-node-tools.json", import.meta.url),
+);
+const pythonRequirementsPath = fileURLToPath(
+  new URL("../../../docker/agent-runtime-python-requirements.txt", import.meta.url),
 );
 const managerDockerfilePath = fileURLToPath(
   new URL("../../../docker/runtime-manager.Dockerfile", import.meta.url),
@@ -43,6 +52,22 @@ const isolatedContractsTsconfigPath = fileURLToPath(
 );
 
 describe("Agent runtime image policy", () => {
+  it("can overlay runtime helpers without rebuilding the immutable tool layer", () => {
+    const dockerfile = readFileSync(agentOverlayDockerfilePath, "utf8");
+    expect(dockerfile).toContain("ARG AGENT_RUNTIME_BASE_IMAGE");
+    expect(dockerfile).toContain("COPY docker/agent-runtime-secret-writer.mjs");
+    expect(dockerfile).toContain("COPY docker/agent-runtime-oauth-callback.mjs");
+    expect(dockerfile).toContain('npm install --global "pnpm@$pnpm_version"');
+    expect(dockerfile).toContain("apt-get install -y --no-install-recommends tmux");
+    expect(dockerfile).toContain("node /usr/local/lib/smoke-agent-runtime.mjs");
+  });
+
+  it("materializes pnpm in the image instead of downloading it on first use", () => {
+    const dockerfile = readFileSync(agentDockerfilePath, "utf8");
+    expect(dockerfile).toContain('npm install --global "pnpm@$pnpm_version"');
+    expect(dockerfile).not.toContain('corepack prepare "pnpm@$pnpm_version" --activate');
+  });
+
   it("keeps the Agent image isolated and pinned", () => {
     const policy: unknown = JSON.parse(readFileSync(policyPath, "utf8"));
 
@@ -61,14 +86,145 @@ describe("Agent runtime image policy", () => {
           ],
         },
         capDrop: ["ALL"],
+        networks: ["agent-runtime", "agent-egress"],
         publishedPorts: [],
         readOnlyRootFilesystem: true,
+        resourceLimits: {
+          cpus: 4,
+          memoryBytes: 8_589_934_592,
+          pids: 1_024,
+        },
         user: "10001:10001",
         labels: {
-          "com.qiancheng.codex.version": "0.151.0",
+          "com.qiancheng.codex.version": "0.153.4",
         },
       },
     });
+  });
+
+  it("declares an executable full-runtime tool manifest with pinned dependencies", () => {
+    expect(existsSync(toolManifestPath)).toBe(true);
+    expect(existsSync(nodeToolsPath)).toBe(true);
+    expect(existsSync(pythonRequirementsPath)).toBe(true);
+    if (
+      !existsSync(toolManifestPath) ||
+      !existsSync(nodeToolsPath) ||
+      !existsSync(pythonRequirementsPath)
+    ) {
+      return;
+    }
+
+    const toolManifest = z
+      .object({
+        commands: z.array(
+          z
+            .object({
+              acceptedExitCodes: z.array(z.number().int()).default([0]),
+              command: z.string().min(1),
+              versionArgs: z.array(z.string()),
+            })
+            .strict(),
+        ),
+        pythonImports: z.array(z.string().min(1)),
+      })
+      .strict()
+      .parse(JSON.parse(readFileSync(toolManifestPath, "utf8")));
+    const commandNames = toolManifest.commands.map(({ command }) => command);
+    expect(commandNames).toEqual(
+      expect.arrayContaining([
+        "git",
+        "git-lfs",
+        "bwrap",
+        "gh",
+        "ssh",
+        "curl",
+        "jq",
+        "rg",
+        "fd",
+        "rsync",
+        "tmux",
+        "python3",
+        "uv",
+        "node",
+        "npm",
+        "pnpm",
+        "yarn",
+        "bun",
+        "tsc",
+        "gcc",
+        "clang",
+        "cmake",
+        "ninja",
+        "go",
+        "cargo",
+        "java",
+        "mvn",
+        "gradle",
+        "sqlite3",
+        "psql",
+        "mysql",
+        "redis-cli",
+        "libreoffice",
+        "pandoc",
+        "pdftotext",
+        "gs",
+        "convert",
+        "ffmpeg",
+        "tesseract",
+        "chromium",
+        "chromedriver",
+        "playwright",
+        "playwright-mcp",
+        "docker",
+        "codex",
+      ]),
+    );
+    expect(
+      toolManifest.commands.find(({ command }) => command === "nc")?.acceptedExitCodes,
+    ).toEqual([0, 1]);
+    expect(toolManifest.pythonImports).toEqual(
+      expect.arrayContaining([
+        "numpy",
+        "pandas",
+        "polars",
+        "pyarrow",
+        "scipy",
+        "sklearn",
+        "matplotlib",
+        "seaborn",
+        "requests",
+        "httpx",
+        "sqlalchemy",
+        "openpyxl",
+        "docx",
+        "pptx",
+        "pypdf",
+        "pdfplumber",
+        "PIL",
+      ]),
+    );
+
+    const nodeTools = z
+      .object({ packages: z.record(z.string().min(1), z.string().regex(/^\d+\.\d+\.\d+/)) })
+      .strict()
+      .parse(JSON.parse(readFileSync(nodeToolsPath, "utf8")));
+    expect(nodeTools.packages).toMatchObject({
+      "@openai/codex": "0.153.4",
+      "@playwright/mcp": "0.0.80",
+      "@playwright/test": "1.63.0",
+      bun: "1.4.2",
+      typescript: "7.0.2",
+      yarn: "1.22.22",
+    });
+
+    const requirements = readFileSync(pythonRequirementsPath, "utf8")
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#"));
+    expect(requirements.length).toBeGreaterThan(10);
+    expect(requirements.every((line) => /^[A-Za-z0-9_.-]+==[^=\s]+$/u.test(line))).toBe(true);
+    expect(readFileSync(agentDockerfilePath, "utf8")).toContain(" AS full");
+    expect(readFileSync(agentDockerfilePath, "utf8")).toContain("      tmux \\");
   });
 
   it("builds only the Runtime Manager package graph after suppressing root lifecycle scripts", () => {
@@ -148,8 +304,7 @@ describe("Agent runtime image policy", () => {
     chmodSync(fakeChildPath, 0o755);
 
     try {
-      const shell =
-        process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+      const shell = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
       const result = spawnSync(
         shell,
         [
@@ -189,7 +344,10 @@ describe("Agent runtime image policy", () => {
       expect(runnerDockerfile).toContain(
         "COPY tests/e2e/gateway-supervisor.sh /usr/local/bin/codex-gateway-e2e-supervisor",
       );
-      const compose = readFileSync(e2eComposePath, "utf8").replace(/\s+/g, " ");
+      const compose = readFileSync(e2eComposePath, "utf8")
+        .replace(/\s+/g, " ")
+        .replace(/\[\s+/g, "[")
+        .replace(/,\s+\]/g, "]");
       expect(compose).toContain(
         'command: ["/usr/local/bin/codex-gateway-e2e-supervisor", "node", "--expose-gc", "--max-old-space-size=512", "/e2e-output/server/index.mjs"]',
       );
@@ -198,47 +356,47 @@ describe("Agent runtime image policy", () => {
     }
   });
 
-  it("starts App Server with a derived capability-token digest and no raw token", () => {
+  it("builds App Server arguments with a derived capability-token digest and no raw token", () => {
     const fixtureDirectory = mkdtempSync(join(tmpdir(), "codex-agent-entrypoint-"));
-    const fakeCodexPath = join(fixtureDirectory, "codex");
-    const capturePath = join(fixtureDirectory, "capture.txt");
+    const fakeNodePath = join(fixtureDirectory, "node");
     const token = "test-only-random-service-token";
     writeFileSync(
-      fakeCodexPath,
-      [
-        "#!/bin/sh",
-        "set -eu",
-        'if [ "${CODEX_REMOTE_TOKEN+x}" = x ]; then',
-        "  printf '%s\\n' token-present",
-        "else",
-        "  printf '%s\\n' token-unset",
-        "fi > \"$E2E_CAPTURE_PATH\"",
-        'for argument in "$@"; do',
-        "  printf '%s\\n' \"$argument\" >> \"$E2E_CAPTURE_PATH\"",
-        "done",
-      ].join("\n"),
+      fakeNodePath,
+      ["#!/bin/sh", "set -eu", `exec \"${shellPath(process.execPath)}\" \"$@\"`].join("\n"),
       { mode: 0o755 },
     );
-    chmodSync(fakeCodexPath, 0o755);
+    chmodSync(fakeNodePath, 0o755);
 
     try {
-      const shell =
-        process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+      const shell = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
       const shellFixtureDirectory = shellPath(fixtureDirectory);
+      writeFileSync(join(fixtureDirectory, ".ready"), "", { mode: 0o600 });
       const result = spawnSync(shell, [shellPath(agentEntrypointPath)], {
         encoding: "utf8",
         env: {
           ...process.env,
+          CODEX_HOME: shellFixtureDirectory,
           CODEX_REMOTE_TOKEN: token,
-          E2E_CAPTURE_PATH: `${shellFixtureDirectory}/capture.txt`,
+          CODEX_RUNTIME_CONFIG_HELPER: shellPath(
+            fileURLToPath(new URL("../../../docker/agent-runtime-config.mjs", import.meta.url)),
+          ),
+          CODEX_RUNTIME_CONFIG_DRY_RUN: "1",
           PATH: `${shellFixtureDirectory}:/usr/bin:/bin`,
+          CODEX_RUNTIME_SECRET_DIR: shellFixtureDirectory,
         },
       });
       expect(result.status, result.stderr).toBe(0);
-      const captured = readFileSync(capturePath, "utf8").trim().split("\n");
+      const captured = z.array(z.string()).parse(JSON.parse(result.stdout));
       expect(captured).toEqual([
-        "token-unset",
         "app-server",
+        "--enable",
+        "apps",
+        "--enable",
+        "browser_use",
+        "--enable",
+        "memories",
+        "--enable",
+        "plugins",
         "--listen",
         "ws://0.0.0.0:4500",
         "--ws-auth",
@@ -251,7 +409,7 @@ describe("Agent runtime image policy", () => {
       const entrypoint = readFileSync(agentEntrypointPath, "utf8");
       expect(entrypoint).not.toContain("--remote-auth-token-env");
       expect(entrypoint).not.toContain("--ws-token-file");
-      expect(entrypoint).toContain('unset CODEX_REMOTE_TOKEN');
+      expect(entrypoint).toContain("unset CODEX_REMOTE_TOKEN");
     } finally {
       rmSync(fixtureDirectory, { force: true, recursive: true });
     }

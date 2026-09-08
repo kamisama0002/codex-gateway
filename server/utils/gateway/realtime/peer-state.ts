@@ -21,6 +21,7 @@ export interface RealtimePeerState {
   browserPreviewUnsubscribe?: () => void;
   browserOwnerId?: string;
   sessionRevocationUnsubscribe?: () => void;
+  requestAbortControllers: Map<string, AbortController>;
   threadUnsubscribers: Map<string, () => void>;
   hostMetricsUnsubscribers: Map<number, () => void>;
   tmuxSessionUnsubscribers: Map<number, () => void>;
@@ -39,6 +40,7 @@ export function stateFor(peer: RealtimePeer) {
     state = {
       authenticated: false,
       userId: null,
+      requestAbortControllers: new Map(),
       threadUnsubscribers: new Map(),
       hostMetricsUnsubscribers: new Map(),
       tmuxSessionUnsubscribers: new Map(),

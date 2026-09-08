@@ -1,1 +1,5 @@
+/.gitattributes text eol=lf
 *.sh text eol=lf
+*.patch text eol=lf whitespace=-blank-at-eol,-blank-at-eof
+pnpm-lock.yaml text eol=lf
+pnpm-workspace.yaml text eol=lf

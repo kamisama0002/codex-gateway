@@ -2,7 +2,9 @@
 import { computed, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { Toaster } from "@codex-gateway/ui/sonner";
+import DataOpsAuthState from "@/components/auth/DataOpsAuthState.vue";
 import LoginScreen from "@/components/auth/LoginScreen.vue";
+import GatewayPet from "@/components/pet/GatewayPet.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { refreshGatewayClient } from "@/stores/gateway-bootstrap/refresh";
@@ -10,7 +12,14 @@ import { resetGatewayClientSession } from "@/stores/gateway-bootstrap/session-re
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { useGatewayRealtimeStore } from "@/stores/gateway-realtime";
-import { titleForThread } from "@/stores/gateway/thread-utils/identity";
+import { threadTitleFallbacks, titleForThread } from "@/stores/gateway/thread-utils/identity";
+import {
+  createDataOpsParentMessage,
+  dataOpsParentOrigin,
+  parseDataOpsEmbedUrl,
+  postDataOpsParentMessage,
+  type DataOpsParentMessageType,
+} from "@/utils/dataops-embed";
 
 const bootstrap = useGatewayBootstrapStore();
 const navigation = useGatewayNavigationStore();
@@ -18,18 +27,24 @@ const threadView = useGatewayThreadViewStore();
 const realtime = useGatewayRealtimeStore();
 const auth = useAuthStore();
 const device = useDevice();
+const route = useRoute();
+const { t } = useI18n();
 const { initializing } = storeToRefs(bootstrap);
 const { selectedThreadId } = storeToRefs(navigation);
-const { currentThread } = storeToRefs(threadView);
+const { currentThread, history } = storeToRefs(threadView);
 const { initialized, isAuthenticated, token } = storeToRefs(auth);
 const mounted = ref(false);
+const embeddedAuthPhase = ref<"connecting" | "authenticated" | "error">("connecting");
+const embeddedAuthMessage = ref("");
+const embeddedParentOrigin = ref<string | null>(null);
 let activeSessionToken = "";
+const embedded = computed(() => route.query.embedded === "1");
 const layoutName = computed(() => (device.isMobileOrTablet ? "mobile" : "default"));
 const pageTitle = computed(() => {
   if (!selectedThreadId.value || !currentThread.value) {
     return "Codex Gateway";
   }
-  return `${titleForThread(currentThread.value)} - Codex Gateway`;
+  return `${titleForThread(currentThread.value, threadTitleFallbacks(t), history.value)} - Codex Gateway`;
 });
 
 useHead({
@@ -51,7 +66,65 @@ useHead({
 
 onMounted(() => {
   mounted.value = true;
-  auth.hydrate();
+  void initializeAuthentication();
+});
+
+async function initializeAuthentication() {
+  if (!embedded.value) {
+    auth.hydrate("standalone");
+    return;
+  }
+  const parsed = parseDataOpsEmbedUrl(window.location.href);
+  if (parsed.cleanUrl !== window.location.href) {
+    window.history.replaceState(window.history.state, "", parsed.cleanUrl);
+  }
+  embeddedParentOrigin.value = dataOpsParentOrigin(document.referrer);
+  reportEmbeddedStatus("ready");
+  if (parsed.ticket === null) {
+    auth.hydrate("embedded");
+    if (auth.isAuthenticated) {
+      embeddedAuthPhase.value = "authenticated";
+      reportEmbeddedStatus("authenticated");
+    } else {
+      failEmbeddedAuthentication();
+    }
+    return;
+  }
+  try {
+    await auth.loginWithDataOps(parsed.ticket);
+    embeddedAuthPhase.value = "authenticated";
+    embeddedAuthMessage.value = "";
+    reportEmbeddedStatus("authenticated");
+  } catch {
+    failEmbeddedAuthentication();
+  }
+}
+
+function failEmbeddedAuthentication() {
+  embeddedAuthPhase.value = "error";
+  embeddedAuthMessage.value = t("app.dataOpsAuthFailedDescription");
+  reportEmbeddedStatus("auth-error");
+}
+
+function reportEmbeddedStatus(type: DataOpsParentMessageType, message?: string) {
+  if (!import.meta.client || window.parent === window) return;
+  postDataOpsParentMessage(
+    window.parent,
+    embeddedParentOrigin.value,
+    createDataOpsParentMessage(type, message),
+  );
+}
+
+watch([embedded, initialized, isAuthenticated], ([isEmbedded, isInitialized, authenticated]) => {
+  if (
+    isEmbedded &&
+    mounted.value &&
+    isInitialized &&
+    !authenticated &&
+    embeddedAuthPhase.value === "authenticated"
+  ) {
+    failEmbeddedAuthentication();
+  }
 });
 
 watch(
@@ -90,6 +163,14 @@ watch(
     position="top-right"
     :mobile-offset="{ top: '4.5rem', right: '1rem', left: '1rem' }"
   />
-  <LoginScreen v-if="mounted && !isAuthenticated" />
-  <NuxtLayout v-else :name="layoutName" />
+  <DataOpsAuthState
+    v-if="embedded && (!mounted || !isAuthenticated)"
+    :phase="embeddedAuthPhase === 'error' ? 'error' : 'connecting'"
+    :message="embeddedAuthMessage"
+  />
+  <LoginScreen v-else-if="mounted && !isAuthenticated" />
+  <template v-else>
+    <NuxtLayout :name="layoutName" />
+    <GatewayPet />
+  </template>
 </template>

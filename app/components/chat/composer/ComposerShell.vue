@@ -7,6 +7,7 @@ import type {
   ThreadGoal,
   ThreadRuntimeStatus,
   ThreadTokenUsageState,
+  QueuedSubmission,
 } from "~~/shared/types";
 import type { ComposerAttachment } from "@/composables/composer/useComposerDraft";
 import type { ComposerFileReference } from "@/stores/gateway/types";
@@ -17,43 +18,56 @@ import ComposerModeStrip from "@/components/chat/composer/ComposerModeStrip.vue"
 import ComposerToolbar from "@/components/chat/composer/ComposerToolbar.vue";
 import SlashCommandMenu from "@/components/chat/composer/SlashCommandMenu.vue";
 import ComposerEditor from "@/components/chat/composer/ComposerEditor.vue";
+import ComposerQueueDock from "@/components/chat/composer/ComposerQueueDock.vue";
 
-const props = defineProps<{
-  modelValue: string;
-  fileReferences: ComposerFileReference[];
-  attachedFiles: ComposerAttachment[];
-  planModeActive: boolean;
-  planSummary: string;
-  goalInputActive: boolean;
-  goal: ThreadGoal | null;
-  goalObservedAt: number | null;
-  goalActionPending: ComposerGoalPendingAction | null;
-  slashMenuOpen: boolean;
-  filteredSlashCommands: SlashMenuItem[];
-  selectedSlashCommandIndex: number;
-  composerInputEnabled: boolean;
-  uploadingAttachments: boolean;
-  selectedThreadId: string | null;
-  selectedHostId: number | null;
-  selectedProjectId: number | null;
-  selectedApprovalMode: ApprovalPolicy | "custom";
-  selectedThreadTokenUsage: ThreadTokenUsageState | null;
-  models: ModelRecord[];
-  loadingModels: boolean;
-  activeModel: string;
-  activeModelLabel: string;
-  activeEffortValue: string;
-  activeEffortCompactLabel: string;
-  effortOptions: Array<{ value: ReasoningEffort; label?: string }>;
-  labelEffortOption: (option: { value: ReasoningEffort; label?: string }) => string;
-  modelOptionValue: (modelOption: { model?: string; id: string }) => string;
-  hasComposerInput: boolean;
-  canInterruptTurn: boolean;
-  canUsePrimaryAction: boolean;
-  interruptingTurn: boolean;
-  selectedThreadStatus: ThreadRuntimeStatus;
-  sendButtonLabel: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue: string;
+    fileReferences: ComposerFileReference[];
+    attachedFiles: ComposerAttachment[];
+    planModeActive: boolean;
+    planSummary: string;
+    goalInputActive: boolean;
+    goal: ThreadGoal | null;
+    goalObservedAt: number | null;
+    goalActionPending: ComposerGoalPendingAction | null;
+    slashMenuOpen: boolean;
+    filteredSlashCommands: SlashMenuItem[];
+    selectedSlashCommandIndex: number;
+    composerInputEnabled: boolean;
+    uploadingAttachments: boolean;
+    uploadingWorkspace: boolean;
+    queuedMessages: QueuedSubmission[];
+    queueActionPendingId: string | null;
+    threadRunning: boolean;
+    selectedThreadId: string | null;
+    selectedHostId: number | null;
+    selectedProjectId: number | null;
+    selectedApprovalMode: ApprovalPolicy | "custom";
+    selectedThreadTokenUsage: ThreadTokenUsageState | null;
+    models: ModelRecord[];
+    loadingModels: boolean;
+    activeModel: string;
+    activeModelLabel: string;
+    activeEffortValue: string;
+    activeEffortCompactLabel: string;
+    effortOptions: Array<{ value: ReasoningEffort; label?: string }>;
+    labelEffortOption: (option: { value: ReasoningEffort; label?: string }) => string;
+    modelOptionValue: (modelOption: { model?: string; id: string }) => string;
+    hasComposerInput: boolean;
+    canInterruptTurn: boolean;
+    canUsePrimaryAction: boolean;
+    interruptingTurn: boolean;
+    creatingFirstThread: boolean;
+    submissionPending: boolean;
+    selectedThreadStatus: ThreadRuntimeStatus;
+    sendButtonLabel: string;
+    placement?: "centered" | "docked";
+  }>(),
+  {
+    placement: "docked",
+  },
+);
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
@@ -66,6 +80,11 @@ const emit = defineEmits<{
   hoverSlashCommand: [index: number];
   selectSlashCommand: [command: SlashMenuItem];
   attachmentChange: [event: Event];
+  workspaceSelection: [event: Event, selection: "files" | "folder"];
+  editQueuedMessage: [id: string, text: string];
+  deleteQueuedMessage: [id: string];
+  moveQueuedMessage: [id: string, direction: "up" | "down"];
+  sendQueuedMessageNow: [id: string];
   paste: [event: ClipboardEvent];
   removeAttachment: [id: string];
   keydown: [event: KeyboardEvent];
@@ -77,9 +96,19 @@ const emit = defineEmits<{
 }>();
 
 const uploadInput = ref<HTMLInputElement | null>(null);
+const workspaceFileInput = ref<HTMLInputElement | null>(null);
+const workspaceFolderInput = ref<HTMLInputElement | null>(null);
 
 function openAttachmentPicker() {
   uploadInput.value?.click();
+}
+
+function openWorkspaceFilePicker() {
+  workspaceFileInput.value?.click();
+}
+
+function openWorkspaceFolderPicker() {
+  workspaceFolderInput.value?.click();
 }
 
 function composerScopeKey() {
@@ -93,11 +122,24 @@ function updateModelValue(value: string, sourceScopeKey: string) {
 function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: string) {
   if (sourceScopeKey === composerScopeKey()) emit("update:fileReferences", value);
 }
+
+function forwardQueueEdit(id: string, text: string) {
+  emit("editQueuedMessage", id, text);
+}
+
+function forwardQueueMove(id: string, direction: "up" | "down") {
+  emit("moveQueuedMessage", id, direction);
+}
 </script>
 
 <template>
   <div
-    class="shrink-0 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] md:px-[clamp(1rem,3vw,2rem)] md:pb-[clamp(0.5rem,1.4vh,0.75rem)]"
+    class="relative z-40 shrink-0"
+    :class="
+      placement === 'centered'
+        ? 'w-full'
+        : 'px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] md:px-[clamp(1rem,3vw,2rem)] md:pb-[clamp(0.5rem,1.4vh,0.75rem)]'
+    "
   >
     <div class="thread-column">
       <ComposerModeStrip
@@ -112,6 +154,16 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
         @stop-goal="emit('stopGoal')"
         @resume-goal="emit('resumeGoal')"
         @clear-goal="emit('clearGoal')"
+      />
+      <ComposerQueueDock
+        :items="queuedMessages"
+        :running="threadRunning"
+        :pending-id="queueActionPendingId"
+        :host-id="selectedHostId"
+        @edit="forwardQueueEdit"
+        @remove="emit('deleteQueuedMessage', $event)"
+        @move="forwardQueueMove"
+        @send-now="emit('sendQueuedMessageNow', $event)"
       />
       <div
         class="relative flex flex-col gap-3 rounded-[1.375rem] border border-hairline bg-surface px-3 pb-2.5 pt-2.5 shadow-[0_0.25rem_1rem_rgba(15,17,21,0.06)]"
@@ -128,9 +180,33 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           class="hidden"
           type="file"
           multiple
+          :disabled="creatingFirstThread"
           @change="emit('attachmentChange', $event)"
         />
-        <AttachmentChips :files="attachedFiles" @remove="emit('removeAttachment', $event)" />
+        <input
+          ref="workspaceFileInput"
+          data-testid="workspace-file-input"
+          class="hidden"
+          type="file"
+          multiple
+          :disabled="creatingFirstThread"
+          @change="emit('workspaceSelection', $event, 'files')"
+        />
+        <input
+          ref="workspaceFolderInput"
+          data-testid="workspace-folder-input"
+          class="hidden"
+          type="file"
+          multiple
+          webkitdirectory
+          :disabled="creatingFirstThread"
+          @change="emit('workspaceSelection', $event, 'folder')"
+        />
+        <AttachmentChips
+          :files="attachedFiles"
+          :disabled="creatingFirstThread"
+          @remove="emit('removeAttachment', $event)"
+        />
         <ComposerEditor
           :key="composerScopeKey()"
           :model-value="modelValue"
@@ -149,6 +225,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
         />
         <ComposerToolbar
           :uploading-attachments="uploadingAttachments"
+          :uploading-workspace="uploadingWorkspace"
           :selected-thread-id="selectedThreadId"
           :selected-approval-mode="selectedApprovalMode"
           :selected-thread-token-usage="selectedThreadTokenUsage"
@@ -165,9 +242,17 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           :can-interrupt-turn="canInterruptTurn"
           :can-use-primary-action="canUsePrimaryAction"
           :interrupting-turn="interruptingTurn"
+          :creating-first-thread="creatingFirstThread"
+          :submission-pending="submissionPending"
+          :can-attach-files="composerInputEnabled"
+          :can-upload-workspace="
+            !creatingFirstThread && selectedHostId !== null && selectedProjectId !== null
+          "
           :selected-thread-status="selectedThreadStatus"
           :send-button-label="sendButtonLabel"
           @attach="openAttachmentPicker"
+          @upload-workspace-files="openWorkspaceFilePicker"
+          @upload-workspace-folder="openWorkspaceFolderPicker"
           @primary-action="emit('primaryAction')"
           @update-selected-approval-mode="emit('updateSelectedApprovalMode', $event)"
           @select-model="emit('selectModel', $event)"

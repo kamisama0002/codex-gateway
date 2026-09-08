@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@codex-gateway/ui/select";
 import { Switch } from "@codex-gateway/ui/switch";
+import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { gatewayApi } from "@/utils/gateway-api";
 import { gatewayErrorMessage } from "@/utils/gateway-error";
 
@@ -64,6 +65,7 @@ interface ModelForm {
 }
 
 const { t } = useI18n();
+const gatewayCatalog = useGatewayCatalogStore();
 const loading = ref(true);
 const saving = ref(false);
 const deleting = ref(false);
@@ -76,6 +78,7 @@ const providerEditorOpen = ref(false);
 const modelEditorOpen = ref(false);
 const deletingProvider = ref<ProviderWithModels | null>(null);
 const editingProviderId = ref<string | null>(null);
+const togglingModelKey = ref<string | null>(null);
 const providerForm = reactive<ProviderForm>(emptyProviderForm());
 const modelForm = reactive<ModelForm>(emptyModelForm());
 const providerDialogTitle = computed(() =>
@@ -200,6 +203,54 @@ async function saveModel() {
   } finally {
     saving.value = false;
   }
+}
+
+async function setModelEnabled(
+  provider: ProviderWithModels,
+  model: ProviderModelDefinition,
+  enabled: boolean,
+) {
+  const key = `${provider.id}:${model.modelId}`;
+  if (togglingModelKey.value !== null) return;
+  togglingModelKey.value = key;
+  error.value = "";
+  replaceProviderModel({ ...model, enabled });
+  let saved = false;
+  try {
+    const updated = await gatewayApi<ProviderModelDefinition>(
+      `/api/admin/providers/${encodeURIComponent(provider.id)}/models`,
+      {
+        method: "POST",
+        body: {
+          modelId: model.modelId,
+          displayName: model.displayName,
+          enabled,
+          capabilities: model.capabilities,
+        },
+      },
+    );
+    replaceProviderModel(updated);
+    saved = true;
+  } catch (caught: unknown) {
+    replaceProviderModel(model);
+    error.value = gatewayErrorMessage(caught, t("app.modelToggleFailed"));
+  } finally {
+    togglingModelKey.value = null;
+  }
+  if (saved) await gatewayCatalog.listModels();
+}
+
+function replaceProviderModel(updated: ProviderModelDefinition) {
+  providers.value = providers.value.map((provider) =>
+    provider.id === updated.providerId
+      ? {
+          ...provider,
+          models: provider.models.map((model) =>
+            model.modelId === updated.modelId ? updated : model,
+          ),
+        }
+      : provider,
+  );
 }
 
 async function confirmDeleteProvider() {
@@ -369,6 +420,16 @@ function emptyModelForm(providerId = ""): ModelForm {
               {{ model.displayName }}
               <span class="text-ink-faint"> · {{ model.modelId }}</span>
             </span>
+            <span class="shrink-0 text-xs text-ink-faint">
+              {{ t(model.enabled ? "app.modelAvailable" : "app.modelUnavailable") }}
+            </span>
+            <Switch
+              :model-value="model.enabled"
+              :disabled="togglingModelKey !== null"
+              :aria-label="t('app.toggleModelAvailabilityNamed', { name: model.displayName })"
+              :data-testid="`model-enabled-toggle-${provider.id}-${model.modelId}`"
+              @update:model-value="setModelEnabled(provider, model, $event)"
+            />
             <Button
               type="button"
               variant="ghost"

@@ -37,14 +37,22 @@ export class RemoteFileService {
 
   async uploadFile(host: HostWithSecret, localPath: string, remotePath: string) {
     const directory = remotePath.split("/").slice(0, -1).join("/") || ".";
-    const mkdir = await this.ssh.exec(
-      host,
-      remoteLoginShellCommand(`mkdir -p ${shellQuote(directory)}`),
-    );
-    if (mkdir.code !== 0) {
-      throw new Error(mkdir.stderr || `Failed to create remote upload directory: ${directory}`);
-    }
+    const sftp = await this.ssh.sftp(host);
+    await ensureRemoteDirectory(sftp, directory);
     return this.ssh.uploadFile(host, localPath, remotePath);
+  }
+
+  async existingPaths(host: HostWithSecret, remotePaths: string[]) {
+    const paths = [...new Set(remotePaths)];
+    if (paths.some((path) => !path.startsWith("/"))) {
+      throw new RemoteFileInvalidPathError(paths.find((path) => !path.startsWith("/")) ?? "");
+    }
+    const sftp = await this.ssh.sftp(host);
+    const inspect = pLimit(8);
+    const results = await Promise.all(
+      paths.map(async (path) => [path, await inspect(() => remotePathExists(sftp, path))] as const),
+    );
+    return results.filter(([, exists]) => exists).map(([path]) => path);
   }
 
   async deleteFile(host: HostWithSecret, path: string) {
@@ -226,6 +234,64 @@ function statFile(sftp: Awaited<ReturnType<SshConnectionPool["sftp"]>>, path: st
       if (error) return reject(classifyRemoteFileError(error, path));
       if (!stats.isFile()) return reject(new RemoteFileNotRegularError(path));
       resolve({ size: stats.size, modifiedAt: stats.mtime * 1000, mode: stats.mode });
+    });
+  });
+}
+
+function remotePathExists(sftp: Awaited<ReturnType<SshConnectionPool["sftp"]>>, path: string) {
+  return new Promise<boolean>((resolve, reject) => {
+    sftp.stat(path, (error) => {
+      if (error) {
+        if (isMissingSftpPath(error)) resolve(false);
+        else reject(classifyRemoteFileError(error, path));
+        return;
+      }
+      resolve(true);
+    });
+  });
+}
+
+async function ensureRemoteDirectory(
+  sftp: Awaited<ReturnType<SshConnectionPool["sftp"]>>,
+  path: string,
+): Promise<void> {
+  const normalized = posix.normalize(path);
+  if (normalized === "." || normalized === "/") return;
+
+  const status = await remoteDirectoryStatus(sftp, normalized);
+  if (status === "directory") return;
+  if (status === "other") {
+    throw new Error(`Remote upload parent is not a directory: ${normalized}`);
+  }
+
+  await ensureRemoteDirectory(sftp, posix.dirname(normalized));
+  await new Promise<void>((resolve, reject) => {
+    sftp.mkdir(normalized, { mode: 0o755 }, (error) => {
+      if (!error) {
+        resolve();
+        return;
+      }
+      // Concurrent uploads may create the same parent after the initial stat.
+      sftp.stat(normalized, (statError, stats) => {
+        if (!statError && stats.isDirectory()) resolve();
+        else reject(error);
+      });
+    });
+  });
+}
+
+function remoteDirectoryStatus(
+  sftp: Awaited<ReturnType<SshConnectionPool["sftp"]>>,
+  path: string,
+) {
+  return new Promise<"directory" | "missing" | "other">((resolve, reject) => {
+    sftp.stat(path, (error, stats) => {
+      if (!error) {
+        resolve(stats.isDirectory() ? "directory" : "other");
+        return;
+      }
+      if (isMissingSftpPath(error)) resolve("missing");
+      else reject(error);
     });
   });
 }

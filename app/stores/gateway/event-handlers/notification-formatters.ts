@@ -27,7 +27,6 @@ export const visibleNotificationMethods = [
   "thread/deleted",
   "thread/unarchived",
   "thread/closed",
-  "thread/name/updated",
   "thread/goal/cleared",
   "skills/changed",
   "hook/started",
@@ -78,8 +77,6 @@ const formatters: Record<VisibleNotificationMethod, NotificationFormatter> = {
   "thread/deleted": (ctx) => simpleNotification(ctx, "threadDeleted", "warning"),
   "thread/unarchived": (ctx) => simpleNotification(ctx, "threadUnarchived"),
   "thread/closed": (ctx) => simpleNotification(ctx, "threadClosed"),
-  "thread/name/updated": (ctx, params) =>
-    simpleNotification(ctx, "threadNameUpdated", "info", { name: text(params.threadName) }),
   "thread/goal/cleared": (ctx) => simpleNotification(ctx, "threadGoalCleared"),
   "skills/changed": (ctx) => simpleNotification(ctx, "skillsChanged"),
   "hook/started": (ctx, params) => hookNotification(ctx, params, "hookStarted"),

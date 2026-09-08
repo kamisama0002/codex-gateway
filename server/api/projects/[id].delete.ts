@@ -5,7 +5,7 @@ import { requireRecord } from "../../utils/gateway/http/validation/common";
 import { projectStore } from "../../utils/gateway/state/projects";
 import { userConfigMutationService } from "../../utils/gateway/config/user-config-mutation-service";
 
-export default defineGatewayConfigMutationHandler((event) => {
+export default defineGatewayConfigMutationHandler(async (event) => {
   const id = Number(getRouterParam(event, "id"));
   if (isManagedRuntimeProjectId(id)) {
     throw createError({
@@ -13,7 +13,7 @@ export default defineGatewayConfigMutationHandler((event) => {
       statusMessage: "The local Agent workspace cannot be deleted",
     });
   }
-  userConfigMutationService.commit(event.context.auth!.user.id, () =>
+  await userConfigMutationService.commit(event.context.auth!.user.id, () =>
     requireRecord(projectStore.delete(id), "Project not found"),
   );
   return { ok: true };

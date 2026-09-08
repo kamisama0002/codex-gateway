@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { z } from "zod";
 import { authenticatedFetch, openApp } from "./helpers/app";
+import { installRealtimeSocketProbe } from "./helpers/realtime-socket-probe";
 
 test("requires bearer auth for protected HTTP APIs", async ({ page }) => {
   await openApp(page);
@@ -32,6 +33,51 @@ test("defaults to Chinese and can switch to English", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Appearance" })).toBeVisible();
 });
 
+test("opens pet settings from the main settings panel", async ({ page }) => {
+  await openApp(page);
+  await page.getByTestId("settings-toggle").click();
+  const settingsPanel = page.getByTestId("settings-panel");
+  const petTab = settingsPanel.getByRole("tab", { name: "桌宠" });
+
+  await expect(petTab).toBeVisible();
+  await petTab.click();
+  await expect(settingsPanel.getByTestId("pet-enabled")).toBeChecked();
+  await settingsPanel.getByTestId("pet-option-jiangjiang").click();
+  await settingsPanel.getByTestId("pet-animations").click();
+  await settingsPanel.getByTestId("save-pet-settings").click();
+  await expect(page.getByText("桌宠设置已保存")).toBeVisible();
+
+  const config = await authenticatedFetch(page, { url: "/api/config/export" }, (value) =>
+    z
+      .object({
+        pet: z.object({
+          enabled: z.boolean(),
+          petId: z.string(),
+          animations: z.boolean(),
+        }),
+      })
+      .loose()
+      .parse(value),
+  );
+  expect(config.pet).toEqual({ enabled: true, petId: "jiangjiang", animations: false });
+});
+
+test("uses product-neutral copy throughout settings", async ({ page }) => {
+  await openApp(page);
+  await page.getByTestId("settings-toggle").click();
+  const settingsPanel = page.getByTestId("settings-panel");
+
+  await expect(settingsPanel.getByText("选择界面的显示语言。")).toBeVisible();
+  await settingsPanel.getByRole("tab", { name: "桌宠" }).click();
+  await expect(settingsPanel.getByText("让桌宠跟随当前会话的真实运行状态。")).toBeVisible();
+  await settingsPanel.getByRole("tab", { name: "通知" }).click();
+  await expect(settingsPanel.getByPlaceholder("Agent 平台")).toBeVisible();
+  await settingsPanel.getByRole("tab", { name: "Agent 运行时" }).click();
+  await expect(
+    settingsPanel.getByText(/每个登录用户对应一个 Docker 内的 Agent 运行时/),
+  ).toBeVisible();
+});
+
 test("can revoke the current session from appearance settings", async ({ page }) => {
   await openApp(page);
   const token = await page.evaluate(() => localStorage.getItem("codex-gateway-auth-token"));
@@ -42,6 +88,7 @@ test("can revoke the current session from appearance settings", async ({ page })
   await page.getByRole("button", { name: "退出登录" }).click();
 
   await expect(page.getByRole("heading", { name: "登录 Codex Gateway" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
   const revokedStatus = await page.evaluate(async (authorization) => {
     const response = await fetch("/api/config/export", {
       headers: { authorization: `Bearer ${authorization}` },
@@ -66,11 +113,33 @@ test("synchronizes logout state across same-origin tabs", async ({ page }) => {
   await expect(secondPage.getByTestId("desktop-layout")).toBeHidden();
 });
 
+test("returns to login when the realtime session is revoked", async ({ page }) => {
+  await installRealtimeSocketProbe(page);
+  await openApp(page, { interceptRealtime: false });
+  const routeBeforeExpiry = page.url();
+
+  const revoked = await page.evaluate(async () => {
+    const token = localStorage.getItem("codex-gateway-auth-token");
+    if (token === null || token === "") throw new Error("Missing E2E auth token");
+    const response = await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    return response.ok;
+  });
+
+  expect(revoked).toBe(true);
+  await expect(page.getByRole("heading", { name: "登录 Codex Gateway" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText("登录状态已失效，请重新登录。");
+  expect(page.url()).toBe(routeBeforeExpiry);
+  expect(await page.evaluate(() => localStorage.getItem("codex-gateway-auth-token"))).toBeNull();
+});
+
 test("config JSON editor shows current config by default and scrolls", async ({ page }) => {
   await openApp(page);
   await page.getByTestId("settings-toggle").click();
   const settingsPanel = page.getByTestId("settings-panel");
-  await expect(settingsPanel.getByRole("tab")).toHaveCount(6);
+  await expect(settingsPanel.getByRole("tab")).toHaveCount(8);
   await settingsPanel.getByRole("tab", { name: "配置 JSON" }).click();
   const editor = page.getByTestId("config-json-editor");
   await expect(editor).toContainText('"version"');

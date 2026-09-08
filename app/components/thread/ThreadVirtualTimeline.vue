@@ -111,6 +111,14 @@ function handleUserDetachedChange(detached: boolean) {
   userDetachedFromLatest.value = detached;
 }
 
+async function hydrateVisibleTurnItems(turnIds: string[]) {
+  const incompleteTurnIds = turnIds.filter((turnId) => {
+    const turn = props.turns.find((candidate) => candidate.id === turnId);
+    return turn !== undefined && turn.itemsView !== "full";
+  });
+  await Promise.all(incompleteTurnIds.map((turnId) => threadTurns.loadTurnItems(turnId)));
+}
+
 async function handleIntermediateToggle(turnId: string, open: boolean) {
   if (!open) {
     setIntermediateOpen(turnId, false);
@@ -153,6 +161,7 @@ watch(
     :scroll-to-latest-token="scrollToLatestToken"
     @reach-start="handleReachStart"
     @user-detached-change="handleUserDetachedChange"
+    @visible-turn-ids-change="hydrateVisibleTurnItems"
   >
     <template #overlay="{ visible }">
       <div v-if="olderTurnsCursor && visible" class="pointer-events-auto flex justify-center pt-2">

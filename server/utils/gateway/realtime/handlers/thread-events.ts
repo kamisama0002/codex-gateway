@@ -9,7 +9,9 @@ import { isManagedRuntimeHost, MANAGED_WORKSPACE_PATH } from "~~/shared/runtime/
 import { bindGatewayUser } from "../../state/memory";
 import { recordFromUnknown } from "~~/shared/utils/records";
 import { isThreadActiveStatus } from "~~/shared/thread-runtime-status";
+import { runtimeLog } from "../../runtime/runtime-log";
 import {
+  authenticatedUserId,
   runPeerScoped,
   sendRealtimePeerMessage,
   stateFor,
@@ -101,9 +103,11 @@ export async function activateThread(
 export async function startThread(
   peer: RealtimePeer,
   message: Extract<RealtimeClientMessage, { type: "thread.start" }>,
+  signal: AbortSignal,
 ) {
   const input = threadStartSchema.parse(message);
   const host = await requireWorkspaceHost(input.hostId);
+  if (signal.aborted) return;
   const cwd =
     input.cwd === "" || input.cwd == null
       ? isManagedRuntimeHost(host)
@@ -121,6 +125,18 @@ export async function startThread(
     input.projectId ?? null,
   );
   const threadId = String(result.thread.id);
+  if (signal.aborted) {
+    try {
+      await threadBroker.deleteThread(host, threadId, authenticatedUserId(peer));
+    } catch (error) {
+      runtimeLog("cancelled blank thread cleanup failed", {
+        hostId: host.id,
+        threadId,
+        message: errorMessage(error),
+      });
+    }
+    return;
+  }
   // A newly started thread can emit notifications before thread/start returns its id. Replaying
   // from zero is safe for a new identity and avoids advancing past those startup events.
   const lastEventId = 0;
@@ -134,6 +150,10 @@ export async function startThread(
     lastEventId,
     eventEpoch,
   });
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function unsubscribeThread(

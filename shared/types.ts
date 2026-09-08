@@ -26,6 +26,8 @@ export type {
   ThreadGoalStatus,
   ThreadGoalTimelineItem,
   ThreadOpenResult,
+  QueuedSubmission,
+  ThreadQueuePage,
   ThreadRuntimeStatus,
   ThreadRuntimePhase,
   ThreadRuntimeStatusUpdate,
@@ -45,6 +47,8 @@ export type {
   McpServerEvent,
 } from "./types/mcp";
 export type { ModelListResult, ModelRecord } from "./types/models";
+export { GATEWAY_PET_IDS, isGatewayPetId } from "./types/pet";
+export type { GatewayPetId, GatewayPetSettings, GatewayPetStatus } from "./types/pet";
 export type {
   ModelCapabilities,
   ModelProviderDefinition,
@@ -95,6 +99,55 @@ export type {
   PinnedThreadRecord,
 } from "./types/config";
 export type {
+  ActualAppCapability,
+  ActualCapabilityState,
+  ActualMcpCapability,
+  ActualPluginCapability,
+  ActualPluginMarketplace,
+  ActualSkillCapability,
+  AppCapabilityConfig,
+  CapabilityArtifact,
+  CapabilityArtifactInput,
+  CapabilityAssignment,
+  CapabilityAssignmentInput,
+  CapabilityConfig,
+  CapabilityContext,
+  CapabilityChange,
+  CapabilityChangeResult,
+  CapabilitySyncReason,
+  CapabilitySyncRecord,
+  CapabilitySyncResult,
+  CapabilitySyncStatus,
+  CapabilityCreateInput,
+  CapabilityDefinition,
+  CapabilityDeploymentDescriptor,
+  CapabilityDeploymentStatus,
+  CapabilityCredentialStatus,
+  CapabilityAdminUser,
+  AdminCapabilityCatalog,
+  AdminCapabilityCatalogItem,
+  CapabilityKind,
+  CapabilitySource,
+  CapabilityUpdateInput,
+  CodexCapabilityContext,
+  HttpMcpCapabilityConfig,
+  McpCapabilityConfig,
+  PluginCapabilityConfig,
+  SkillCapabilityConfig,
+  StdioMcpCapabilityConfig,
+  UserCapabilityCatalog,
+  UserCapabilityCatalogItem,
+} from "./types/capabilities";
+export type {
+  CredentialCreateInput,
+  CredentialDescriptor,
+  CredentialKind,
+  CredentialMapping,
+  CredentialTarget,
+  DecryptedCredential,
+  ResolvedRuntimeSecret,
+} from "./types/credentials";
+export type {
   FilePreviewDocument,
   ProjectFileSearchResult,
   RemoteFileConflict,
@@ -108,6 +161,7 @@ export type {
   RemoteDirectoryResult,
   UploadedFileRecord,
   UploadResult,
+  WorkspaceUploadResult,
 } from "./types/files";
 export type {
   ThreadHistoryItem,

@@ -15,6 +15,7 @@ export const useGatewayComposerStore = defineStore("gateway-composer", () => {
   const threadGoalsByKey = ref<Record<string, ThreadGoal>>({});
   const threadGoalObservedAtByKey = ref<Record<string, number>>({});
   const composerDraftsByKey = ref<Record<string, ComposerDraft>>({});
+  const failedComposerDraftsByKey = ref<Record<string, ComposerDraft[]>>({});
   const actions = {
     ...createComposerActions(),
     ...createThreadGoalActions(),
@@ -53,6 +54,7 @@ export const useGatewayComposerStore = defineStore("gateway-composer", () => {
     threadGoalsByKey.value = {};
     threadGoalObservedAtByKey.value = {};
     composerDraftsByKey.value = {};
+    failedComposerDraftsByKey.value = {};
   }
 
   return {
@@ -61,6 +63,7 @@ export const useGatewayComposerStore = defineStore("gateway-composer", () => {
     threadGoalsByKey,
     threadGoalObservedAtByKey,
     composerDraftsByKey,
+    failedComposerDraftsByKey,
     selectedThreadSettings,
     selectedThreadCollaborationMode,
     selectedThreadGoal,

@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { reactive, toRefs } from "vue";
-import type { ComposerTurnOptions } from "~~/shared/types";
+import type { ComposerTurnOptions, ThreadRuntimeStatus } from "~~/shared/types";
 import { pinnedKey } from "../gateway/thread-utils/identity";
 import { createGatewayThreadTurnActions } from "./actions";
 
@@ -11,7 +11,10 @@ export interface SubmittedTurnRequestState {
   threadId: string;
   cwd: string | null;
   text: string;
+  clientUserMessageId: string;
+  previousStatus: ThreadRuntimeStatus;
   options: ComposerTurnOptions;
+  admitted: boolean;
   retryCount: number;
   pendingRetryTurnId: string | null;
   retryTimer: number | null;
@@ -20,10 +23,11 @@ export interface SubmittedTurnRequestState {
 
 export type SubmittedTurnRequestInput = Omit<
   SubmittedTurnRequestState,
-  "retryCount" | "pendingRetryTurnId" | "retryTimer" | "retryAt"
+  "admitted" | "retryCount" | "pendingRetryTurnId" | "retryTimer" | "retryAt"
 >;
 
 export const useGatewayThreadTurnsStore = defineStore("gateway-thread-turns", () => {
+  const submissionControllersByKey = new Map<string, AbortController>();
   const state = reactive<{
     submittedTurnRequestsByKey: Record<string, SubmittedTurnRequestState>;
     lastTurnRequestsByKey: Record<string, SubmittedTurnRequestInput>;
@@ -42,16 +46,23 @@ export const useGatewayThreadTurnsStore = defineStore("gateway-thread-turns", ()
     return state.submittedTurnRequestsByKey[requestKey(hostId, threadId)];
   }
 
-  function rememberRequest(input: SubmittedTurnRequestInput) {
+  function rememberRequest(input: SubmittedTurnRequestInput, controller?: AbortController) {
     const key = requestKey(input.hostId, input.threadId);
     const existing = state.submittedTurnRequestsByKey[key];
     if (existing?.retryTimer !== null && existing?.retryTimer !== undefined) {
       clearTimeout(existing.retryTimer);
     }
+    const existingController = submissionControllersByKey.get(key);
+    if (existingController !== undefined && existingController !== controller) {
+      existingController.abort(new Error("Submission superseded"));
+    }
+    if (controller === undefined) submissionControllersByKey.delete(key);
+    else submissionControllersByKey.set(key, controller);
     state.submittedTurnRequestsByKey = {
       ...state.submittedTurnRequestsByKey,
       [key]: {
         ...input,
+        admitted: false,
         retryCount: 0,
         pendingRetryTurnId: null,
         retryTimer: null,
@@ -72,6 +83,25 @@ export const useGatewayThreadTurnsStore = defineStore("gateway-thread-turns", ()
     }
     const { [key]: _removed, ...remaining } = state.submittedTurnRequestsByKey;
     state.submittedTurnRequestsByKey = remaining;
+    submissionControllersByKey.delete(key);
+  }
+
+  function cancelRequest(hostId: number, threadId: string) {
+    const key = requestKey(hostId, threadId);
+    const controller = submissionControllersByKey.get(key);
+    const request = state.submittedTurnRequestsByKey[key];
+    if (controller === undefined && request === undefined) return null;
+    controller?.abort(new Error("Submission cancelled"));
+    clearRequest(hostId, threadId);
+    return request ?? null;
+  }
+
+  function requestSignal(hostId: number, threadId: string) {
+    return submissionControllersByKey.get(requestKey(hostId, threadId))?.signal;
+  }
+
+  function markRequestAdmitted(hostId: number, threadId: string) {
+    patchRequest(hostId, threadId, { admitted: true });
   }
 
   function patchRequest(
@@ -109,6 +139,10 @@ export const useGatewayThreadTurnsStore = defineStore("gateway-thread-turns", ()
   }
 
   function resetState() {
+    for (const controller of submissionControllersByKey.values()) {
+      controller.abort(new Error("Gateway session reset"));
+    }
+    submissionControllersByKey.clear();
     for (const request of Object.values(state.submittedTurnRequestsByKey)) {
       if (request.retryTimer !== null) {
         clearTimeout(request.retryTimer);
@@ -141,6 +175,9 @@ export const useGatewayThreadTurnsStore = defineStore("gateway-thread-turns", ()
     requestForThread,
     rememberRequest,
     clearRequest,
+    cancelRequest,
+    requestSignal,
+    markRequestAdmitted,
     patchRequest,
     setRequest,
     requestByKey,

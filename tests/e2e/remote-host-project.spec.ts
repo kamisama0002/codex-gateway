@@ -20,6 +20,7 @@ import {
   sendTextTurn,
   waitForSelectedThreadId,
 } from "./helpers/remote-codex";
+import { openTerminalWorkspace } from "./helpers/workspace-actions";
 
 test("references real project files as structured turn context", async ({
   page,
@@ -227,19 +228,22 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
 
   const project = await remoteWorkspace.addProject(host.id);
 
-  await expect(page.getByTestId("project-thread-list")).toBeVisible();
-  await expect(
-    page.getByTestId("project-thread-list").getByRole("heading", { name: project.name }),
-  ).toBeVisible();
-  await page.getByTestId("open-terminal-button").click();
+  await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
+  await expect(page.getByTestId("new-thread-welcome")).toHaveText("你好，今天想完成什么？");
+  await openTerminalWorkspace(page, {
+    scope: "project",
+    hostId: host.id,
+    projectId: project.id,
+    cwd: project.remotePath,
+    title: project.name,
+  });
   await expect(page.getByTestId("terminal-panel")).toBeVisible({ timeout: 30_000 });
   await runTerminalCommand(page, "pwd");
   await expectTerminalContains(page, remote.projectPath);
   const terminalMarker = `codex-gateway-terminal-${Date.now()}`;
   await runTerminalCommand(page, `echo ${terminalMarker}`);
   await expectTerminalContains(page, terminalMarker);
-  await page.getByRole("tab", { name: /Agent/ }).click();
-  await expect(page.getByTestId("project-thread-list")).toBeVisible();
+  await expect(page.getByTestId("new-thread-empty-state")).toBeVisible();
   await page.getByRole("tab", { name: project.name }).click();
   await expectTerminalContains(page, terminalMarker);
   await reloadApp(page);
@@ -332,9 +336,11 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
   await sendTextTurn(page, marker);
   const sidebarThread = page.getByTestId(`thread-button-${threadId}`);
   await expect(sidebarThread).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("chat-scroll-area").getByText(marker)).toBeVisible({
-    timeout: 120_000,
-  });
+  await expect(page.getByTestId("chat-scroll-area").getByText(marker, { exact: true })).toBeVisible(
+    {
+      timeout: 120_000,
+    },
+  );
   await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "已完成", {
     timeout: 120_000,
   });
@@ -367,9 +373,9 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
   await page.getByPlaceholder("输入后续修改要求").fill(`用一句话回复：${afterReloadMarker}`);
   await page.getByTestId("send-turn-button").click();
   await expect.poll(() => chatViewportBottomDistance(page)).toBeLessThanOrEqual(2);
-  await expect(page.getByTestId("chat-scroll-area").getByText(afterReloadMarker)).toBeVisible({
-    timeout: 120_000,
-  });
+  await expect(
+    page.getByTestId("chat-scroll-area").getByText(afterReloadMarker, { exact: true }),
+  ).toBeVisible({ timeout: 120_000 });
   await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "已完成", {
     timeout: 120_000,
   });

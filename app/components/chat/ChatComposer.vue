@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import ComposerShell from "@/components/chat/composer/ComposerShell.vue";
+import WorkspaceUploadConflictDialog from "@/components/chat/composer/WorkspaceUploadConflictDialog.vue";
 import { useComposerController } from "@/composables/composer/useComposerController";
+
+withDefaults(
+  defineProps<{
+    placement?: "centered" | "docked";
+  }>(),
+  {
+    placement: "docked",
+  },
+);
 
 const {
   activeEffortCompactLabel,
@@ -24,6 +34,7 @@ const {
   handlePrimaryAction,
   hasComposerInput,
   interruptingTurn,
+  isThreadRunning,
   labelEffortOption,
   loadingModels,
   modelOptionValue,
@@ -42,6 +53,8 @@ const {
   selectedThreadStatus,
   selectedThreadTokenUsage,
   sendButtonLabel,
+  creatingFirstThread,
+  submissionPending,
   saveSelectedThreadGoal,
   stopSelectedThreadGoal,
   resumeSelectedThreadGoal,
@@ -52,7 +65,18 @@ const {
   slashMenuOpen,
   turnText,
   uploadingAttachments,
+  uploadingWorkspace,
+  pendingWorkspaceUploadConflict,
+  handleWorkspaceSelection,
+  confirmWorkspaceOverwrite,
+  cancelWorkspaceUploadConflict,
   handleFileReferenceLimit,
+  queuedMessages,
+  queueActionPendingId,
+  editQueuedMessage,
+  deleteQueuedMessage,
+  moveQueuedMessage,
+  sendQueuedMessageNow,
 } = useComposerController();
 </script>
 
@@ -72,6 +96,10 @@ const {
     :selected-slash-command-index="selectedSlashCommandIndex"
     :composer-input-enabled="composerInputEnabled"
     :uploading-attachments="uploadingAttachments"
+    :uploading-workspace="uploadingWorkspace"
+    :queued-messages="queuedMessages"
+    :queue-action-pending-id="queueActionPendingId"
+    :thread-running="isThreadRunning"
     :selected-thread-id="selectedThreadId"
     :selected-host-id="selectedHostId"
     :selected-project-id="selectedProjectId"
@@ -92,6 +120,9 @@ const {
     :interrupting-turn="interruptingTurn"
     :selected-thread-status="selectedThreadStatus"
     :send-button-label="sendButtonLabel"
+    :creating-first-thread="creatingFirstThread"
+    :submission-pending="submissionPending"
+    :placement="placement"
     @deactivate-plan="deactivatePlanMode"
     @save-goal="saveSelectedThreadGoal"
     @stop-goal="stopSelectedThreadGoal"
@@ -100,6 +131,11 @@ const {
     @hover-slash-command="selectSlashCommandIndex"
     @select-slash-command="runSlashCommand"
     @attachment-change="handleAttachmentChange"
+    @workspace-selection="handleWorkspaceSelection"
+    @edit-queued-message="editQueuedMessage"
+    @delete-queued-message="deleteQueuedMessage"
+    @move-queued-message="moveQueuedMessage"
+    @send-queued-message-now="sendQueuedMessageNow"
     @paste="handlePaste"
     @remove-attachment="removeAttachment"
     @keydown="handleComposerKeydown"
@@ -108,5 +144,12 @@ const {
     @update-selected-approval-mode="setSelectedApprovalMode"
     @select-model="setSelectedModel"
     @select-effort="setSelectedEffort"
+  />
+  <WorkspaceUploadConflictDialog
+    :conflict="pendingWorkspaceUploadConflict"
+    :uploading="uploadingWorkspace"
+    :creating-first-thread="creatingFirstThread"
+    @cancel="cancelWorkspaceUploadConflict"
+    @overwrite="confirmWorkspaceOverwrite"
   />
 </template>

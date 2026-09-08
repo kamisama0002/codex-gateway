@@ -1,7 +1,13 @@
 import { z } from "zod";
 import type { RealtimeServerMessage } from "../../types";
 import { threadTimelineItemTypes } from "../../thread-history/types";
-import { gatewayThreadSchema, rpcEnvelopeSchema, threadGoalSchema } from "../app-server";
+import {
+  gatewayThreadSchema,
+  queuedSubmissionSchema,
+  rpcEnvelopeSchema,
+  threadGoalSchema,
+  threadTurnSchema,
+} from "../app-server";
 import { realtimeClientMessageSchema } from "./client-message-schema";
 import {
   nonEmptyString,
@@ -611,6 +617,66 @@ export const realtimeServerMessageSchema: z.ZodType<RealtimeServerMessage> = z.d
         ...requestIdField,
         ...threadScopeFields,
         turnId: z.string().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.snapshot"),
+        ...requestIdField,
+        ...threadScopeFields,
+        items: z.array(queuedSubmissionSchema),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.added"),
+        ...requestIdField,
+        ...threadScopeFields,
+        item: queuedSubmissionSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.updated"),
+        ...requestIdField,
+        ...threadScopeFields,
+        item: queuedSubmissionSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.deleted"),
+        ...requestIdField,
+        ...threadScopeFields,
+        queuedSubmissionId: nonEmptyString,
+        deleted: z.boolean(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.reordered"),
+        ...requestIdField,
+        ...threadScopeFields,
+        queuedSubmissionIds: z.array(nonEmptyString),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.started"),
+        ...requestIdField,
+        ...threadScopeFields,
+        queuedSubmissionId: nullableString,
+        turn: threadTurnSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.queue.steered"),
+        ...requestIdField,
+        ...threadScopeFields,
+        queuedSubmissionId: nonEmptyString,
+        turnId: nonEmptyString,
+        deleted: z.boolean(),
       })
       .strict(),
     z

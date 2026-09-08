@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { IDockviewPanelHeaderProps } from "dockview-vue";
-import { PanelRightOpenIcon, XIcon } from "@lucide/vue";
+import { XIcon } from "@lucide/vue";
 
 import { computed, onBeforeUnmount, ref } from "vue";
 import type { WorkspaceDockPanelParams } from "./types";
 import { requireWorkspaceDockUiContext } from "./context";
-import { splitDockPanelRight } from "./actions";
 import { workspacePanelPolicy } from "./panel-registry";
+import WorkspaceAgentTab from "./WorkspaceAgentTab.vue";
 
 const props = defineProps<{ params: IDockviewPanelHeaderProps<WorkspaceDockPanelParams> }>();
 const context = requireWorkspaceDockUiContext();
@@ -17,11 +17,6 @@ const titleSubscription = props.params.api.onDidTitleChange((event) => {
 });
 onBeforeUnmount(() => titleSubscription.dispose());
 const policy = computed(() => workspacePanelPolicy(kind.value));
-
-function splitRight(event: MouseEvent) {
-  event.stopPropagation();
-  splitDockPanelRight(props.params.api);
-}
 
 function closePanel(event: MouseEvent) {
   event.stopPropagation();
@@ -47,17 +42,11 @@ function toggleMaximize() {
     class="group flex h-full min-w-0 items-center gap-1 px-2 text-sm"
     @dblclick="toggleMaximize"
   >
-    <component :is="policy.icon" class="size-3.5 shrink-0" />
-    <span class="max-w-44 truncate" :title="title">{{ title }}</span>
-    <button
-      v-if="kind === 'files' && context.layout.value === 'desktop'"
-      type="button"
-      class="ml-0.5 inline-flex size-4 items-center justify-center rounded text-ink-faint opacity-0 hover:bg-muted hover:text-ink group-hover:opacity-100"
-      :aria-label="$t('app.splitRight')"
-      @click="splitRight"
-    >
-      <PanelRightOpenIcon class="size-3" />
-    </button>
+    <WorkspaceAgentTab v-if="kind === 'agent'" />
+    <template v-else>
+      <component :is="policy.icon" class="size-3.5 shrink-0" />
+      <span class="max-w-44 truncate" :title="title">{{ title }}</span>
+    </template>
     <button
       v-if="policy.closable"
       type="button"

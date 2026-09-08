@@ -5,6 +5,7 @@ import {
   type ManagedRuntimeEndpoint,
   type RuntimeType,
 } from "@codex-gateway/agent-runtime-contracts";
+import type { ResolvedRuntimeSecret } from "~~/shared/types";
 import { z } from "zod";
 
 const runtimeIdSchema = z
@@ -17,11 +18,68 @@ const imageAliasSchema = z
   .min(1)
   .max(64)
   .regex(/^[a-z0-9][a-z0-9._-]*$/);
-const providerIdSchema = z.string().min(1).max(128).regex(/^[a-z0-9][a-z0-9_-]*$/);
-const runtimeActionRequestSchema = z.object({ runtimeId: runtimeIdSchema }).strict();
-const provisionRuntimeRequestSchema = z
+const providerIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-z0-9][a-z0-9_-]*$/);
+const runtimeNodeIdSchema = z
+  .string()
+  .min(7)
+  .max(128)
+  .regex(/^node__[a-z0-9][a-z0-9_.-]*$/u);
+const runtimePlacementIdentitySchema = z
   .object({
     runtimeId: runtimeIdSchema,
+    nodeId: runtimeNodeIdSchema,
+    placementGeneration: z.number().int().positive(),
+  })
+  .strict();
+export const runtimeNodeHealthSchema = z
+  .object({
+    nodeId: runtimeNodeIdSchema,
+    protocolVersion: z.literal(1),
+    managerVersion: z.string().min(1).max(128),
+    sampledAt: z.iso.datetime(),
+    capacityCpuMillis: z.number().int().positive(),
+    capacityMemoryBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    maxRuntimes: z.number().int().positive(),
+    dockerAvailable: z.boolean(),
+    dataRootWritable: z.boolean(),
+    availableDiskBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    totalDiskBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    managedRuntimeCount: z.number().int().nonnegative(),
+    runningRuntimeCount: z.number().int().nonnegative(),
+    agentImages: z.record(imageAliasSchema, z.string().min(1).max(255)),
+  })
+  .strict()
+  .refine((health) => health.runningRuntimeCount <= health.managedRuntimeCount);
+const runtimeActionRequestSchema = runtimePlacementIdentitySchema;
+export const runtimeResourcePolicySchema = z
+  .object({
+    memoryBytes: z
+      .number()
+      .int()
+      .min(128 * 1024 * 1024)
+      .max(16 * 1024 * 1024 * 1024),
+    nanoCpus: z.number().int().min(250_000_000).max(8_000_000_000),
+    pidsLimit: z.number().int().min(32).max(4096),
+  })
+  .strict();
+export type RuntimeResourcePolicy = z.infer<typeof runtimeResourcePolicySchema>;
+const runtimeResourceActionRequestSchema = z
+  .object({
+    ...runtimePlacementIdentitySchema.shape,
+    resources: runtimeResourcePolicySchema.optional(),
+  })
+  .strict();
+const provisionRuntimeRequestSchema = z
+  .object({
+    ...runtimePlacementIdentitySchema.shape,
+    workspaceKey: z
+      .string()
+      .length(36)
+      .regex(/^ws__[a-f0-9]{32}$/u),
     userHash: z.string().regex(/^[a-f0-9]{64}$/),
     runtimeType: runtimeTypeSchema,
     imageAlias: imageAliasSchema,
@@ -35,11 +93,72 @@ const provisionRuntimeRequestSchema = z
       })
       .strict()
       .optional(),
+    runtimeSecrets: z
+      .array(
+        z
+          .object({
+            credentialId: z.string().regex(/^cred__[a-z0-9][a-z0-9_.-]*$/u),
+            capabilityId: z.string().regex(/^org__[a-z0-9][a-z0-9_.-]*$/u),
+            version: z.number().int().positive(),
+            target: z.discriminatedUnion("type", [
+              z
+                .object({
+                  type: z.literal("env"),
+                  name: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u),
+                })
+                .strict(),
+              z
+                .object({
+                  type: z.literal("file"),
+                  path: z
+                    .string()
+                    .regex(/^\/run\/codex-secrets\/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/u),
+                })
+                .strict(),
+            ]),
+            value: z
+              .string()
+              .min(1)
+              .max(1024 * 1024),
+          })
+          .strict(),
+      )
+      .max(64)
+      .optional(),
+    resources: runtimeResourcePolicySchema.optional(),
   })
   .strict();
 const upgradeRuntimeRequestSchema = z
-  .object({ runtimeId: runtimeIdSchema, imageAlias: imageAliasSchema })
+  .object({
+    ...runtimePlacementIdentitySchema.shape,
+    imageAlias: imageAliasSchema,
+    resources: runtimeResourcePolicySchema.optional(),
+  })
   .strict();
+const forwardOAuthCallbackRequestSchema = z
+  .object({
+    ...runtimePlacementIdentitySchema.shape,
+    pathAndQuery: z
+      .string()
+      .min(1)
+      .max(32 * 1024)
+      .refine((value) => {
+        try {
+          const url = new URL(value, "http://callback.invalid");
+          return (
+            url.origin === "http://callback.invalid" &&
+            url.pathname === "/api/capabilities/mcp/oauth/callback" &&
+            url.hash === "" &&
+            url.searchParams.has("state") &&
+            (url.searchParams.has("code") || url.searchParams.has("error"))
+          );
+        } catch {
+          return false;
+        }
+      }),
+  })
+  .strict();
+const okResponseSchema = z.object({ ok: z.literal(true) }).strict();
 const internalManagedRuntimeEndpointSchema = managedRuntimeEndpointSchema.refine((endpoint) => {
   try {
     const protocol = new URL(endpoint.websocketUrl).protocol;
@@ -56,6 +175,7 @@ const runtimeLifecycleResultSchema = z
     imageVersion: z.string().min(1).nullable(),
     status: z.enum(["absent", "stopped", "running"]),
     endpoint: internalManagedRuntimeEndpointSchema.nullable(),
+    actualResources: runtimeResourcePolicySchema.nullable(),
   })
   .strict();
 const agentContainerStatsSchema = z
@@ -85,10 +205,17 @@ const agentRuntimeStatsResultSchema = z
   .strict();
 const execRuntimeRequestSchema = z
   .object({
-    runtimeId: runtimeIdSchema,
-    command: z.string().min(1).max(64 * 1024),
+    ...runtimePlacementIdentitySchema.shape,
+    command: z
+      .string()
+      .min(1)
+      .max(64 * 1024),
     timeoutMs: z.number().int().positive().max(60_000),
-    maxOutputBytes: z.number().int().positive().max(4 * 1024 * 1024),
+    maxOutputBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(4 * 1024 * 1024),
   })
   .strict();
 const execRuntimeResultSchema = z
@@ -101,7 +228,14 @@ const execRuntimeResultSchema = z
 const managerErrorSchema = z.object({ error: z.string().min(1) }).strict();
 const DEFAULT_RUNTIME_MANAGER_TIMEOUT_MS = 30_000;
 
-export interface ProvisionRuntimeRequest {
+export interface RuntimePlacementIdentity {
+  runtimeId: string;
+  nodeId: string;
+  placementGeneration: number;
+}
+
+export interface ProvisionRuntimeRequest extends RuntimePlacementIdentity {
+  workspaceKey: string;
   runtimeId: string;
   userHash: string;
   runtimeType: RuntimeType;
@@ -113,6 +247,22 @@ export interface ProvisionRuntimeRequest {
     wireApi: "responses";
     token: string;
   };
+  runtimeSecrets?: ResolvedRuntimeSecret[];
+  resources?: RuntimeResourcePolicy;
+}
+
+export interface SyncRuntimeSecretsRequest extends RuntimePlacementIdentity {
+  runtimeSecrets: ResolvedRuntimeSecret[];
+}
+
+export interface ForwardOAuthCallbackRequest extends RuntimePlacementIdentity {
+  pathAndQuery: string;
+}
+
+export interface RuntimeRelayTarget {
+  runtimeId: string;
+  websocketUrl: string;
+  headers(): Record<string, string>;
 }
 
 export interface RuntimeLifecycleResult {
@@ -122,13 +272,16 @@ export interface RuntimeLifecycleResult {
   imageVersion: string | null;
   status: "absent" | "stopped" | "running";
   endpoint: ManagedRuntimeEndpoint | null;
+  actualResources: RuntimeResourcePolicy | null;
 }
 
 export type AgentRuntimeStatsResult = z.infer<typeof agentRuntimeStatsResultSchema>;
 export type ExecRuntimeResult = z.infer<typeof execRuntimeResultSchema>;
+export type RuntimeNodeHealth = z.infer<typeof runtimeNodeHealthSchema>;
 
 interface RuntimeManagerClientOptions {
   baseUrl: string;
+  nodeId?: string;
   secret: string;
   fetch?: typeof globalThis.fetch;
   now?: () => number;
@@ -151,12 +304,14 @@ export class RuntimeManagerClient {
   private readonly baseUrl: string;
   private readonly fetch: typeof globalThis.fetch;
   private readonly nonce: () => string;
+  private readonly nodeId: string | null;
   private readonly now: () => number;
   private readonly secret: string;
   private readonly timeoutMs: number;
 
   constructor(options: RuntimeManagerClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
+    this.nodeId = options.nodeId === undefined ? null : runtimeNodeIdSchema.parse(options.nodeId);
     if (options.secret.length === 0) throw new Error("Runtime Manager shared secret is required");
     this.secret = options.secret;
     this.fetch = options.fetch ?? globalThis.fetch;
@@ -168,16 +323,44 @@ export class RuntimeManagerClient {
     }
   }
 
-  inspect(runtimeId: string): Promise<RuntimeLifecycleResult> {
-    const input = runtimeActionRequestSchema.parse({ runtimeId });
-    return this.request("GET", `/v1/runtimes/${encodeURIComponent(input.runtimeId)}`);
+  inspect(input: RuntimePlacementIdentity): Promise<RuntimeLifecycleResult> {
+    const placement = this.placement(input);
+    return this.request(
+      "GET",
+      `/v1/runtimes/${encodeURIComponent(placement.runtimeId)}/generations/${placement.placementGeneration}`,
+    );
   }
 
-  stats(runtimeId: string): Promise<AgentRuntimeStatsResult> {
-    const input = runtimeActionRequestSchema.parse({ runtimeId });
+  async status(): Promise<RuntimeNodeHealth> {
+    const health = await this.requestParsed(
+      "GET",
+      "/v1/node/status",
+      undefined,
+      runtimeNodeHealthSchema,
+    );
+    if (this.nodeId !== null && health.nodeId !== this.nodeId) {
+      throw new RuntimeManagerClientError("runtime_manager_invalid_response");
+    }
+    return health;
+  }
+
+  relayTarget(input: RuntimePlacementIdentity): RuntimeRelayTarget {
+    const placement = this.placement(input);
+    const path = `/v1/runtimes/${encodeURIComponent(placement.runtimeId)}/generations/${placement.placementGeneration}/rpc`;
+    const managerUrl = new URL(this.baseUrl);
+    const protocol = managerUrl.protocol === "https:" ? "wss:" : "ws:";
+    return {
+      runtimeId: placement.runtimeId,
+      websocketUrl: `${protocol}//${managerUrl.host}${path}`,
+      headers: () => this.signedHeaders("GET", path, ""),
+    };
+  }
+
+  stats(input: RuntimePlacementIdentity): Promise<AgentRuntimeStatsResult> {
+    const placement = this.placement(input);
     return this.requestParsed(
       "GET",
-      `/v1/runtimes/${encodeURIComponent(input.runtimeId)}/stats`,
+      `/v1/runtimes/${encodeURIComponent(placement.runtimeId)}/generations/${placement.placementGeneration}/stats`,
       undefined,
       agentRuntimeStatsResultSchema,
     );
@@ -185,11 +368,13 @@ export class RuntimeManagerClient {
 
   exec(input: {
     runtimeId: string;
+    nodeId: string;
+    placementGeneration: number;
     command: string;
     timeoutMs: number;
     maxOutputBytes: number;
   }): Promise<ExecRuntimeResult> {
-    const parsed = execRuntimeRequestSchema.parse(input);
+    const parsed = execRuntimeRequestSchema.parse({ ...input, ...this.placement(input) });
     return this.requestParsed(
       "POST",
       "/v1/runtimes/exec",
@@ -203,40 +388,102 @@ export class RuntimeManagerClient {
     return this.request(
       "POST",
       "/v1/runtimes/provision",
-      provisionRuntimeRequestSchema.parse(input),
+      provisionRuntimeRequestSchema.parse({ ...input, ...this.placement(input) }),
     );
   }
 
-  start(runtimeId: string): Promise<RuntimeLifecycleResult> {
-    return this.action("start", runtimeId);
+  syncSecrets(input: SyncRuntimeSecretsRequest): Promise<RuntimeLifecycleResult> {
+    return this.request(
+      "POST",
+      "/v1/runtimes/secrets",
+      provisionRuntimeRequestSchema
+        .pick({
+          runtimeId: true,
+          nodeId: true,
+          placementGeneration: true,
+          runtimeSecrets: true,
+        })
+        .required({ runtimeSecrets: true })
+        .parse({ ...input, ...this.placement(input) }),
+    );
   }
 
-  stop(runtimeId: string): Promise<RuntimeLifecycleResult> {
-    return this.action("stop", runtimeId);
+  async forwardOAuthCallback(input: ForwardOAuthCallbackRequest): Promise<void> {
+    await this.requestParsed(
+      "POST",
+      "/v1/runtimes/oauth-callback",
+      forwardOAuthCallbackRequestSchema.parse({ ...input, ...this.placement(input) }),
+      okResponseSchema,
+    );
   }
 
-  restart(runtimeId: string): Promise<RuntimeLifecycleResult> {
-    return this.action("restart", runtimeId);
+  start(
+    placement: RuntimePlacementIdentity,
+    resources?: RuntimeResourcePolicy,
+  ): Promise<RuntimeLifecycleResult> {
+    return this.resourceAction("start", placement, resources);
   }
 
-  remove(runtimeId: string): Promise<RuntimeLifecycleResult> {
-    return this.action("remove", runtimeId);
+  stop(placement: RuntimePlacementIdentity): Promise<RuntimeLifecycleResult> {
+    return this.action("stop", placement);
   }
 
-  upgrade(runtimeId: string, imageAlias: string): Promise<RuntimeLifecycleResult> {
+  restart(
+    placement: RuntimePlacementIdentity,
+    resources?: RuntimeResourcePolicy,
+  ): Promise<RuntimeLifecycleResult> {
+    return this.resourceAction("restart", placement, resources);
+  }
+
+  remove(placement: RuntimePlacementIdentity): Promise<RuntimeLifecycleResult> {
+    return this.action("remove", placement);
+  }
+
+  upgrade(
+    placement: RuntimePlacementIdentity,
+    imageAlias: string,
+    resources?: RuntimeResourcePolicy,
+  ): Promise<RuntimeLifecycleResult> {
     return this.request(
       "POST",
       "/v1/runtimes/upgrade",
-      upgradeRuntimeRequestSchema.parse({ runtimeId, imageAlias }),
+      upgradeRuntimeRequestSchema.parse({ ...this.placement(placement), imageAlias, resources }),
     );
   }
 
-  private action(action: "start" | "stop" | "restart" | "remove", runtimeId: string) {
+  private action(
+    action: "start" | "stop" | "restart" | "remove",
+    placement: RuntimePlacementIdentity,
+  ) {
     return this.request(
       "POST",
       `/v1/runtimes/${action}`,
-      runtimeActionRequestSchema.parse({ runtimeId }),
+      runtimeActionRequestSchema.parse(this.placement(placement)),
     );
+  }
+
+  private resourceAction(
+    action: "start" | "restart",
+    placement: RuntimePlacementIdentity,
+    resources?: RuntimeResourcePolicy,
+  ) {
+    return this.request(
+      "POST",
+      `/v1/runtimes/${action}`,
+      runtimeResourceActionRequestSchema.parse({ ...this.placement(placement), resources }),
+    );
+  }
+
+  private placement(input: RuntimePlacementIdentity) {
+    const placement = runtimePlacementIdentitySchema.parse({
+      runtimeId: input.runtimeId,
+      nodeId: input.nodeId,
+      placementGeneration: input.placementGeneration,
+    });
+    if (this.nodeId !== null && placement.nodeId !== this.nodeId) {
+      throw new RuntimeManagerClientError("runtime_manager_invalid_response");
+    }
+    return placement;
   }
 
   private async request(
@@ -255,20 +502,7 @@ export class RuntimeManagerClient {
     timeoutMs = this.timeoutMs,
   ): Promise<T> {
     const body = payload === undefined ? "" : JSON.stringify(payload);
-    const timestamp = this.now();
-    const nonce = this.nonce();
-    const bodySha256 = createHash("sha256").update(body).digest("hex");
-    const headers: Record<string, string> = {
-      "x-runtime-body-sha256": bodySha256,
-      "x-runtime-nonce": nonce,
-      "x-runtime-signature": createHmac("sha256", this.secret)
-        .update(
-          `${method}\n${normalizeRequestPath(path)}\n${timestamp}\n${nonce}\n${bodySha256}`,
-          "utf8",
-        )
-        .digest("hex"),
-      "x-runtime-timestamp": String(timestamp),
-    };
+    const headers = this.signedHeaders(method, path, body);
     if (payload !== undefined) headers["content-type"] = "application/json";
 
     const controller = new AbortController();
@@ -304,6 +538,27 @@ export class RuntimeManagerClient {
     } finally {
       clearTimeout(deadline);
     }
+  }
+
+  private signedHeaders(
+    method: "GET" | "POST",
+    path: string,
+    body: string,
+  ): Record<string, string> {
+    const timestamp = this.now();
+    const nonce = this.nonce();
+    const bodySha256 = createHash("sha256").update(body).digest("hex");
+    return {
+      "x-runtime-body-sha256": bodySha256,
+      "x-runtime-nonce": nonce,
+      "x-runtime-signature": createHmac("sha256", this.secret)
+        .update(
+          `${method}\n${normalizeRequestPath(path)}\n${timestamp}\n${nonce}\n${bodySha256}`,
+          "utf8",
+        )
+        .digest("hex"),
+      "x-runtime-timestamp": String(timestamp),
+    };
   }
 }
 

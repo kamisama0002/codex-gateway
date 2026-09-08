@@ -1,5 +1,5 @@
 import type { RealtimeClientMessage } from "~~/shared/types";
-import { hostStore } from "../../state/hosts";
+import { requireWorkspaceHost } from "../../runtime-manager/local-workspace";
 import { tmuxMonitorService } from "../../tmux-monitor/monitor-service";
 import {
   authenticatedUserId,
@@ -14,7 +14,7 @@ export async function subscribeTmuxSessions(
   request: Extract<RealtimeClientMessage, { type: "tmux.sessions.subscribe" }>,
 ) {
   const userId = authenticatedUserId(peer);
-  const host = requiredHost(request.hostId);
+  const host = await requireWorkspaceHost(request.hostId);
   const subscriptions = stateFor(peer).tmuxSessionUnsubscribers;
   const unsubscribe = replaceSubscription(subscriptions, host.id, () =>
     tmuxMonitorService.sessionStream.subscribe(userId, host, (snapshot) => {
@@ -34,9 +34,10 @@ export async function refreshTmuxSessions(
   peer: RealtimePeer,
   request: Extract<RealtimeClientMessage, { type: "tmux.sessions.refresh" }>,
 ) {
+  const host = await requireWorkspaceHost(request.hostId);
   const snapshot = await tmuxMonitorService.sessionStream.refresh(
     authenticatedUserId(peer),
-    requiredHost(request.hostId),
+    host,
     true,
   );
   sendRealtimePeerMessage(peer, {
@@ -52,10 +53,4 @@ export function unsubscribeTmuxSessions(
 ) {
   const subscriptions = stateFor(peer).tmuxSessionUnsubscribers;
   removeSubscription(subscriptions, request.hostId);
-}
-
-function requiredHost(hostId: number) {
-  const host = hostStore.getWithSecret(hostId);
-  if (host === null) throw new Error(`Host ${hostId} not found`);
-  return host;
 }

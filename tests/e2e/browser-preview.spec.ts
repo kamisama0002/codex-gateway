@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures/remote-workspace";
 import { openApp, reloadApp } from "./helpers/app";
 import { selectSidebarThread, startRemotePreviewServer } from "./helpers/remote-codex";
+import { openBrowserWorkspace } from "./helpers/workspace-actions";
 
 test("opens a real remote HTTP and WebSocket service through the SSH preview proxy", async ({
   page,
@@ -15,9 +16,7 @@ test("opens a real remote HTTP and WebSocket service through the SSH preview pro
   await selectSidebarThread(page, previewThreadId);
   await startRemotePreviewServer(remote);
 
-  await page.getByTestId("open-browser-button").click();
-  await page.getByPlaceholder("http://localhost:3000").fill("http://localhost:4173");
-  await page.getByTestId("browser-open-submit").click();
+  await openBrowserWorkspace(page, "http://localhost:4173");
   await expect(page.getByRole("tab", { name: "localhost:4173" })).toBeVisible({ timeout: 5_000 });
 
   const preview = page.frameLocator('iframe[title="localhost:4173"]');

@@ -1,4 +1,3 @@
-import type { Message, Peer } from "crossws";
 import WebSocket, { type RawData } from "ws";
 import ensureError from "ensure-error";
 import {
@@ -8,11 +7,12 @@ import {
   BROWSER_PREVIEW_PEER_DRAIN_THRESHOLD_BYTES,
   BROWSER_PREVIEW_WEBSOCKET_CONNECT_TIMEOUT_MS,
 } from "./browser-preview-websocket-limits";
+import type { BrowserPreviewMessage, BrowserPreviewPeer } from "./browser-preview-websocket-types";
 
 type BrowserPreviewFrame = string | Uint8Array;
 
 interface BrowserPreviewWebSocketBridgeOptions {
-  peer: Peer;
+  peer: BrowserPreviewPeer;
   connectUpstream: () => Promise<WebSocket>;
   onBridgeError: (error: Error) => void;
 }
@@ -40,7 +40,7 @@ export class BrowserPreviewWebSocketBridge {
     void this.connect();
   }
 
-  sendFromPeer(message: Message) {
+  sendFromPeer(message: BrowserPreviewMessage) {
     if (this.closed) return;
     const frame = frameFromMessage(message);
     if (this.upstream?.readyState === WebSocket.OPEN) {
@@ -194,12 +194,12 @@ export class BrowserPreviewWebSocketBridge {
   }
 }
 
-function peerBufferedAmount(peer: Peer) {
+function peerBufferedAmount(peer: BrowserPreviewPeer) {
   const bufferedAmount = peer.websocket.bufferedAmount;
   return typeof bufferedAmount === "number" ? bufferedAmount : 0;
 }
 
-function waitForPeerDrain(peer: Peer, threshold: number, signal: AbortSignal) {
+function waitForPeerDrain(peer: BrowserPreviewPeer, threshold: number, signal: AbortSignal) {
   if (peerBufferedAmount(peer) <= threshold || signal.aborted) return Promise.resolve();
   return new Promise<void>((resolve) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -260,7 +260,7 @@ class BoundedFrameQueue {
   }
 }
 
-function frameFromMessage(message: Message): BrowserPreviewFrame {
+function frameFromMessage(message: BrowserPreviewMessage): BrowserPreviewFrame {
   return typeof message.rawData === "string" ? message.rawData : message.uint8Array();
 }
 

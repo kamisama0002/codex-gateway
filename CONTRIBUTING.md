@@ -11,11 +11,14 @@ pnpm install
 pnpm dev
 ```
 
-Create a local user with a stable config secret and database path:
+Create a local MySQL schema and user with a stable config secret:
 
 ```bash
 CODEX_GATEWAY_CONFIG_SECRET="development-only-secret" \
-CODEX_GATEWAY_DB_PATH="./data/codex-gateway.db" \
+DATABASE_URL="mysql://codex_gateway:development-db-password@127.0.0.1:3306/codex_gateway" \
+pnpm db:migrate
+CODEX_GATEWAY_CONFIG_SECRET="development-only-secret" \
+DATABASE_URL="mysql://codex_gateway:development-db-password@127.0.0.1:3306/codex_gateway" \
 pnpm user:create <username> <password>
 ```
 

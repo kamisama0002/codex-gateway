@@ -10,7 +10,10 @@ import {
 } from "./resource-limits.js";
 
 describe("agent resource limit parsing", () => {
-  it("defaults to 2g / 2 CPUs / 256 pids", () => {
+  it("defaults to 8g / 4 CPUs / 1024 pids", () => {
+    expect(DEFAULT_AGENT_MEMORY_BYTES).toBe(8 * 1024 * 1024 * 1024);
+    expect(DEFAULT_AGENT_NANO_CPUS).toBe(4_000_000_000);
+    expect(DEFAULT_AGENT_PIDS_LIMIT).toBe(1_024);
     expect(parseAgentMemoryBytes(undefined)).toBe(DEFAULT_AGENT_MEMORY_BYTES);
     expect(parseAgentNanoCpus("")).toBe(DEFAULT_AGENT_NANO_CPUS);
     expect(parseAgentPidsLimit(undefined)).toBe(DEFAULT_AGENT_PIDS_LIMIT);

@@ -10,6 +10,8 @@ export interface RuntimeModelTokenClaims {
   userId: number;
   runtimeId: string;
   providerId: string;
+  // Kept as the container's startup default; request authorization uses the provider scope and
+  // the current per-user model grant so a long-lived runtime can switch models safely.
   modelId: string;
   jti: string;
   exp: number;
@@ -19,7 +21,6 @@ export interface RuntimeModelTokenScope {
   userId?: number;
   runtimeId?: string;
   providerId: string;
-  modelId: string;
 }
 
 export function issueRuntimeModelToken(
@@ -47,7 +48,8 @@ export function verifyRuntimeModelToken(
   now = Date.now(),
 ): RuntimeModelTokenClaims {
   const [version, payload, signature] = token.split(".");
-  if (version !== TOKEN_VERSION || payload === undefined || signature === undefined) throw new Error("Invalid runtime token");
+  if (version !== TOKEN_VERSION || payload === undefined || signature === undefined)
+    throw new Error("Invalid runtime token");
   const expected = sign(secret, payload);
   if (!safeEqual(signature, expected)) throw new Error("Invalid runtime token");
   let claims: RuntimeModelTokenClaims;
@@ -59,23 +61,30 @@ export function verifyRuntimeModelToken(
     throw new Error("Invalid runtime token");
   }
   if (
-    !Number.isInteger(claims.userId) || claims.userId <= 0 ||
-    typeof claims.runtimeId !== "string" || typeof claims.providerId !== "string" ||
-    typeof claims.modelId !== "string" || typeof claims.jti !== "string" ||
-    !Number.isSafeInteger(claims.exp) || claims.exp <= now
-  ) throw new Error("Expired runtime token");
+    !Number.isInteger(claims.userId) ||
+    claims.userId <= 0 ||
+    typeof claims.runtimeId !== "string" ||
+    typeof claims.providerId !== "string" ||
+    typeof claims.modelId !== "string" ||
+    typeof claims.jti !== "string" ||
+    !Number.isSafeInteger(claims.exp) ||
+    claims.exp <= now
+  )
+    throw new Error("Expired runtime token");
   if (
     (scope.userId !== undefined && claims.userId !== scope.userId) ||
     (scope.runtimeId !== undefined && claims.runtimeId !== scope.runtimeId) ||
-    claims.providerId !== scope.providerId ||
-    claims.modelId !== scope.modelId
-  ) throw new Error("Runtime token scope mismatch");
+    claims.providerId !== scope.providerId
+  )
+    throw new Error("Runtime token scope mismatch");
   return claims;
 }
 
 export function runtimeTokenSecret(): string {
-  const value = process.env.RUNTIME_MANAGER_SHARED_SECRET ?? process.env.CODEX_GATEWAY_CONFIG_SECRET ?? "";
-  if (value === "" && process.env.NODE_ENV === "production") throw new Error("Runtime token secret is required in production");
+  const value =
+    process.env.RUNTIME_MANAGER_SHARED_SECRET ?? process.env.CODEX_GATEWAY_CONFIG_SECRET ?? "";
+  if (value === "" && process.env.NODE_ENV === "production")
+    throw new Error("Runtime token secret is required in production");
   return value || "codex-gateway-development-runtime-token-secret";
 }
 
@@ -84,7 +93,9 @@ function encode(value: unknown): string {
 }
 
 function sign(secret: string, payload: string): string {
-  return createHmac("sha256", secret).update(`${TOKEN_VERSION}.${payload}`, "utf8").digest("base64url");
+  return createHmac("sha256", secret)
+    .update(`${TOKEN_VERSION}.${payload}`, "utf8")
+    .digest("base64url");
 }
 
 function safeEqual(left: string, right: string): boolean {

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { ThreadFileChange, ThreadHistoryItem } from "~~/shared/types";
-import { ChevronDownIcon, ChevronRightIcon, FilePenIcon, Loader2Icon } from "@lucide/vue";
+import { ChevronDownIcon, ChevronRightIcon, FilePenIcon } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { Badge } from "@codex-gateway/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@codex-gateway/ui/collapsible";
 import FileChangeApprovalBar from "./FileChangeApprovalBar.vue";
 import FileChangeDiffPanel from "./FileChangeDiffPanel.vue";
 import FileChangeOutputPanel from "./FileChangeOutputPanel.vue";
+import StateDot from "@/components/common/StateDot.vue";
 import { fileChangeKey, fileChangeKind, fileChangePath } from "./utils";
 import { useFilePreviewContext } from "@/composables/files/useFilePreviewContext";
 import { workspacePathDisplayLabel } from "@/utils/thread-item-display";
@@ -30,6 +31,12 @@ const pendingApproval = computed(() => props.item.pendingApproval || null);
 const isInProgress = computed(() => {
   const value = itemStatus.value;
   return value === "inProgress" || value === "running" || value === "active";
+});
+const visualStatus = computed<"running" | "completed" | "failed" | null>(() => {
+  if (isInProgress.value) return "running";
+  if (itemStatus.value === "failed" || itemStatus.value === "interrupted") return "failed";
+  if (itemStatus.value === "completed") return "completed";
+  return null;
 });
 const title = computed(() => {
   if (isInProgress.value && !fileChanges.value.length) {
@@ -89,13 +96,26 @@ watch(
 
 <template>
   <div class="max-w-4xl text-ink-secondary">
-    <div class="flex items-center gap-2 text-sm">
-      <Loader2Icon v-if="isInProgress" class="size-4 animate-spin text-primary" />
-      <FilePenIcon v-else class="size-4" />
-      <span>{{ title }}</span>
-      <Badge v-if="itemStatus" variant="secondary">{{ itemStatus }}</Badge>
+    <div
+      class="timeline-process-row flex items-center gap-2 text-sm"
+      :data-state="isInProgress ? 'running' : undefined"
+    >
+      <FilePenIcon class="size-4" />
+      <span class="min-w-0 flex-1 truncate">{{ title }}</span>
       <Badge v-if="pendingApproval" variant="outline">{{ t("app.waitingApproval") }}</Badge>
-      <Badge v-if="isInProgress" variant="outline">{{ t("app.running") }}</Badge>
+      <span
+        v-if="visualStatus"
+        class="inline-flex size-4 shrink-0 items-center justify-center"
+        role="img"
+        :aria-label="t(`app.${visualStatus}`)"
+        :title="t(`app.${visualStatus}`)"
+      >
+        <StateDot
+          :state="
+            visualStatus === 'running' ? 'ongoing' : visualStatus === 'failed' ? 'error' : 'done'
+          "
+        />
+      </span>
     </div>
     <div v-if="pendingApproval">
       <FileChangeApprovalBar

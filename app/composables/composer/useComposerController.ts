@@ -3,14 +3,17 @@ import { storeToRefs } from "pinia";
 import { useAttachmentUpload } from "./useAttachmentUpload";
 import { useComposerDraft } from "./useComposerDraft";
 import { useComposerGoalControls } from "./useComposerGoalControls";
+import { useComposerQueue } from "./useComposerQueue";
 import { useComposerSlashActions } from "./useComposerSlashActions";
 import { useComposerTurnSubmit } from "./useComposerTurnSubmit";
 import { useThreadSettingsControls } from "./useThreadSettingsControls";
+import { useWorkspaceUpload } from "./useWorkspaceUpload";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
+import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { latestThreadPlanItem, planItemSummary } from "@/utils/thread-plan";
 import { isThreadGoalOngoing } from "@/utils/thread-goal-display";
@@ -22,6 +25,7 @@ export function useComposerController() {
   const composer = useGatewayComposerStore();
   const navigation = useGatewayNavigationStore();
   const runtime = useGatewayThreadRuntimeStore();
+  const threadTurns = useGatewayThreadTurnsStore();
   const threadView = useGatewayThreadViewStore();
   const { t } = useI18n();
   const { models, loadingModels } = storeToRefs(gateway);
@@ -52,13 +56,24 @@ export function useComposerController() {
   const goalControls = useComposerGoalControls(turnText);
   const settings = useThreadSettingsControls();
   const attachmentUpload = useAttachmentUpload(selectedHostId, attachedFiles);
+  const workspaceUpload = useWorkspaceUpload({
+    selectedHostId,
+    selectedProjectId,
+    selectedThreadId,
+  });
   const selectedRuntime = computed(() =>
     selectedHostId.value !== null && selectedThreadId.value !== null
       ? runtime.threadRuntimeProjection(selectedHostId.value, selectedThreadId.value)
       : null,
   );
   const isThreadRunning = computed(() => selectedRuntime.value?.canInterrupt === true);
-  const composerInputEnabled = computed(
+  const composerQueue = useComposerQueue({
+    selectedHostId,
+    selectedThreadId,
+    threadRunning: isThreadRunning,
+    activeTurnId: computed(() => selectedRuntime.value?.activeTurnId ?? null),
+  });
+  const hasComposerTarget = computed(
     () => selectedThreadId.value !== null || selectedProjectId.value !== null,
   );
   const selectedTurnOptions = () => {
@@ -85,14 +100,25 @@ export function useComposerController() {
     selectedEffort: settings.selectedEffort,
     fileReferencesLabel: computed(() => t("app.attachedFileReferences")),
   });
+  const submissionPending = computed(() => {
+    if (submit.submissionPending.value) return true;
+    if (selectedHostId.value === null || selectedThreadId.value === null) return false;
+    return (
+      threadTurns.requestForThread(selectedHostId.value, selectedThreadId.value)?.admitted === false
+    );
+  });
+  const composerInputEnabled = computed(
+    () => hasComposerTarget.value && !submit.submittingNewThread.value,
+  );
   const goalInputActive = computed(() => /^\/goal(?:\s|$)/i.test(turnText.value.trimStart()));
   const activePlanSummary = computed(() =>
     submit.planModeActive.value ? planItemSummary(latestThreadPlanItem(history.value)) : "",
   );
   const canSendTurn = computed(
     () =>
-      selectedThreadId.value !== null &&
+      (selectedThreadId.value !== null || selectedProjectId.value !== null) &&
       submit.hasComposerInput.value &&
+      !submissionPending.value &&
       !attachmentUpload.uploadingAttachments.value,
   );
   const canInterruptTurn = computed(
@@ -101,11 +127,16 @@ export function useComposerController() {
   );
   const canUsePrimaryAction = computed(() =>
     Boolean(
-      (canSendTurn.value || canInterruptTurn.value) && !attachmentUpload.uploadingAttachments.value,
+      (submissionPending.value || canSendTurn.value || canInterruptTurn.value) &&
+      !attachmentUpload.uploadingAttachments.value,
     ),
   );
   const sendButtonLabel = computed(() => {
-    if (submit.hasComposerInput.value) return t("app.send");
+    if (submit.submittingNewThread.value) return t("app.cancelThreadCreation");
+    if (submissionPending.value) return t("app.cancelSend");
+    if (submit.hasComposerInput.value) {
+      return isThreadRunning.value ? t("app.queueMessage") : t("app.send");
+    }
     if (isThreadRunning.value) return t("app.interruptTurn");
     if (selectedThreadStatus.value === "completed") return t("app.completed");
     if (selectedThreadStatus.value === "failed") return t("app.failed");
@@ -128,12 +159,12 @@ export function useComposerController() {
     onSelect: slashActions.runSlashCommand,
   });
 
-  async function submitComposer() {
+  async function submitComposer(delivery: "default" | "steer" = "default") {
     if (await slashActions.executeInlineSlashCommand()) {
       slashCommandsState.dismiss();
       return;
     }
-    await submit.submitTurn();
+    await submit.submitTurn(delivery);
   }
 
   function handleComposerKeydown(event: KeyboardEvent) {
@@ -147,13 +178,18 @@ export function useComposerController() {
       return;
     }
     event.preventDefault();
-    if (selectedThreadId.value === null) {
+    if (!canSendTurn.value) {
       return;
     }
-    void submitComposer();
+    void submitComposer(event.metaKey || event.ctrlKey ? "steer" : "default");
   }
 
   function handlePrimaryAction() {
+    if (submissionPending.value) {
+      if (submit.submissionPending.value) submit.cancelSubmission();
+      else void threadTurns.interruptActiveTurn();
+      return;
+    }
     if (canInterruptTurn.value) {
       void submit.interruptTurn();
       return;
@@ -167,6 +203,53 @@ export function useComposerController() {
       projectId: selectedProjectId.value,
       threadId: selectedThreadId.value,
     });
+  }
+
+  function handleAttachmentChange(event: Event) {
+    if (submit.submittingNewThread.value) return;
+    attachmentUpload.handleAttachmentChange(event);
+  }
+
+  function handleWorkspaceSelection(event: Event, selection: "files" | "folder") {
+    if (submit.submittingNewThread.value) return;
+    workspaceUpload.handleWorkspaceSelection(event, selection);
+  }
+
+  async function confirmWorkspaceOverwrite() {
+    await workspaceUpload.confirmOverwrite();
+  }
+
+  function cancelWorkspaceUploadConflict() {
+    if (submit.submittingNewThread.value) return;
+    workspaceUpload.cancelConflict();
+  }
+
+  function handlePaste(event: ClipboardEvent) {
+    if (submit.submittingNewThread.value) {
+      event.preventDefault();
+      return;
+    }
+    attachmentUpload.handlePaste(event);
+  }
+
+  function removeAttachment(id: string) {
+    if (submit.submittingNewThread.value) return;
+    attachmentUpload.removeAttachment(id);
+  }
+
+  function setSelectedApprovalMode(value: Parameters<typeof settings.setSelectedApprovalMode>[0]) {
+    if (submit.submittingNewThread.value) return;
+    settings.setSelectedApprovalMode(value);
+  }
+
+  function setSelectedModel(value: string) {
+    if (submit.submittingNewThread.value) return;
+    settings.setSelectedModel(value);
+  }
+
+  function setSelectedEffort(value: Parameters<typeof settings.setSelectedEffort>[0]) {
+    if (submit.submittingNewThread.value) return;
+    settings.setSelectedEffort(value);
   }
 
   return {
@@ -184,14 +267,27 @@ export function useComposerController() {
     turnText,
     uploadInputRef: attachmentUpload.uploadInputRef,
     uploadingAttachments: attachmentUpload.uploadingAttachments,
-    handleAttachmentChange: attachmentUpload.handleAttachmentChange,
-    handlePaste: attachmentUpload.handlePaste,
-    removeAttachment: attachmentUpload.removeAttachment,
+    uploadingWorkspace: workspaceUpload.uploadingWorkspace,
+    pendingWorkspaceUploadConflict: workspaceUpload.pendingConflict,
+    queuedMessages: composerQueue.items,
+    queueActionPendingId: composerQueue.actionPendingId,
+    editQueuedMessage: composerQueue.edit,
+    deleteQueuedMessage: composerQueue.remove,
+    moveQueuedMessage: composerQueue.move,
+    sendQueuedMessageNow: composerQueue.sendNow,
+    handleAttachmentChange,
+    handleWorkspaceSelection,
+    confirmWorkspaceOverwrite,
+    cancelWorkspaceUploadConflict,
+    handlePaste,
+    removeAttachment,
     openAttachmentPicker: attachmentUpload.openAttachmentPicker,
     planModeActive: submit.planModeActive,
     deactivatePlanMode: submit.deactivatePlanMode,
     hasComposerInput: submit.hasComposerInput,
     interruptingTurn: submit.interruptingTurn,
+    creatingFirstThread: submit.submittingNewThread,
+    submissionPending,
     composerInputEnabled,
     selectedHostId,
     selectedThreadId,
@@ -213,5 +309,8 @@ export function useComposerController() {
     models,
     loadingModels,
     ...settings,
+    setSelectedApprovalMode,
+    setSelectedModel,
+    setSelectedEffort,
   };
 }

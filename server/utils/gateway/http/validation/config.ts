@@ -1,10 +1,30 @@
 import { z } from "zod";
-import type { GatewayConfig } from "~~/shared/types";
-import { DEFAULT_BARK_GROUP, DEFAULT_BARK_SERVER_URL } from "~~/shared/config";
-import { trimmedOrFallback, trimmedOrNull } from "~~/shared/utils/strings";
+import type { GatewayConfig, GatewayPetSettings } from "~~/shared/types";
+import {
+  DEFAULT_BARK_GROUP,
+  DEFAULT_BARK_SERVER_URL,
+  DEFAULT_PET_ID,
+  normalizeNotificationSettings,
+} from "~~/shared/config";
+import { GATEWAY_PET_IDS, isGatewayPetId } from "~~/shared/types/pet";
+import { trimmedOrNull } from "~~/shared/utils/strings";
 import { optionalPositiveInt } from "./common";
 import { hostBaseSchema, validateHostProxy } from "./hosts-projects";
-import { MANAGED_RUNTIME_HOST_ID, MANAGED_RUNTIME_PROJECT_ID } from "~~/shared/runtime/managed-runtime";
+import {
+  MANAGED_RUNTIME_HOST_ID,
+  MANAGED_RUNTIME_PROJECT_ID,
+} from "~~/shared/runtime/managed-runtime";
+
+const LEGACY_GATEWAY_PET_IDS = new Set([
+  "codex",
+  "dewey",
+  "fireball",
+  "rocky",
+  "seedy",
+  "stacky",
+  "bsod",
+  "null-signal",
+]);
 
 export const pinnedThreadSchema = z
   .object({
@@ -36,6 +56,22 @@ export const notificationSettingsSchema = z
       }),
   })
   .strict();
+
+export const petSettingsSchema: z.ZodType<GatewayPetSettings> = z
+  .object({
+    enabled: z.boolean().default(true),
+    petId: z
+      .preprocess((value) => {
+        const petId = typeof value === "string" ? value.trim() : value;
+        return typeof petId === "string" && LEGACY_GATEWAY_PET_IDS.has(petId)
+          ? DEFAULT_PET_ID
+          : petId;
+      }, z.enum(GATEWAY_PET_IDS))
+      .default(DEFAULT_PET_ID),
+    animations: z.boolean().default(true),
+  })
+  .strict()
+  .default({ enabled: true, petId: DEFAULT_PET_ID, animations: true });
 
 export const gatewayConfigSchema = z
   .object({
@@ -75,6 +111,7 @@ export const gatewayConfigSchema = z
         group: DEFAULT_BARK_GROUP,
       },
     }),
+    pet: petSettingsSchema,
   })
   .strict()
   .transform((config) => ({
@@ -121,13 +158,11 @@ export function parseGatewayConfig(body: unknown): GatewayConfig {
       projectName: trimmedOrNull(thread.projectName),
       updatedAt: thread.updatedAt ?? null,
     })),
-    notifications: {
-      bark: {
-        enabled: input.notifications.bark.enabled,
-        serverUrl: trimmedOrFallback(input.notifications.bark.serverUrl, DEFAULT_BARK_SERVER_URL),
-        deviceKey: input.notifications.bark.deviceKey.trim(),
-        group: trimmedOrFallback(input.notifications.bark.group, DEFAULT_BARK_GROUP),
-      },
+    notifications: normalizeNotificationSettings(input.notifications),
+    pet: {
+      enabled: input.pet.enabled,
+      petId: isGatewayPetId(input.pet.petId) ? input.pet.petId : DEFAULT_PET_ID,
+      animations: input.pet.animations,
     },
   };
 }

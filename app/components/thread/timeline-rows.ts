@@ -1,6 +1,8 @@
 import type { ThreadResponseUsage, ThreadTimelineItem, ThreadTimelineTurn } from "~~/shared/types";
 import type { DisplayedTurnTiming } from "@/utils/turn-timing";
+import { threadItemText } from "@/utils/thread-items";
 import { itemKey, userMessageVariant, type ThreadTurnSections } from "./thread-turn-sections";
+import { messageTimestampMs, normalizedTimestampMs } from "@/utils/message-time";
 
 export type { ThreadTimelineTurn } from "~~/shared/types";
 
@@ -14,14 +16,26 @@ const estimatedItemHeights: Partial<Record<ThreadTimelineItem["type"], number>> 
   userMessage: 160,
 };
 
-export type ThreadTimelineRow =
+export interface ThreadTurnNavigation {
+  turnId: string;
+  prompt: string;
+  response: string;
+  active: boolean;
+}
+
+export type ThreadTimelineRow = (
   | {
       key: string;
       type: "intermediateHeader";
       turnId: string;
       count: number;
+      toolCallCount: number;
+      messageCount: number;
+      subagentCount: number;
       open: boolean;
       loading: boolean;
+      loaded: boolean;
+      active: boolean;
     }
   | {
       key: string;
@@ -33,6 +47,13 @@ export type ThreadTimelineRow =
       turnTiming: DisplayedTurnTiming | null;
       responseUsage: ThreadResponseUsage[] | undefined;
       agentActionsAvailable: boolean;
+      messageTimeMs: number | null;
+    }
+  | {
+      key: string;
+      type: "turnStatus";
+      turnId: string;
+      startedAtMs: number | null;
     }
   | {
       key: string;
@@ -43,7 +64,10 @@ export type ThreadTimelineRow =
       durationMs: number | null;
       active: boolean;
       responseUsage: ThreadResponseUsage[] | undefined;
-    };
+    }
+) & {
+  turnNavigation?: ThreadTurnNavigation;
+};
 
 export interface ThreadTimelineTurnState {
   turn: ThreadTimelineTurn;
@@ -60,20 +84,29 @@ export function buildThreadTimelineRows(input: {
   turns: ThreadTimelineTurnState[];
   agentActionsAvailable: boolean;
 }) {
+  const activeTurnId = input.agentActionsAvailable ? null : input.turns.at(-1)?.turn.id;
   return input.turns.flatMap(({ turn, sections, intermediateOpen, intermediateLoading }) => {
     const rows: ThreadTimelineRow[] = [];
+    const showTurnStatus = turn.id === activeTurnId;
+    const turnIsActive = sections.turnIsActive || showTurnStatus;
     const timing = displayedTurnTiming(turn);
     const timingTarget = sections.finalItems.findLast((item) => item.type === "agentMessage");
-    appendItemRows(rows, input.threadId, turn.id, "user", sections.userItems, sections);
+    appendItemRows(rows, input.threadId, turn.id, "user", sections.userItems, sections, turn);
 
-    if (sections.intermediateItems.length || turn.itemsView !== "full") {
+    // Match DSH's foldable-process rule: incomplete history is not evidence that a process exists.
+    // Visible summary Turns are hydrated in the background; only real process items add this row.
+    if (sections.intermediateItems.length > 0) {
+      const summary = intermediateProcessSummary(sections.intermediateItems);
       rows.push({
         key: `${input.threadId}:turn-${turn.id}:intermediate-header`,
         type: "intermediateHeader",
         turnId: turn.id,
         count: sections.intermediateItems.length,
+        ...summary,
         open: intermediateOpen,
         loading: intermediateLoading,
+        loaded: turn.itemsView === "full",
+        active: turnIsActive,
       });
       if (intermediateOpen) {
         appendItemRows(
@@ -83,6 +116,7 @@ export function buildThreadTimelineRows(input: {
           "intermediate",
           sections.intermediateItems,
           sections,
+          turn,
         );
       }
     }
@@ -94,11 +128,20 @@ export function buildThreadTimelineRows(input: {
       "final",
       sections.finalItems,
       sections,
+      turn,
       timingTarget,
       timing,
       input.agentActionsAvailable,
       turn.responseUsage,
     );
+    if (showTurnStatus) {
+      rows.push({
+        key: `${input.threadId}:turn-${turn.id}:status`,
+        type: "turnStatus",
+        turnId: turn.id,
+        startedAtMs: normalizedTimestampMs(turn.startedAt),
+      });
+    }
     // Completed turns normally render timing beside the final answer's copy action. Keep a
     // standalone row only for interrupted/error turns that never produced an Agent answer.
     if (
@@ -113,6 +156,10 @@ export function buildThreadTimelineRows(input: {
         ...timing,
         responseUsage: turn.responseUsage,
       });
+    }
+    const firstRow = rows[0];
+    if (firstRow !== undefined) {
+      firstRow.turnNavigation = turnNavigation(turn, sections, turnIsActive);
     }
     return rows;
   });
@@ -133,6 +180,7 @@ export function reuseUnchangedTimelineRows(
 export function estimateThreadTimelineRow(row: ThreadTimelineRow | undefined) {
   if (row === undefined) return 96;
   if (row.type === "intermediateHeader") return 48;
+  if (row.type === "turnStatus") return 34;
   if (row.type === "turnDuration") return 28;
   return estimatedItemHeights[row.item.type] ?? 96;
 }
@@ -144,6 +192,7 @@ function appendItemRows(
   section: ThreadTimelineItemSection,
   items: ThreadTimelineItem[],
   sections: ThreadTurnSections,
+  turn: ThreadTimelineTurn,
   timingTarget?: ThreadTimelineItem,
   timing: DisplayedTurnTiming | null = null,
   agentActionsAvailable = false,
@@ -160,6 +209,7 @@ function appendItemRows(
       turnTiming: item === timingTarget ? timing : null,
       responseUsage: item === timingTarget ? responseUsage : undefined,
       agentActionsAvailable: item === timingTarget && agentActionsAvailable,
+      messageTimeMs: messageTimestampMs(item, turn),
     });
   });
 }
@@ -177,14 +227,37 @@ function hasTimingValue(timing: DisplayedTurnTiming) {
   return timing.startedAt !== null || timing.durationMs !== null;
 }
 
+function turnNavigation(
+  turn: ThreadTimelineTurn,
+  sections: ThreadTurnSections,
+  active = sections.turnIsActive,
+) {
+  const promptItem = sections.userItems.find((item) => item.type === "userMessage");
+  const responseItem =
+    sections.finalItems.findLast((item) => item.type === "agentMessage") ??
+    sections.intermediateItems.findLast((item) => item.type === "agentMessage");
+  return {
+    turnId: turn.id,
+    prompt: promptItem === undefined ? "" : threadItemText(promptItem),
+    response: responseItem === undefined ? "" : threadItemText(responseItem),
+    active,
+  };
+}
+
 function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
   if (left.type !== right.type) return false;
   if (left.type === "intermediateHeader" && right.type === "intermediateHeader") {
     return (
       left.count === right.count &&
+      left.toolCallCount === right.toolCallCount &&
+      left.messageCount === right.messageCount &&
+      left.subagentCount === right.subagentCount &&
       left.open === right.open &&
       left.loading === right.loading &&
-      left.turnId === right.turnId
+      left.loaded === right.loaded &&
+      left.active === right.active &&
+      left.turnId === right.turnId &&
+      sameTurnNavigation(left.turnNavigation, right.turnNavigation)
     );
   }
   if (left.type === "item" && right.type === "item") {
@@ -198,8 +271,17 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
       left.section === right.section &&
       left.userMessageVariant === right.userMessageVariant &&
       left.agentActionsAvailable === right.agentActionsAvailable &&
+      left.messageTimeMs === right.messageTimeMs &&
+      sameTurnNavigation(left.turnNavigation, right.turnNavigation) &&
       sameResponseUsage(left.responseUsage, right.responseUsage) &&
       sameTurnTiming(left.turnTiming, right.turnTiming)
+    );
+  }
+  if (left.type === "turnStatus" && right.type === "turnStatus") {
+    return (
+      left.turnId === right.turnId &&
+      left.startedAtMs === right.startedAtMs &&
+      sameTurnNavigation(left.turnNavigation, right.turnNavigation)
     );
   }
   if (left.type === "turnDuration" && right.type === "turnDuration") {
@@ -209,10 +291,60 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
       left.completedAt === right.completedAt &&
       left.durationMs === right.durationMs &&
       left.active === right.active &&
+      sameTurnNavigation(left.turnNavigation, right.turnNavigation) &&
       sameResponseUsage(left.responseUsage, right.responseUsage)
     );
   }
   return false;
+}
+
+function sameTurnNavigation(
+  left: ThreadTurnNavigation | undefined,
+  right: ThreadTurnNavigation | undefined,
+) {
+  if (left === undefined || right === undefined) return left === right;
+  return (
+    left.turnId === right.turnId &&
+    left.prompt === right.prompt &&
+    left.response === right.response &&
+    left.active === right.active
+  );
+}
+
+const intermediateToolItemTypes = new Set<ThreadTimelineItem["type"]>([
+  "attestationRequest",
+  "chatgptAuthTokensRefreshRequest",
+  "commandExecution",
+  "contextCompaction",
+  "dynamicToolClientRequest",
+  "dynamicToolCall",
+  "enteredReviewMode",
+  "exitedReviewMode",
+  "fileChange",
+  "hookPrompt",
+  "imageGeneration",
+  "imageView",
+  "mcpElicitationRequest",
+  "mcpToolCall",
+  "permissionsRequest",
+  "requestUserInput",
+  "serverRequest",
+  "sleep",
+  "webSearch",
+]);
+
+export function intermediateProcessSummary(items: ThreadTimelineItem[]) {
+  return items.reduce(
+    (summary, item) => {
+      if (intermediateToolItemTypes.has(item.type)) summary.toolCallCount += 1;
+      if (item.type === "agentMessage" || item.type === "reasoning") summary.messageCount += 1;
+      if (item.type === "collabAgentToolCall" || item.type === "subAgentActivity") {
+        summary.subagentCount += 1;
+      }
+      return summary;
+    },
+    { toolCallCount: 0, messageCount: 0, subagentCount: 0 },
+  );
 }
 
 function sameResponseUsage(

@@ -1,6 +1,8 @@
 import type { RuntimeType } from "@codex-gateway/agent-runtime-contracts";
-import type { RuntimeProviderConfig } from "./contracts.js";
+import type { RuntimeProviderConfig, RuntimeSecret } from "./contracts.js";
 import { runtimeTypeSchema } from "@codex-gateway/agent-runtime-contracts";
+import { constants as fsConstants } from "node:fs";
+import { access, statfs } from "node:fs/promises";
 import { PassThrough } from "node:stream";
 import Docker from "dockerode";
 
@@ -10,14 +12,26 @@ export const runtimeResourceLabels = {
   runtimeId: "com.codex-gateway.runtime-id",
   runtimeType: "com.codex-gateway.runtime-type",
   userHash: "com.codex-gateway.user-hash",
+  nodeId: "com.codex-gateway.runtime-node-id",
+  placementGeneration: "com.codex-gateway.placement-generation",
+  workspaceKey: "com.codex-gateway.workspace-key",
 } as const;
+
+export class DockerRuntimeIdentityError extends Error {
+  readonly code = "runtime_identity_conflict";
+
+  constructor() {
+    super("runtime_identity_conflict");
+    this.name = "DockerRuntimeIdentityError";
+  }
+}
 
 export interface DockerSecurityPolicy {
   User: "10001:10001";
   ReadonlyRootfs: true;
   CapDrop: ["ALL"];
   SecurityOpt: ["no-new-privileges:true"];
-  Tmpfs: Record<"/tmp", string>;
+  Tmpfs: Record<"/dev/shm" | "/run/codex-secrets" | "/tmp", string>;
   PidsLimit: number;
   Memory: number;
   NanoCpus: number;
@@ -39,13 +53,17 @@ export interface DockerContainerCreateSpec {
   internalPort: number;
   labels: Record<string, string>;
   mounts: DockerManagedVolumeSpec[];
-  networkName: string;
+  networkNames: [string, string];
   runtimeId: string;
   runtimeType: RuntimeType;
+  nodeId: string;
+  placementGeneration: number;
+  workspaceKey: string;
   security: DockerSecurityPolicy;
   serviceToken: string;
   userHash: string;
   providerConfig?: RuntimeProviderConfig;
+  oauthCallbackUrl?: string;
 }
 
 export interface EngineContainerState {
@@ -57,12 +75,35 @@ export interface EngineContainerState {
   running: boolean;
   runtimeId: string;
   runtimeType: RuntimeType;
+  nodeId: string | null;
+  placementGeneration: number | null;
+  workspaceKey: string | null;
   serviceToken: string;
   userHash: string;
+  memoryBytes: number;
   nanoCpus: number;
+  pidsLimit: number;
+}
+
+export interface E2eDockerInspection {
+  containerId: string;
+  memoryBytes: number;
+  nanoCpus: number;
+  pidsLimit: number;
+  workspaceVolume: string;
+}
+
+export interface DockerNodeInspection {
+  dockerAvailable: boolean;
+  dataRootWritable: boolean;
+  availableDiskBytes: number;
+  totalDiskBytes: number;
+  managedRuntimeCount: number;
+  runningRuntimeCount: number;
 }
 
 export interface DockerEngine {
+  inspectNode(dataRoot: string): Promise<DockerNodeInspection>;
   findManagedContainer(runtimeId: string): Promise<EngineContainerState | null>;
   createManagedContainer(spec: DockerContainerCreateSpec): Promise<EngineContainerState>;
   startContainer(containerId: string): Promise<void>;
@@ -78,11 +119,50 @@ export interface DockerEngine {
   updateContainerResources(
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
-  ): Promise<void>;
+  ): Promise<EngineContainerState>;
+  writeRuntimeSecrets(containerId: string, secrets: RuntimeSecret[]): Promise<void>;
+  forwardOAuthCallback(containerId: string, pathAndQuery: string): Promise<void>;
 }
 
 export class DockerodeEngine implements DockerEngine {
   constructor(private readonly docker: Docker = new Docker()) {}
+
+  async inspectNode(dataRoot: string): Promise<DockerNodeInspection> {
+    let dockerAvailable = true;
+    let managedRuntimeCount = 0;
+    let runningRuntimeCount = 0;
+    try {
+      await this.docker.ping();
+      const containers = await this.docker.listContainers({
+        all: true,
+        filters: { label: [`${runtimeResourceLabels.managed}=true`] },
+      });
+      managedRuntimeCount = containers.length;
+      runningRuntimeCount = containers.filter((container) => container.State === "running").length;
+    } catch {
+      dockerAvailable = false;
+    }
+
+    let dataRootWritable = true;
+    let availableDiskBytes = 0;
+    let totalDiskBytes = 0;
+    try {
+      await access(dataRoot, fsConstants.W_OK);
+      const filesystem = await statfs(dataRoot, { bigint: true });
+      availableDiskBytes = safeFilesystemBytes(filesystem.bavail, filesystem.bsize);
+      totalDiskBytes = safeFilesystemBytes(filesystem.blocks, filesystem.bsize);
+    } catch {
+      dataRootWritable = false;
+    }
+    return {
+      dockerAvailable,
+      dataRootWritable,
+      availableDiskBytes,
+      totalDiskBytes,
+      managedRuntimeCount,
+      runningRuntimeCount,
+    };
+  }
 
   async findManagedContainer(runtimeId: string): Promise<EngineContainerState | null> {
     const matches = await this.docker.listContainers({
@@ -95,6 +175,7 @@ export class DockerodeEngine implements DockerEngine {
       },
     });
     const match = matches[0];
+    if (matches.length > 1) throw new DockerRuntimeIdentityError();
     return match === undefined ? null : this.inspectContainer(match.Id);
   }
 
@@ -102,6 +183,7 @@ export class DockerodeEngine implements DockerEngine {
     for (const mount of spec.mounts) await this.ensureManagedVolume(mount);
 
     const exposedPort = `${spec.internalPort}/tcp`;
+    const [primaryNetwork, ...additionalNetworks] = spec.networkNames;
     const container = await this.docker.createContainer({
       name: spec.containerName,
       Image: spec.image,
@@ -113,6 +195,12 @@ export class DockerodeEngine implements DockerEngine {
         `CODEX_APP_SERVER_PORT=${spec.internalPort}`,
         `CODEX_REMOTE_TOKEN=${spec.serviceToken}`,
         `CODEX_RUNTIME_IMAGE_ALIAS=${spec.imageAlias}`,
+        ...(spec.oauthCallbackUrl === undefined
+          ? []
+          : [
+              `CODEX_MCP_OAUTH_CALLBACK_URL=${spec.oauthCallbackUrl}`,
+              "CODEX_MCP_OAUTH_CALLBACK_PORT=1456",
+            ]),
         ...(spec.providerConfig === undefined
           ? []
           : [
@@ -128,15 +216,17 @@ export class DockerodeEngine implements DockerEngine {
         CapDrop: spec.security.CapDrop,
         Memory: spec.security.Memory,
         NanoCpus: spec.security.NanoCpus,
-        NetworkMode: spec.networkName,
+        NetworkMode: primaryNetwork,
         PidsLimit: spec.security.PidsLimit,
         Privileged: spec.security.Privileged,
         ReadonlyRootfs: spec.security.ReadonlyRootfs,
         SecurityOpt: spec.security.SecurityOpt,
         Tmpfs: spec.security.Tmpfs,
       },
-      NetworkingConfig: { EndpointsConfig: { [spec.networkName]: {} } },
     });
+    for (const networkName of additionalNetworks) {
+      await this.docker.getNetwork(networkName).connect({ Container: container.id });
+    }
     return this.inspectContainer(container.id);
   }
 
@@ -146,6 +236,50 @@ export class DockerodeEngine implements DockerEngine {
 
   async stopContainer(containerId: string): Promise<void> {
     await this.docker.getContainer(containerId).stop({ t: 30 });
+  }
+
+  async writeRuntimeSecrets(containerId: string, secrets: RuntimeSecret[]): Promise<void> {
+    const payload = Buffer.from(JSON.stringify({ runtimeSecrets: secrets }), "utf8");
+    try {
+      const exec = await this.docker.getContainer(containerId).exec({
+        AttachStderr: true,
+        AttachStdin: true,
+        AttachStdout: true,
+        Cmd: ["node", "/usr/local/lib/agent-runtime-secret-writer.mjs"],
+        User: "10001:10001",
+      });
+      const stream = await exec.start({ hijack: true, stdin: true });
+      const completion = finished(stream);
+      stream.resume();
+      stream.end(payload);
+      await completion;
+      const inspected = await exec.inspect();
+      if (inspected.ExitCode !== 0) throw new Error("Runtime secret writer failed");
+    } finally {
+      payload.fill(0);
+    }
+  }
+
+  async forwardOAuthCallback(containerId: string, pathAndQuery: string): Promise<void> {
+    const payload = Buffer.from(pathAndQuery, "utf8");
+    try {
+      const exec = await this.docker.getContainer(containerId).exec({
+        AttachStderr: true,
+        AttachStdin: true,
+        AttachStdout: true,
+        Cmd: ["node", "/usr/local/lib/agent-runtime-oauth-callback.mjs"],
+        User: "10001:10001",
+      });
+      const stream = await exec.start({ hijack: true, stdin: true });
+      const completion = finished(stream);
+      stream.resume();
+      stream.end(payload);
+      await completion;
+      const inspected = await exec.inspect();
+      if (inspected.ExitCode !== 0) throw new Error("MCP OAuth callback forwarding failed");
+    } finally {
+      payload.fill(0);
+    }
   }
 
   async restartContainer(containerId: string): Promise<void> {
@@ -181,12 +315,37 @@ export class DockerodeEngine implements DockerEngine {
   async updateContainerResources(
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
-  ): Promise<void> {
+  ): Promise<EngineContainerState> {
     await this.docker.getContainer(containerId).update({
       Memory: resources.Memory,
       NanoCPUs: resources.NanoCpus,
       PidsLimit: resources.PidsLimit,
     });
+    return this.inspectContainer(containerId);
+  }
+
+  async inspectRuntimeForE2e(runtimeId: string): Promise<E2eDockerInspection> {
+    const state = await this.findManagedContainer(runtimeId);
+    if (state === null) throw new Error("managed runtime is missing");
+    const inspected = await this.docker.getContainer(state.containerId).inspect();
+    const workspaceVolumes = inspected.Mounts.flatMap((mount) =>
+      mount.Type === "volume" &&
+      mount.Destination === "/workspace" &&
+      typeof mount.Name === "string" &&
+      mount.Name.length > 0
+        ? [mount.Name]
+        : [],
+    );
+    if (workspaceVolumes.length !== 1) {
+      throw new Error("managed runtime workspace volume is invalid");
+    }
+    return {
+      containerId: state.containerId,
+      memoryBytes: state.memoryBytes,
+      nanoCpus: state.nanoCpus,
+      pidsLimit: state.pidsLimit,
+      workspaceVolume: workspaceVolumes[0],
+    };
   }
 
   private async ensureManagedVolume(spec: DockerManagedVolumeSpec): Promise<void> {
@@ -208,6 +367,24 @@ export class DockerodeEngine implements DockerEngine {
       }
       if (!existing.Labels?.[runtimeResourceLabels.imageVersion]) {
         throw new Error("managed volume image version label is missing");
+      }
+      const placementLabels = [
+        runtimeResourceLabels.nodeId,
+        runtimeResourceLabels.placementGeneration,
+        runtimeResourceLabels.workspaceKey,
+      ];
+      const presentPlacementLabels = placementLabels.filter(
+        (key) => existing.Labels?.[key] !== undefined,
+      );
+      if (presentPlacementLabels.length > 0) {
+        if (presentPlacementLabels.length !== placementLabels.length) {
+          throw new DockerRuntimeIdentityError();
+        }
+        for (const key of placementLabels) {
+          if (existing.Labels?.[key] !== spec.labels[key]) {
+            throw new DockerRuntimeIdentityError();
+          }
+        }
       }
     } catch (error) {
       if (!isDockerStatus(error, 404)) throw error;
@@ -231,6 +408,7 @@ export class DockerodeEngine implements DockerEngine {
     if (!Number.isInteger(internalPort) || internalPort < 1 || internalPort > 65_535) {
       throw new Error("managed container port label is invalid");
     }
+    const placement = placementMetadata(labels);
     return {
       containerId: inspected.Id,
       containerName: inspected.Name.replace(/^\//, ""),
@@ -240,9 +418,14 @@ export class DockerodeEngine implements DockerEngine {
       running: inspected.State.Running,
       runtimeId,
       runtimeType: runtimeTypeSchema.parse(required(labels[runtimeResourceLabels.runtimeType])),
+      nodeId: placement.nodeId,
+      placementGeneration: placement.placementGeneration,
+      workspaceKey: placement.workspaceKey,
       serviceToken: required(environment.get("CODEX_REMOTE_TOKEN")),
       userHash: required(labels[runtimeResourceLabels.userHash]),
+      memoryBytes: Math.max(0, inspected.HostConfig.Memory ?? 0),
       nanoCpus: Math.max(0, inspected.HostConfig.NanoCpus ?? 0),
+      pidsLimit: Math.max(0, inspected.HostConfig.PidsLimit ?? 0),
     };
   }
 }
@@ -312,7 +495,8 @@ async function collectExecOutput(
 }
 
 function destroyStream(stream: NodeJS.ReadableStream) {
-  if ("destroy" in stream && typeof stream.destroy === "function") stream.destroy();
+  const destroyable = stream as NodeJS.ReadableStream & { destroy?: () => void };
+  destroyable.destroy?.();
 }
 
 function finished(stream: NodeJS.ReadableStream) {
@@ -350,4 +534,35 @@ function required(value: string | undefined): string {
     throw new Error("managed container metadata is missing");
   }
   return value;
+}
+
+function positiveInteger(value: string) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new DockerRuntimeIdentityError();
+  }
+  return parsed;
+}
+
+function placementMetadata(labels: Record<string, string>) {
+  const nodeId = labels[runtimeResourceLabels.nodeId];
+  const placementGeneration = labels[runtimeResourceLabels.placementGeneration];
+  const workspaceKey = labels[runtimeResourceLabels.workspaceKey];
+  const present = [nodeId, placementGeneration, workspaceKey].filter(
+    (value) => value !== undefined,
+  ).length;
+  if (present === 0) {
+    return { nodeId: null, placementGeneration: null, workspaceKey: null };
+  }
+  if (present !== 3) throw new DockerRuntimeIdentityError();
+  return {
+    nodeId: required(nodeId),
+    placementGeneration: positiveInteger(required(placementGeneration)),
+    workspaceKey: required(workspaceKey),
+  };
+}
+
+function safeFilesystemBytes(blocks: bigint, blockSize: bigint) {
+  const bytes = blocks * blockSize;
+  return Number(bytes > BigInt(Number.MAX_SAFE_INTEGER) ? BigInt(Number.MAX_SAFE_INTEGER) : bytes);
 }

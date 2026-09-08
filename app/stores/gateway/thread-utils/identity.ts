@@ -1,4 +1,5 @@
 import type { GatewayThread } from "~~/shared/types";
+import { fallbackThreadTitle, titleFromThreadHistory } from "~~/shared/thread-title";
 import { firstNonEmptyString } from "~~/shared/utils/strings";
 import { unknownGatewayErrorFromError } from "../errors";
 
@@ -71,23 +72,102 @@ export function threadIdFromParams(params: Record<string, unknown>) {
   return typeof value === "string" || typeof value === "number" ? String(value) : null;
 }
 
-export function titleForThread(
-  thread:
-    | {
-        id?: string | number;
-        threadId?: string | number;
-        title?: string | null;
-        name?: string | null;
-        preview?: string | null;
-      }
-    | null
-    | undefined,
-) {
-  if (thread === null || thread === undefined) return "Untitled";
-  const label = firstNonEmptyString([thread.title, thread.name, thread.preview]);
-  if (label !== null) return label;
+export interface ThreadTitleFallbacks {
+  empty: string;
+  untitled: string;
+}
+
+const defaultThreadTitleFallbacks: ThreadTitleFallbacks = {
+  empty: "Untitled",
+  untitled: "Untitled",
+};
+
+export function threadTitleFallbacks(t: (key: string) => string): ThreadTitleFallbacks {
+  return {
+    empty: t("app.newChat"),
+    untitled: t("app.untitledThread"),
+  };
+}
+
+type ThreadTitleSource = {
+  id?: string | number;
+  threadId?: string | number;
+  title?: string | null;
+  name?: string | null;
+  preview?: string | null;
+};
+
+type ThreadHistorySource = {
+  thread?: {
+    turns?: readonly {
+      id?: unknown;
+      items?: readonly unknown[];
+    }[];
+  };
+};
+
+export function isEmptyThreadHistory(history: ThreadHistorySource | null | undefined) {
+  return Array.isArray(history?.thread?.turns) && history.thread.turns.length === 0;
+}
+
+export function explicitTitleForThread(thread: ThreadTitleSource | null | undefined) {
+  if (thread === null || thread === undefined) return null;
   const identity = thread.id ?? thread.threadId;
-  return identity === undefined ? "Untitled" : String(identity);
+  const storedTitle = firstNonEmptyString([thread.title]);
+  if (
+    storedTitle !== null &&
+    storedTitle !== String(identity ?? "") &&
+    storedTitle !== "Untitled"
+  ) {
+    return storedTitle;
+  }
+  return firstNonEmptyString([thread.name]);
+}
+
+type ReusableEmptyThread = Pick<
+  GatewayThread,
+  "hostId" | "id" | "projectId" | "recencyAt" | "turns" | "updatedAt"
+> & {
+  history: ThreadHistorySource | null;
+};
+
+export function findReusableEmptyThread<T extends ReusableEmptyThread>(
+  threads: readonly T[],
+  scope: { hostId: number; projectId: number },
+): T | null {
+  let newest: T | null = null;
+  for (const thread of threads) {
+    if (
+      thread.hostId !== scope.hostId ||
+      thread.projectId !== scope.projectId ||
+      !isEmptyThreadHistory(thread.history)
+    ) {
+      continue;
+    }
+    if (
+      newest === null ||
+      Number(thread.recencyAt ?? thread.updatedAt ?? 0) >
+        Number(newest.recencyAt ?? newest.updatedAt ?? 0)
+    ) {
+      newest = thread;
+    }
+  }
+  return newest;
+}
+
+export function titleForThread(
+  thread: ThreadTitleSource | null | undefined,
+  fallbacks: ThreadTitleFallbacks = defaultThreadTitleFallbacks,
+  history?: ThreadHistorySource | null,
+) {
+  if (thread === null || thread === undefined) return fallbacks.untitled;
+  const label = explicitTitleForThread(thread);
+  if (label !== null) return label;
+  const derived = titleFromThreadHistory(history);
+  if (derived !== null) return derived;
+  const preview = fallbackThreadTitle(thread.preview ?? "");
+  if (preview !== "") return preview;
+  return isEmptyThreadHistory(history) ? fallbacks.empty : fallbacks.untitled;
 }
 
 export function sortThreads(threads: GatewayThread[]) {

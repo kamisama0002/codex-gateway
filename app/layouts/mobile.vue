@@ -16,18 +16,19 @@ import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { projectById } from "@/stores/gateway-catalog/selectors";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
-import { titleForThread } from "@/stores/gateway/thread-utils/identity";
+import { threadTitleFallbacks, titleForThread } from "@/stores/gateway/thread-utils/identity";
 
 const catalog = useGatewayCatalogStore();
 const navigation = useGatewayNavigationStore();
+const { t } = useI18n();
 const { projects } = storeToRefs(catalog);
 const { selectedThreadId, selectedHostId, selectedProjectId } = storeToRefs(navigation);
-const { currentThread } = storeToRefs(useGatewayThreadViewStore());
+const { currentThread, history } = storeToRefs(useGatewayThreadViewStore());
 const selectedProject = computed(() => projectById(projects.value, selectedProjectId.value));
 const sidebarOpen = ref(false);
 const mobileTitle = computed(() => {
   if (selectedThreadId.value && currentThread.value) {
-    return titleForThread(currentThread.value);
+    return titleForThread(currentThread.value, threadTitleFallbacks(t), history.value);
   }
   return selectedProject.value?.name || "Codex Gateway";
 });
@@ -43,7 +44,7 @@ watch([selectedHostId, selectedProjectId, selectedThreadId], () => {
     class="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-canvas-soft text-ink"
   >
     <ChatWorkspace layout="mobile">
-      <template #mobile-header-start>
+      <template #mobile-header-start="{ toolsOpen }">
         <Sheet v-model:open="sidebarOpen">
           <Button
             data-testid="mobile-sidebar-toggle"
@@ -65,7 +66,9 @@ watch([selectedHostId, selectedProjectId, selectedThreadId], () => {
           </SheetContent>
         </Sheet>
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium">{{ mobileTitle }}</p>
+          <p class="truncate text-sm font-medium">
+            {{ toolsOpen ? $t("app.workspaceTools") : mobileTitle }}
+          </p>
         </div>
       </template>
     </ChatWorkspace>

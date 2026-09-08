@@ -73,11 +73,10 @@ test("dynamic tool response submits through the server request responder and sur
   });
 
   await page.getByTestId("dynamic-tool-submit").click();
-  await expect(
-    page
-      .getByTestId("thread-runtime-notice")
-      .getByText("pending app-server request was not found", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTestId("thread-runtime-notice")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Notifications alt+T" })).toContainText(
+    "pending app-server request was not found",
+  );
   await expect(
     page.getByTestId("chat-scroll-area").getByText("pending app-server request was not found"),
   ).toHaveCount(0);
@@ -94,7 +93,7 @@ test("dynamic tool response submits through the server request responder and sur
   await expect(page.getByText("请求已处理")).toBeVisible();
 });
 
-test("app-server retry errors stay visible outside the timeline until recovery", async ({
+test("app-server retry phase stays visible outside the timeline until recovery", async ({
   page,
 }) => {
   await openApp(page);
@@ -126,14 +125,10 @@ test("app-server retry errors stay visible outside the timeline until recovery",
   });
 
   const chatScrollArea = page.getByTestId("chat-scroll-area");
-  const notice = page.getByTestId("thread-runtime-notice");
-  await expect(notice).toHaveAttribute("data-phase", "retrying");
-  await expect(notice.getByText("正在重新连接模型")).toBeVisible();
-  await expect(notice.getByText(/检查提供方地址/)).toBeVisible();
-  await expect(notice.getByText(/系统正在自动重试/)).toBeVisible();
+  const runtimePhase = page.getByTestId("thread-runtime-phase");
+  await expect(page.getByTestId("thread-runtime-notice")).toHaveCount(0);
+  await expect(runtimePhase).toContainText("正在重试");
   await expect(chatScrollArea.getByText("remote provider disconnected")).toHaveCount(0);
-  await notice.getByText("技术详情").click();
-  await expect(notice.getByText(/remote provider disconnected/)).toBeVisible();
 
   await applyGatewayLiveEvent(page, {
     id: 1011,
@@ -170,13 +165,14 @@ test("app-server retry errors stay visible outside the timeline until recovery",
   });
 
   await expect(chatScrollArea.getByText("retry recovered")).toBeVisible();
-  await expect(notice).toBeHidden();
+  await expect(runtimePhase).toContainText("运行中");
 });
 
-test("provider API key errors fail immediately with an actionable status", async ({ page }) => {
+test("provider API key errors fail immediately without a second status panel", async ({ page }) => {
   await openApp(page);
   const threadId = "e2e-provider-auth-error-thread";
   await seedGatewayThread(page, {
+    projectId: 1,
     threadId,
     currentThread: { id: threadId, name: "Provider Auth Error" },
     history: { thread: { id: threadId, turns: [] } },
@@ -203,12 +199,43 @@ test("provider API key errors fail immediately with an actionable status", async
     createdAt: new Date().toISOString(),
   });
 
-  const notice = page.getByTestId("thread-runtime-notice");
-  await expect(notice).toHaveAttribute("data-phase", "failed");
-  await expect(notice.getByText("模型 API Key 无效")).toBeVisible();
-  await expect(notice.getByText(/更新 API Key 后重新发送/)).toBeVisible();
+  await expect(page.getByTestId("thread-runtime-notice")).toHaveCount(0);
   await expect(page.getByTestId("thread-runtime-phase")).toContainText("失败");
   await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "失败");
+});
+
+test("keeps the redundant runtime notice absent while the selected thread is running", async ({
+  page,
+}) => {
+  await openApp(page);
+  const threadId = "e2e-running-elapsed-thread";
+  await seedGatewayThread(page, {
+    threadId,
+    currentThread: { id: threadId, name: "Running Elapsed" },
+    history: {
+      thread: {
+        id: threadId,
+        turns: [
+          {
+            id: "turn-running",
+            status: "inProgress",
+            items: [
+              {
+                id: "user-running",
+                type: "userMessage",
+                content: [{ type: "text", text: "正在运行的请求" }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+    status: "running",
+  });
+
+  await expect(page.getByTestId("thread-runtime-notice")).toHaveCount(0);
+  await expect(page.getByTestId("thread-runtime-phase")).toContainText("运行中");
+  await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "停止生成");
 });
 
 test("approval and user-input requests expose distinct thread phases", async ({ page }) => {
@@ -233,7 +260,7 @@ test("approval and user-input requests expose distinct thread phases", async ({ 
     createdAt: new Date().toISOString(),
   });
   await expect(page.getByTestId("thread-runtime-phase")).toContainText("等待审批");
-  await expect(page.getByTestId("thread-runtime-notice")).toContainText("需要你的审批");
+  await expect(page.getByTestId("thread-runtime-notice")).toHaveCount(0);
 
   await applyGatewayLiveEvent(page, {
     id: 122,
@@ -248,7 +275,7 @@ test("approval and user-input requests expose distinct thread phases", async ({ 
     createdAt: new Date().toISOString(),
   });
   await expect(page.getByTestId("thread-runtime-phase")).toContainText("等待输入");
-  await expect(page.getByTestId("thread-runtime-notice")).toContainText("需要你的输入");
+  await expect(page.getByTestId("thread-runtime-notice")).toHaveCount(0);
 });
 
 test("app-server moderation notifications render a readable summary before raw details", async ({

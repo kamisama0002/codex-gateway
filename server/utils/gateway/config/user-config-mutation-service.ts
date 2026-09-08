@@ -5,6 +5,7 @@ import { hostResourceLifecycle } from "../runtime/host-resource-lifecycle";
 import { hostRuntimeFingerprint } from "../runtime/host-runtime-fingerprint";
 import { hostRuntimeSupervisor } from "../runtime/host-runtime-supervisor";
 import {
+  applyGatewayConfigToMemoryState,
   currentGatewayMemoryState,
   replaceCurrentGatewayMemoryState,
   type StoredHostRecord,
@@ -15,8 +16,10 @@ import { pinnedThreadEvents } from "./pinned-thread-events";
 import { runtimeConfigStore } from "../state/runtime-config";
 
 export class UserConfigMutationService {
-  commit<T>(userId: number, mutateDraft: () => T): T {
+  async commit<T>(userId: number, mutateDraft: () => T): Promise<T> {
     const previousState = currentGatewayMemoryState();
+    const previousHosts = previousState.hosts;
+    const previousPinnedThreads = previousState.pinnedThreads;
     const draftState = structuredClone(previousState);
     replaceCurrentGatewayMemoryState(draftState);
     let result: T;
@@ -30,27 +33,35 @@ export class UserConfigMutationService {
       throw error;
     }
 
-    // SQLite is the durable source of truth. Never expose the draft to subsequent requests when
+    // MySQL is the durable source of truth. Never expose the draft to subsequent requests when
     // encryption or persistence fails.
     replaceCurrentGatewayMemoryState(previousState);
-    userStore.saveConfig(userId, nextConfig);
-    replaceCurrentGatewayMemoryState(draftState);
-    this.reconcileCommittedConfig(
+    const nextRevision = await userStore.saveConfig(
       userId,
-      previousState.hosts,
-      draftState.hosts,
-      previousState.pinnedThreads,
-      draftState.pinnedThreads,
+      nextConfig,
+      previousState.configRevision,
+    );
+    const committedState = applyGatewayConfigToMemoryState(
+      currentGatewayMemoryState(),
+      nextConfig,
+      nextRevision,
+    );
+    await this.reconcileCommittedConfig(
+      userId,
+      previousHosts,
+      committedState.hosts,
+      previousPinnedThreads,
+      committedState.pinnedThreads,
     );
     return result;
   }
 
-  unpinThread(userId: number, hostId: number, threadId: string) {
+  async unpinThread(userId: number, hostId: number, threadId: string): Promise<void> {
     const pinned = runtimeConfigStore
       .export()
       .pinnedThreads.some((thread) => thread.hostId === hostId && thread.threadId === threadId);
     if (!pinned) return;
-    this.commit(userId, () => {
+    await this.commit(userId, () => {
       runtimeConfigStore.replacePinnedThreads(
         runtimeConfigStore
           .export()
@@ -62,31 +73,50 @@ export class UserConfigMutationService {
     });
   }
 
-  private reconcileCommittedConfig(
+  async updatePinnedThreadTitle(
+    userId: number,
+    hostId: number,
+    threadId: string,
+    title: string,
+  ): Promise<void> {
+    const state = currentGatewayMemoryState();
+    const existing = state.pinnedThreads.find(
+      (thread) => thread.hostId === hostId && thread.threadId === threadId,
+    );
+    if (existing === undefined || existing.title === title) return;
+    await this.commit(userId, () => {
+      currentGatewayMemoryState().pinnedThreads = currentGatewayMemoryState().pinnedThreads.map(
+        (thread) =>
+          thread.hostId === hostId && thread.threadId === threadId ? { ...thread, title } : thread,
+      );
+    });
+  }
+
+  private async reconcileCommittedConfig(
     userId: number,
     previousHosts: StoredHostRecord[],
     nextHosts: StoredHostRecord[],
     previousPinnedThreads: unknown,
     nextPinnedThreads: unknown,
-  ) {
+  ): Promise<void> {
     const nextById = new Map(nextHosts.map((host) => [host.id, host]));
     for (const previous of previousHosts) {
       const next = nextById.get(previous.id);
-      attemptRuntimeReconciliation(userId, `host:${previous.id}:lifecycle`, () => {
-        if (!next) hostResourceLifecycle.deleted(userId, previous.id);
-        else hostResourceLifecycle.changed(userId, previous, next);
+      await attemptRuntimeReconciliation(userId, `host:${previous.id}:lifecycle`, async () => {
+        if (!next) await hostResourceLifecycle.deleted(userId, previous.id);
+        else await hostResourceLifecycle.changed(userId, previous, next);
       });
     }
     if (hostsChanged(previousHosts, nextHosts)) {
-      attemptRuntimeReconciliation(userId, "ssh-connections", () =>
+      await attemptRuntimeReconciliation(userId, "ssh-connections", () =>
         sshConnections.syncHosts(nextHosts),
       );
-      attemptRuntimeReconciliation(userId, "host-runtime-supervisor", () =>
+      await attemptRuntimeReconciliation(userId, "host-runtime-supervisor", () =>
         hostRuntimeSupervisor.syncCurrentUserConfig(),
       );
     }
     if (JSON.stringify(previousPinnedThreads) !== JSON.stringify(nextPinnedThreads)) {
-      attemptRuntimeReconciliation(userId, "pinned-thread-broadcast", () =>
+      await attemptRuntimeReconciliation(userId, "pinned-thread-broadcast", () =>
         pinnedThreadEvents.publish(userId),
       );
     }
@@ -104,9 +134,13 @@ function hostsChanged(previous: StoredHostRecord[], next: StoredHostRecord[]) {
 
 export const userConfigMutationService = new UserConfigMutationService();
 
-function attemptRuntimeReconciliation(userId: number, resource: string, reconcile: () => void) {
+async function attemptRuntimeReconciliation(
+  userId: number,
+  resource: string,
+  reconcile: () => void | Promise<void>,
+): Promise<void> {
   try {
-    reconcile();
+    await reconcile();
   } catch (error) {
     // Runtime resources are not transactional. Continue converging independent resources after a
     // failure instead of skipping SSH sync, supervision, or browser invalidation behind it.
@@ -121,9 +155,9 @@ function attemptRuntimeReconciliation(userId: number, resource: string, reconcil
 function pruneDanglingHostRelations(state: ReturnType<typeof currentGatewayMemoryState>) {
   const hostIds = workspaceHostIds(state.hosts.map((host) => host.id));
 
-  // Relation cleanup belongs to the draft transaction, before SQLite is written. Resource
+  // Relation cleanup belongs to the draft transaction, before MySQL is written. Resource
   // lifecycle callbacks run after commit and must never mutate durable configuration: doing so
-  // would make memory look correct until the next restart restores orphaned rows from SQLite.
+  // would make memory look correct until the next restart restores orphaned rows from MySQL.
   state.projects = state.projects.filter((project) => hostIds.has(project.hostId));
   state.configuredProjectIds = new Set(
     [...state.configuredProjectIds].filter((projectId) =>

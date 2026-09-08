@@ -1,70 +1,47 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { trimmedOrFallback } from "~~/shared/utils/strings";
-import { migrateGatewayDatabase } from "./migrations";
+import type { GatewayDb } from "./contracts";
+import { createMysqlGatewayDb } from "./mysql";
 
-let database: DatabaseSync | null = null;
-let ready = false;
-const readyCallbacks = new Set<() => void>();
+export const DATABASE_UNAVAILABLE_CODE = "database_unavailable";
 
-function gatewayDatabasePath() {
-  return resolve(trimmedOrFallback(process.env.CODEX_GATEWAY_DB_PATH, "/data/codex-gateway.db"));
-}
-export function gatewayDatabaseExists() {
-  return existsSync(gatewayDatabasePath());
-}
+let database: GatewayDb | null = null;
 
-export function gatewayDatabaseReady() {
-  return ready;
-}
+export class GatewayDatabaseUnavailableError extends Error {
+  readonly code = DATABASE_UNAVAILABLE_CODE;
+  readonly statusCode = 503;
+  readonly statusMessage = DATABASE_UNAVAILABLE_CODE;
+  readonly data = { code: DATABASE_UNAVAILABLE_CODE };
 
-export function onGatewayDatabaseReady(callback: () => void) {
-  readyCallbacks.add(callback);
-  if (ready) {
-    callback();
+  constructor(cause: unknown) {
+    super("Gateway database is unavailable", { cause });
+    this.name = "GatewayDatabaseUnavailableError";
   }
-  return () => {
-    readyCallbacks.delete(callback);
-  };
 }
 
-export function gatewayDatabase() {
+export function gatewayDatabase(): GatewayDb {
   if (database === null) {
-    const path = gatewayDatabasePath();
-    const directory = dirname(path);
-    if (!existsSync(directory)) {
-      mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const databaseUrl = process.env.DATABASE_URL;
+    if (databaseUrl === undefined || databaseUrl.length === 0) {
+      throw new Error("DATABASE_URL is required for MySQL gateway storage");
     }
-    database = new DatabaseSync(path);
-    database.exec("PRAGMA journal_mode = WAL");
-    database.exec("PRAGMA foreign_keys = ON");
-    database.exec("PRAGMA busy_timeout = 5000");
-    migrateGatewayDatabase(database);
-    markGatewayDatabaseReady();
+    database = createMysqlGatewayDb(databaseUrl);
   }
   return database;
 }
 
-export function withGatewayDatabaseTransaction<T>(callback: (db: DatabaseSync) => T): T {
-  const db = gatewayDatabase();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const result = callback(db);
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
-    throw error;
+export async function verifyGatewayDatabase(): Promise<void> {
+  await gatewayDatabase().one("SELECT 1 AS ready");
+}
+
+export async function closeGatewayDatabase(): Promise<void> {
+  const currentDatabase = database;
+  database = null;
+  if (currentDatabase !== null) {
+    await currentDatabase.close();
   }
 }
 
-function markGatewayDatabaseReady() {
-  if (ready) {
-    return;
-  }
-  ready = true;
-  for (const callback of Array.from(readyCallbacks)) {
-    callback();
-  }
+export function databaseUnavailableError(cause: unknown) {
+  return cause instanceof GatewayDatabaseUnavailableError
+    ? cause
+    : new GatewayDatabaseUnavailableError(cause);
 }

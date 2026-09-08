@@ -3,6 +3,7 @@ import ThreadRow from "./ThreadRow.vue";
 import { formatRelative, pinnedThreadId, pinnedThreadKey } from "../sidebar-utils";
 import type { HostRecord, PinnedThreadRecord } from "../sidebar-types";
 import type { ThreadRuntimePhase } from "@/stores/gateway/types";
+import type { ThreadHistoryState } from "~~/shared/types";
 
 const props = defineProps<{
   threads: PinnedThreadRecord[];
@@ -12,6 +13,7 @@ const props = defineProps<{
   longPressHandlers?: Record<string, unknown>;
   runtimeStatus: (thread: PinnedThreadRecord) => ThreadRuntimePhase;
   completionAttention: (thread: PinnedThreadRecord) => boolean;
+  threadHistory: (hostId: number, threadId: string) => ThreadHistoryState | null;
 }>();
 
 const emit = defineEmits<{
@@ -43,6 +45,7 @@ function isSelectedPinnedThread(thread: PinnedThreadRecord) {
         :thread="thread"
         :test-id="`pinned-thread-button-${pinnedThreadId(thread)}`"
         :selected="isSelectedPinnedThread(thread)"
+        :history="threadHistory(thread.hostId, pinnedThreadId(thread))"
         :status="runtimeStatus(thread)"
         :completion-attention="completionAttention(thread)"
         :subtitle="formatRelative(thread.updatedAt)"

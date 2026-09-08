@@ -1,10 +1,12 @@
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
+import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { errorMessageLabels, messageFromError } from "@/stores/gateway/thread-utils/identity";
 import { isNoActiveTurnToInterruptError } from "~~/shared/turn-interrupt";
 import { requestTurnInterrupt } from "./transport";
+import { removeOptimisticUserMessage } from "./history";
 import type { Translate } from "./types";
 
 export async function interruptActiveTurn(t: Translate) {
@@ -25,11 +27,18 @@ export async function interruptThreadTurn(
 ) {
   const gateway = useGatewayBootstrapStore();
   const runtime = useGatewayThreadRuntimeStore();
+  const turns = useGatewayThreadTurnsStore();
   const views = useGatewayThreadViewStore();
   const projectId = input.projectId ?? null;
   const turnId = runtime.threadRuntimeProjection(input.hostId, input.threadId).activeTurnId;
+  const cancelledRequest = turns.cancelRequest(input.hostId, input.threadId);
+  if (cancelledRequest !== null && !cancelledRequest.admitted) {
+    removeOptimisticUserMessage(input.hostId, input.threadId, cancelledRequest.clientUserMessageId);
+  }
   if (turnId === null) {
-    runtime.setThreadStatus(input.hostId, input.threadId, "completed");
+    if (cancelledRequest !== null) {
+      runtime.setThreadStatus(input.hostId, input.threadId, cancelledRequest.previousStatus);
+    }
     return;
   }
 

@@ -2,6 +2,7 @@ import { createError, getHeader, type H3Event } from "h3";
 import type { AuthenticatedUser } from "./users";
 import { userStore } from "./users";
 import { trimmedOrFallback } from "~~/shared/utils/strings";
+import { databaseUnavailableError } from "../storage/database";
 
 export function tokenFromEvent(event: H3Event) {
   const authorization = trimmedOrFallback(getHeader(event, "authorization"), "");
@@ -12,9 +13,9 @@ export function tokenFromEvent(event: H3Event) {
   return "";
 }
 
-export function authenticateEvent(event: H3Event) {
+export async function authenticateEvent(event: H3Event) {
   const token = tokenFromEvent(event);
-  const user = userStore.authenticateToken(token);
+  const user = await authenticateToken(token);
   if (user === null) {
     throw createError({
       statusCode: 401,
@@ -26,22 +27,34 @@ export function authenticateEvent(event: H3Event) {
   return user;
 }
 
-export function optionalAuthenticatedUser(event: H3Event) {
+export async function optionalAuthenticatedUser(event: H3Event) {
   const token = tokenFromEvent(event);
   if (token === "") {
     return null;
   }
-  const user = userStore.authenticateToken(token);
+  const user = await authenticateToken(token);
   if (user !== null) {
     event.context.auth = { user, token };
   }
   return user;
 }
 
+async function authenticateToken(token: string) {
+  try {
+    return await userStore.authenticateToken(token);
+  } catch (error) {
+    throw databaseUnavailableError(error);
+  }
+}
+
 export function requireAuthenticatedUser(event: H3Event): AuthenticatedUser {
   const user = event.context.auth?.user;
   if (!user) {
-    return authenticateEvent(event);
+    throw createError({
+      statusCode: 401,
+      statusMessage: "Unauthorized",
+      message: "Missing or invalid bearer token",
+    });
   }
   return user;
 }
@@ -49,6 +62,14 @@ export function requireAuthenticatedUser(event: H3Event): AuthenticatedUser {
 export function requireAdminUser(event: H3Event): AuthenticatedUser {
   const user = requireAuthenticatedUser(event);
   if (user.role !== "admin") {
+    throw createError({ statusCode: 403, statusMessage: "Forbidden" });
+  }
+  return user;
+}
+
+export function requireDataOpsAdvancedSettingsAccess(event: H3Event): AuthenticatedUser {
+  const user = requireAuthenticatedUser(event);
+  if (user.dataOps && user.role !== "admin") {
     throw createError({ statusCode: 403, statusMessage: "Forbidden" });
   }
   return user;

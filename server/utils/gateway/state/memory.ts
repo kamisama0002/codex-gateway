@@ -6,7 +6,7 @@ import type {
   PinnedThreadRecord,
   ProjectRecord,
 } from "~~/shared/types";
-import { normalizeNotificationSettings } from "~~/shared/config";
+import { normalizeNotificationSettings, normalizePetSettings } from "~~/shared/config";
 import { trimmedOrNull } from "~~/shared/utils/strings";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { ThreadOpenSnapshot } from "../runtime/types";
@@ -55,6 +55,7 @@ export interface GatewayMemoryState {
   configuredProjectIds: Set<number>;
   pinnedThreads: PinnedThreadRecord[];
   notifications: GatewayConfig["notifications"];
+  pet: GatewayConfig["pet"];
   threadMetadata: ThreadMetadataRecord[];
   threadSnapshots: ThreadSnapshotRecord[];
   subAgentThreads: SubAgentThreadRecord[];
@@ -66,6 +67,7 @@ export interface GatewayMemoryState {
   deliveredNotificationKeys: string[];
   pendingNotificationKeys: string[];
   configLoaded: boolean;
+  configRevision: number;
 }
 
 function createGatewayMemoryState(): GatewayMemoryState {
@@ -75,6 +77,7 @@ function createGatewayMemoryState(): GatewayMemoryState {
     configuredProjectIds: new Set(),
     pinnedThreads: [],
     notifications: normalizeNotificationSettings(),
+    pet: normalizePetSettings(),
     threadMetadata: [],
     threadSnapshots: [],
     subAgentThreads: [],
@@ -86,6 +89,7 @@ function createGatewayMemoryState(): GatewayMemoryState {
     deliveredNotificationKeys: [],
     pendingNotificationKeys: [],
     configLoaded: false,
+    configRevision: 0,
   };
 }
 
@@ -126,6 +130,12 @@ export const gatewayMemoryState: GatewayMemoryState = {
   },
   set notifications(value) {
     currentGatewayMemoryState().notifications = value;
+  },
+  get pet() {
+    return currentGatewayMemoryState().pet;
+  },
+  set pet(value) {
+    currentGatewayMemoryState().pet = value;
   },
   get threadMetadata() {
     return currentGatewayMemoryState().threadMetadata;
@@ -193,6 +203,12 @@ export const gatewayMemoryState: GatewayMemoryState = {
   set configLoaded(value) {
     currentGatewayMemoryState().configLoaded = value;
   },
+  get configRevision() {
+    return currentGatewayMemoryState().configRevision;
+  },
+  set configRevision(value) {
+    currentGatewayMemoryState().configRevision = value;
+  },
 };
 
 export function currentGatewayUserId() {
@@ -251,7 +267,25 @@ export function buildGatewayMemoryState(config: GatewayConfig): GatewayMemorySta
     configuredProjectIds: new Set((config.projects ?? []).map((project) => project.id)),
     pinnedThreads: normalizePinnedThreads(config.pinnedThreads ?? []),
     notifications: normalizeNotificationSettings(config.notifications),
+    pet: normalizePetSettings(config.pet),
   };
+}
+
+export function applyGatewayConfigToMemoryState(
+  state: GatewayMemoryState,
+  config: GatewayConfig,
+  revision: number,
+): GatewayMemoryState {
+  const configState = buildGatewayMemoryState(config);
+  state.hosts = configState.hosts;
+  state.projects = configState.projects;
+  state.configuredProjectIds = configState.configuredProjectIds;
+  state.pinnedThreads = configState.pinnedThreads;
+  state.notifications = configState.notifications;
+  state.pet = configState.pet;
+  state.configLoaded = true;
+  state.configRevision = revision;
+  return state;
 }
 
 export const initialGatewayMemoryState: GatewayMemoryState = {
@@ -260,6 +294,7 @@ export const initialGatewayMemoryState: GatewayMemoryState = {
   configuredProjectIds: new Set(),
   pinnedThreads: [],
   notifications: normalizeNotificationSettings(),
+  pet: normalizePetSettings(),
   threadMetadata: [],
   threadSnapshots: [],
   subAgentThreads: [],
@@ -271,6 +306,7 @@ export const initialGatewayMemoryState: GatewayMemoryState = {
   deliveredNotificationKeys: [],
   pendingNotificationKeys: [],
   configLoaded: false,
+  configRevision: 0,
 };
 
 export function normalizePinnedThreads(threads: PinnedThreadRecord[]) {

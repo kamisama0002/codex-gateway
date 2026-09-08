@@ -288,7 +288,12 @@ export function createThreadOpenActions() {
 
     async startThread(
       options: ComposerTurnOptions = {},
-      context?: { hostId?: number; projectId?: number | null },
+      context?: {
+        hostId?: number;
+        projectId?: number | null;
+        onStarted?: (threadId: string) => void;
+      },
+      signal?: AbortSignal,
     ) {
       const navigation = useGatewayNavigationStore();
       cacheSelectedThreadView();
@@ -299,15 +304,21 @@ export function createThreadOpenActions() {
         navigation.selectedProjectId = context.projectId ?? null;
         clearCurrentThreadView();
       }
-      if (navigation.selectedHostId === null) return;
+      if (navigation.selectedHostId === null) return null;
       const sessionIsCurrent = captureSessionEpoch();
       const gateway = useGatewayBootstrapStore();
       try {
-        const result = await requestStartThread(options, {
-          projectId: navigation.selectedProjectId,
-        });
-        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+        const result = await requestStartThread(
+          options,
+          {
+            projectId: navigation.selectedProjectId,
+          },
+          signal,
+        );
+        if (signal?.aborted === true) return null;
+        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
         const threadId = applyStartedThreadResult(result);
+        context?.onStarted?.(threadId);
         cacheSelectedThreadView();
         rememberOpenThread(threadId);
         syncSelectedRoute();
@@ -321,10 +332,13 @@ export function createThreadOpenActions() {
         // Creating the thread is the authoritative state transition. Commit its selection and URL
         // before refreshing the sidebar catalog: that secondary RPC may be slow while a host has
         // just upgraded/restarted, but it must not leave a successfully created thread unreachable.
-        await navigation.listThreads();
-        cacheSelectedThreadView();
+        void navigation.listThreads("", { mode: "passive" }).then(() => {
+          if (sessionIsCurrent() && isCurrentViewTransition(viewEpoch)) cacheSelectedThreadView();
+        });
+        return threadId;
       } catch (error: unknown) {
-        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+        if (signal?.aborted === true) return null;
+        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
         gateway.setError(
           messageFromError(error, gateway.t("app.startThreadFailed"), gateway.errorLabels),
           {
@@ -332,6 +346,7 @@ export function createThreadOpenActions() {
             projectId: navigation.selectedProjectId,
           },
         );
+        return null;
       }
     },
   };

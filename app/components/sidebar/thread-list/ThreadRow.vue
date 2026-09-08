@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { ArchiveIcon, ArchiveRestoreIcon, EllipsisIcon, StarIcon, Trash2Icon } from "@lucide/vue";
+import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
+  EllipsisIcon,
+  PencilIcon,
+  PinIcon,
+  PinOffIcon,
+  StarIcon,
+  Trash2Icon,
+} from "@lucide/vue";
 import { computed, ref } from "vue";
 import { Button } from "@codex-gateway/ui/button";
 import {
@@ -17,11 +26,12 @@ import {
   DropdownMenuTrigger,
 } from "@codex-gateway/ui/dropdown-menu";
 import type { ThreadRuntimePhase } from "@/stores/gateway/types";
-import { titleForThread } from "@/stores/gateway/thread-utils/identity";
+import { threadTitleFallbacks, titleForThread } from "@/stores/gateway/thread-utils/identity";
 import { selectedRowClass } from "../sidebar-utils";
 import SidebarRowLabel from "../SidebarRowLabel.vue";
 import ThreadStatusIndicator from "./ThreadStatusIndicator.vue";
 import type { SidebarThreadRow } from "../sidebar-types";
+import type { ThreadHistoryState } from "~~/shared/types";
 
 const props = defineProps<{
   thread: SidebarThreadRow;
@@ -35,7 +45,9 @@ const props = defineProps<{
   archived?: boolean;
   compact?: boolean;
   longPressHandlers?: Record<string, unknown>;
+  history?: ThreadHistoryState | null;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   open: [];
@@ -49,6 +61,9 @@ const emit = defineEmits<{
 const pressHandlers = computed(() => props.longPressHandlers ?? {});
 const compactMenuOpen = ref(false);
 const showStatus = computed(() => props.status !== "idle" || Boolean(props.completionAttention));
+const threadTitle = computed(() =>
+  titleForThread(props.thread, threadTitleFallbacks(t), props.history),
+);
 
 function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarchive" | "delete") {
   compactMenuOpen.value = false;
@@ -69,7 +84,7 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
         :data-selected="selected ? 'true' : 'false'"
         :data-archived="archived ? 'true' : 'false'"
         variant="ghost"
-        class="group/session w-full min-w-0 justify-start overflow-hidden font-normal focus-visible:ring-0"
+        class="session-row group/session w-full min-w-0 justify-start overflow-hidden font-normal focus-visible:ring-0"
         :class="[
           compact
             ? 'h-8 min-h-8 rounded-lg px-2 py-0 text-sm hover:bg-muted'
@@ -93,11 +108,8 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
               class="size-3 shrink-0 fill-current text-accent-orange"
             />
           </span>
-          <span
-            class="ml-1 min-w-0 flex-1 truncate text-sm leading-5"
-            :title="titleForThread(thread)"
-          >
-            {{ titleForThread(thread) }}
+          <span class="ml-1 min-w-0 flex-1 truncate text-sm leading-5" :title="threadTitle">
+            {{ threadTitle }}
           </span>
           <span
             v-if="subtitle"
@@ -139,13 +151,18 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
                 </template>
                 <template v-else>
                   <DropdownMenuItem @select="onCompactMenuSelect('togglePin')">
+                    <component
+                      :is="showPinnedIcon ? PinOffIcon : PinIcon"
+                      class="mr-2 size-4 text-ink-muted"
+                    />
                     {{ pinLabel }}
                   </DropdownMenuItem>
                   <DropdownMenuItem @select="onCompactMenuSelect('rename')">
+                    <PencilIcon class="mr-2 size-4 text-ink-muted" />
                     {{ $t("app.renameThread") }}
                   </DropdownMenuItem>
                   <DropdownMenuItem @select="onCompactMenuSelect('archive')">
-                    <ArchiveIcon class="mr-2 size-4" />
+                    <ArchiveIcon class="mr-2 size-4 text-ink-muted" />
                     {{ $t("app.archiveThread") }}
                   </DropdownMenuItem>
                 </template>
@@ -153,7 +170,7 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
             </DropdownMenu>
           </span>
         </span>
-        <SidebarRowLabel v-else :title="titleForThread(thread)" :subtitle="subtitle">
+        <SidebarRowLabel v-else :title="threadTitle" :subtitle="subtitle">
           <template #title-prefix>
             <StarIcon
               v-if="showPinnedIcon"
@@ -180,16 +197,39 @@ function onCompactMenuSelect(action: "togglePin" | "rename" | "archive" | "unarc
       </template>
       <template v-else>
         <ContextMenuItem @select="emit('togglePin')">
+          <component
+            :is="showPinnedIcon ? PinOffIcon : PinIcon"
+            class="mr-2 size-4 text-ink-muted"
+          />
           {{ pinLabel }}
         </ContextMenuItem>
         <ContextMenuItem @select="emit('rename')">
+          <PencilIcon class="mr-2 size-4 text-ink-muted" />
           {{ $t("app.renameThread") }}
         </ContextMenuItem>
         <ContextMenuItem @select="emit('archive')">
-          <ArchiveIcon class="mr-2 size-4" />
+          <ArchiveIcon class="mr-2 size-4 text-ink-muted" />
           {{ $t("app.archiveThread") }}
         </ContextMenuItem>
       </template>
     </ContextMenuContent>
   </ContextMenu>
 </template>
+
+<style scoped>
+.session-row {
+  animation: session-row-in 150ms ease-out;
+}
+
+@keyframes session-row-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-row {
+    animation: none;
+  }
+}
+</style>

@@ -5,7 +5,45 @@ x-default-logging: &default-logging
     max-file: "3"
 
 services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-codex_gateway}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-}
+      MYSQL_USER: ${MYSQL_USER:-codex_gateway}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'mysqladmin ping -h 127.0.0.1 -uroot --password="$${MYSQL_ROOT_PASSWORD}" --silent',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - gateway-database
+
+  database-migrate:
+    image: ${CODEX_GATEWAY_IMAGE:-codex-gateway:local}
+    restart: "no"
+    logging: *default-logging
+    command: ["node", "scripts/database/migrate.mjs"]
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-codex_gateway}:${MYSQL_PASSWORD:-}@mysql:3306/${MYSQL_DATABASE:-codex_gateway}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - gateway-database
+
   codex-gateway:
+    image: ${CODEX_GATEWAY_IMAGE:-codex-gateway:local}
     build:
       context: .
       dockerfile: Dockerfile
@@ -24,14 +62,32 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       BROWSER_PREVIEW_DOMAIN: ${BROWSER_PREVIEW_DOMAIN:-cloudawn.top}
-      CODEX_GATEWAY_DB_PATH: /data/codex-gateway.db
       CODEX_GATEWAY_CONFIG_SECRET: ${CODEX_GATEWAY_CONFIG_SECRET:?CODEX_GATEWAY_CONFIG_SECRET is required}
+      DATABASE_URL: mysql://${MYSQL_USER:-codex_gateway}:${MYSQL_PASSWORD:-}@mysql:3306/${MYSQL_DATABASE:-codex_gateway}
+      DATAOPS_BASE_URL: ${DATAOPS_BASE_URL:-}
+      DATAOPS_SSO_SHARED_SECRET: ${DATAOPS_SSO_SHARED_SECRET:-}
+      DATAOPS_ALLOWED_ORIGINS: ${DATAOPS_ALLOWED_ORIGINS:-}
+      EXTERNAL_CREDENTIAL_ISSUER_ORIGINS: ${EXTERNAL_CREDENTIAL_ISSUER_ORIGINS:-}
       RUNTIME_MANAGER_BASE_URL: ${RUNTIME_MANAGER_BASE_URL:-http://agent-runtime-manager:8787}
       RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS: ${RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS:-stable}
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:?RUNTIME_MANAGER_SHARED_SECRET is required}
+      RUNTIME_IDENTITY_SECRET: ${RUNTIME_IDENTITY_SECRET:?RUNTIME_IDENTITY_SECRET is required}
+      RUNTIME_MANAGER_DEFAULT_NODE_ID: ${RUNTIME_MANAGER_DEFAULT_NODE_ID:-node__default}
+      RUNTIME_NODE_CAPACITY_CPU_MILLIS: ${RUNTIME_NODE_CAPACITY_CPU_MILLIS:-16000}
+      RUNTIME_NODE_CAPACITY_MEMORY_BYTES: ${RUNTIME_NODE_CAPACITY_MEMORY_BYTES:-68719476736}
+      RUNTIME_NODE_MAX_RUNTIMES: ${RUNTIME_NODE_MAX_RUNTIMES:-30}
+      RUNTIME_NODE_MINIMUM_FREE_DISK_BYTES: ${RUNTIME_NODE_MINIMUM_FREE_DISK_BYTES:-21474836480}
+      RUNTIME_NODE_HEALTH_FRESHNESS_MS: ${RUNTIME_NODE_HEALTH_FRESHNESS_MS:-30000}
+      RUNTIME_NODE_ALLOW_INSECURE_HTTP: ${RUNTIME_NODE_ALLOW_INSECURE_HTTP:-0}
+      RUNTIME_AGENT_MEMORY: ${RUNTIME_AGENT_MEMORY:-8g}
+      RUNTIME_AGENT_CPUS: ${RUNTIME_AGENT_CPUS:-4}
+      RUNTIME_AGENT_PIDS: ${RUNTIME_AGENT_PIDS:-1024}
       RUNTIME_PROVIDER_PROXY_BASE_URL: ${RUNTIME_PROVIDER_PROXY_BASE_URL:-http://codex-gateway:3000/api/internal/providers}
+    depends_on:
+      database-migrate:
+        condition: service_completed_successfully
     volumes:
-      - ./data:/data
+      - capability-data:/data/capabilities
     # Keep liveness probes side-effect free. Nitro owns periodic GC so probe retries or Docker
     # daemon pauses cannot change application memory lifecycle.
     healthcheck:
@@ -48,7 +104,108 @@ services:
       start_period: 20s
     networks:
       - web-common
+      - gateway-database
       - runtime-manager
+
+  searxng:
+    image: ${SEARXNG_IMAGE:?SEARXNG_IMAGE must be a pinned tag or digest}
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${SEARXNG_MEM_LIMIT:-1g}
+    memswap_limit: ${SEARXNG_MEMSWAP_LIMIT:-1g}
+    pids_limit: ${SEARXNG_PIDS_LIMIT:-256}
+    cpus: ${SEARXNG_CPU_LIMIT:-2.0}
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?SEARXNG_SECRET is required}
+    expose:
+      - "8080"
+    volumes:
+      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - agent-egress
+      - search-backend
+
+  search-mcp:
+    image: ${SEARCH_MCP_IMAGE:-codex-search-mcp:0.153.4}
+    build:
+      context: .
+      dockerfile: docker/search-mcp.Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${SEARCH_MCP_MEM_LIMIT:-256m}
+    memswap_limit: ${SEARCH_MCP_MEMSWAP_LIMIT:-256m}
+    pids_limit: ${SEARCH_MCP_PIDS_LIMIT:-64}
+    cpus: ${SEARCH_MCP_CPU_LIMIT:-0.5}
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8788
+      SEARXNG_URL: http://searxng:8080
+    expose:
+      - "8788"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m
+    depends_on:
+      - searxng
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8788,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - agent-runtime
+      - agent-egress
+      - search-backend
+
+  test-business-mcp:
+    profiles: ["test-business-mcp"]
+    image: ${TEST_BUSINESS_MCP_IMAGE:-codex-test-business-mcp:0.153.4}
+    build:
+      context: .
+      dockerfile: docker/test-business-mcp.Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    memswap_limit: 128m
+    pids_limit: 32
+    cpus: 0.25
+    environment:
+      BUSINESS_MCP_STATE_DIR: /tmp/test-business-mcp
+      HOST: 0.0.0.0
+      PORT: 8789
+    expose:
+      - "8789"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10003,gid=10003,mode=0700
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8789,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
       - agent-runtime
 
   agent-runtime-manager:
@@ -57,7 +214,7 @@ services:
       dockerfile: docker/runtime-manager.Dockerfile
       args:
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
-    image: ${RUNTIME_MANAGER_IMAGE:-codex-runtime-manager:0.151.0}
+    image: ${RUNTIME_MANAGER_IMAGE:-codex-runtime-manager:0.153.4}
     restart: unless-stopped
     logging: *default-logging
     mem_limit: ${RUNTIME_MANAGER_MEM_LIMIT:-512m}
@@ -69,33 +226,62 @@ services:
     environment:
       NODE_ENV: production
       RUNTIME_MANAGER_AGENT_NETWORK: ${RUNTIME_MANAGER_AGENT_NETWORK:-agent-runtime}
-      RUNTIME_MANAGER_IMAGE_ALIASES: ${RUNTIME_MANAGER_IMAGE_ALIASES:?RUNTIME_MANAGER_IMAGE_ALIASES is required}
+      RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK:-agent-egress}
+      RUNTIME_MANAGER_IMAGE_ALIASES: "${RUNTIME_MANAGER_IMAGE_ALIASES:?RUNTIME_MANAGER_IMAGE_ALIASES is required}"
+      RUNTIME_MANAGER_MCP_OAUTH_CALLBACK_URL: ${RUNTIME_MANAGER_MCP_OAUTH_CALLBACK_URL:-}
       RUNTIME_MANAGER_PORT: 8787
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:?RUNTIME_MANAGER_SHARED_SECRET is required}
-      RUNTIME_AGENT_MEMORY: ${RUNTIME_AGENT_MEMORY:-2g}
-      RUNTIME_AGENT_CPUS: ${RUNTIME_AGENT_CPUS:-2}
-      RUNTIME_AGENT_PIDS: ${RUNTIME_AGENT_PIDS:-256}
+      RUNTIME_NODE_ID: ${RUNTIME_NODE_ID:-node__default}
+      RUNTIME_MANAGER_VERSION: ${RUNTIME_MANAGER_VERSION:-0.153.4}
+      RUNTIME_NODE_DATA_ROOT: ${RUNTIME_NODE_DATA_ROOT:-/data}
+      RUNTIME_NODE_CAPACITY_CPU_MILLIS: ${RUNTIME_NODE_CAPACITY_CPU_MILLIS:-16000}
+      RUNTIME_NODE_CAPACITY_MEMORY_BYTES: ${RUNTIME_NODE_CAPACITY_MEMORY_BYTES:-68719476736}
+      RUNTIME_NODE_MAX_RUNTIMES: ${RUNTIME_NODE_MAX_RUNTIMES:-30}
+      RUNTIME_AGENT_MEMORY: ${RUNTIME_AGENT_MEMORY:-8g}
+      RUNTIME_AGENT_CPUS: ${RUNTIME_AGENT_CPUS:-4}
+      RUNTIME_AGENT_PIDS: ${RUNTIME_AGENT_PIDS:-1024}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - runtime-manager-data:/data
     networks:
       - runtime-manager
+      - agent-runtime
 
 networks:
   web-common:
-    external: true
+    name: ${WEB_COMMON_NETWORK_NAME:-web-common}
+    ipam:
+      config:
+        - subnet: ${WEB_COMMON_NETWORK_SUBNET:-10.1.249.0/24}
+  gateway-database:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${GATEWAY_DATABASE_NETWORK_SUBNET:-10.1.254.0/24}
   runtime-manager:
     name: ${RUNTIME_MANAGER_NETWORK_NAME:-runtime-manager}
     internal: true
     ipam:
       config:
-        - subnet: ${RUNTIME_MANAGER_NETWORK_SUBNET:-10.254.250.0/24}
+        - subnet: ${RUNTIME_MANAGER_NETWORK_SUBNET:-10.1.250.0/24}
   agent-runtime:
     name: ${RUNTIME_MANAGER_AGENT_NETWORK:-agent-runtime}
     internal: true
     ipam:
       config:
-        - subnet: ${RUNTIME_MANAGER_AGENT_NETWORK_SUBNET:-10.254.251.0/24}
+        - subnet: ${RUNTIME_MANAGER_AGENT_NETWORK_SUBNET:-10.1.251.0/24}
+  agent-egress:
+    name: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK:-agent-egress}
+    ipam:
+      config:
+        - subnet: ${RUNTIME_MANAGER_AGENT_EGRESS_NETWORK_SUBNET:-10.1.252.0/24}
+  search-backend:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${SEARCH_BACKEND_NETWORK_SUBNET:-10.1.253.0/24}
 
 volumes:
+  capability-data:
+  mysql-data:
   runtime-manager-data:

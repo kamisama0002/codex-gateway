@@ -1,17 +1,22 @@
 import WebSocket, { type RawData } from "ws";
-import type { ManagedRuntimeEndpoint } from "@codex-gateway/agent-runtime-contracts";
 import type { HostRecord, RpcEnvelope } from "~~/shared/types";
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import { createRpcTransportError, type RpcTransportCloseDetail } from "./rpc-errors";
 import type { CodexRpcTransportOptions, RpcTransport } from "./rpc-transport";
 
-const managedEndpoints = new WeakMap<HostRecord, ManagedRuntimeEndpoint>();
+export interface ManagedRuntimeRelayTarget {
+  runtimeId: string;
+  websocketUrl: string;
+  headers(): Record<string, string>;
+}
+
+const managedEndpoints = new WeakMap<HostRecord, ManagedRuntimeRelayTarget>();
 const DEFAULT_MANAGED_RPC_HANDSHAKE_TIMEOUT_MS = 30_000;
 
 export function createManagedRuntimeHost(
   userId: number,
   timestamps: { createdAt: string; updatedAt: string },
-  endpoint: ManagedRuntimeEndpoint,
+  endpoint: ManagedRuntimeRelayTarget,
 ): HostRecord {
   if (!Number.isInteger(userId) || userId <= 0)
     throw new Error("Managed runtime user ID is invalid");
@@ -41,7 +46,7 @@ export class ManagedCodexRpcTransport implements RpcTransport {
 
   constructor(
     private readonly host: HostRecord,
-    private readonly endpoint: ManagedRuntimeEndpoint,
+    private readonly endpoint: ManagedRuntimeRelayTarget,
     private readonly options: CodexRpcTransportOptions,
     private readonly handshakeTimeoutMs = DEFAULT_MANAGED_RPC_HANDSHAKE_TIMEOUT_MS,
   ) {
@@ -56,7 +61,7 @@ export class ManagedCodexRpcTransport implements RpcTransport {
       let settled = false;
       let opened = false;
       const ws = new WebSocket(this.endpoint.websocketUrl, {
-        headers: { authorization: `Bearer ${this.endpoint.serviceToken}` },
+        headers: this.endpoint.headers(),
         perMessageDeflate: false,
       });
       this.ws = ws;
@@ -137,7 +142,7 @@ export class ManagedCodexRpcHandshakeTimeoutError extends Error {
   }
 }
 
-export function managedRuntimeEndpointForHost(host: HostRecord): ManagedRuntimeEndpoint {
+export function managedRuntimeEndpointForHost(host: HostRecord): ManagedRuntimeRelayTarget {
   const endpoint = managedEndpoints.get(host);
   if (endpoint === undefined) throw new Error("Managed runtime endpoint is unavailable");
   return endpoint;

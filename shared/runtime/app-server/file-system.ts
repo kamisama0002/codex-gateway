@@ -44,6 +44,22 @@ export const fsReadDirectoryResponseSchema = z
 
 export const fsCreateDirectoryResponseSchema = z.object({}).strict();
 
+export const fsReadFileResponseSchema = z.object({ dataBase64: z.string() }).strict();
+
+export const fsWriteFileResponseSchema = z.object({}).strict();
+
+export const fsGetMetadataResponseSchema = z
+  .object({
+    isDirectory: z.boolean(),
+    isFile: z.boolean(),
+    isSymlink: z.boolean(),
+    createdAtMs: z.number().int().nonnegative(),
+    modifiedAtMs: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const fsRemoveResponseSchema = z.object({}).strict();
+
 export function parseFsWatchResponse(value: unknown) {
   return fsWatchResponseSchema.parse(value);
 }
@@ -54,6 +70,22 @@ export function parseFsReadDirectoryResponse(value: unknown) {
 
 export function parseFsCreateDirectoryResponse(value: unknown) {
   return fsCreateDirectoryResponseSchema.parse(value);
+}
+
+export function parseFsReadFileResponse(value: unknown) {
+  return fsReadFileResponseSchema.parse(value);
+}
+
+export function parseFsWriteFileResponse(value: unknown) {
+  return fsWriteFileResponseSchema.parse(value);
+}
+
+export function parseFsGetMetadataResponse(value: unknown) {
+  return fsGetMetadataResponseSchema.parse(value);
+}
+
+export function parseFsRemoveResponse(value: unknown) {
+  return fsRemoveResponseSchema.parse(value);
 }
 
 export function fsChangedNotificationFromUnknown(value: unknown) {

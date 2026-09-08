@@ -2,6 +2,8 @@ import type { GatewayEvent } from "./records";
 import type {
   ComposerTurnOptions,
   GatewayThread,
+  QueuedSubmission,
+  AppServerTurn,
   ThreadGoal,
   ThreadGoalStatus,
   ThreadItemsPageResult,
@@ -31,6 +33,10 @@ export type RealtimeClientMessage =
   | {
       type: "auth.authenticate";
       token: string;
+    }
+  | {
+      type: "request.cancel";
+      targetRequestId: string;
     }
   | {
       type: "host.lifecycle.subscribe";
@@ -138,6 +144,57 @@ export type RealtimeClientMessage =
       clientUserMessageId?: string | null;
       images?: ComposerTurnOptions["images"];
       references?: ComposerTurnOptions["references"];
+    }
+  | {
+      type: "thread.queue.list";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+    }
+  | {
+      type: "thread.queue.add";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      input: QueuedSubmission["input"];
+      clientUserMessageId: string;
+    }
+  | {
+      type: "thread.queue.update";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      queuedSubmissionId: string;
+      input: QueuedSubmission["input"];
+    }
+  | {
+      type: "thread.queue.delete";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      queuedSubmissionId: string;
+    }
+  | {
+      type: "thread.queue.reorder";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      queuedSubmissionIds: string[];
+    }
+  | {
+      type: "thread.queue.start";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      queuedSubmissionId?: string | null;
+    }
+  | {
+      type: "thread.queue.steer";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      queuedSubmissionId: string;
+      expectedTurnId: string;
     }
   | {
       type: "turn.interrupt";
@@ -405,6 +462,59 @@ export type RealtimeServerMessage =
       hostId: number;
       threadId: string;
       turnId?: string;
+    }
+  | {
+      type: "thread.queue.snapshot";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      items: QueuedSubmission[];
+    }
+  | {
+      type: "thread.queue.added";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      item: QueuedSubmission;
+    }
+  | {
+      type: "thread.queue.updated";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      item: QueuedSubmission;
+    }
+  | {
+      type: "thread.queue.deleted";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      queuedSubmissionId: string;
+      deleted: boolean;
+    }
+  | {
+      type: "thread.queue.reordered";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      queuedSubmissionIds: string[];
+    }
+  | {
+      type: "thread.queue.started";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      queuedSubmissionId?: string | null;
+      turn: AppServerTurn;
+    }
+  | {
+      type: "thread.queue.steered";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      queuedSubmissionId: string;
+      turnId: string;
+      deleted: boolean;
     }
   | {
       type: "turn.interrupt.accepted";

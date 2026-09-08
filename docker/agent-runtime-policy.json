@@ -15,15 +15,23 @@
     },
     "capDrop": ["ALL"],
     "codexHome": "/codex-home",
-    "image": "codex-agent-runtime:0.151.0",
+    "image": "codex-agent-runtime:0.153.4",
     "labels": {
-      "com.qiancheng.codex.version": "0.151.0"
+      "com.qiancheng.codex.version": "0.153.4"
     },
+    "networks": ["agent-runtime", "agent-egress"],
     "publishedPorts": [],
     "readOnlyRootFilesystem": true,
+    "resourceLimits": {
+      "cpus": 4,
+      "memoryBytes": 8589934592,
+      "pids": 1024
+    },
     "securityOpt": ["no-new-privileges:true"],
     "tmpfs": {
-      "/tmp": "rw,nosuid,nodev,noexec,size=64m"
+      "/dev/shm": "rw,nosuid,nodev,noexec,size=1073741824",
+      "/run/codex-secrets": "rw,nosuid,nodev,noexec,size=16777216,mode=0700,uid=10001,gid=10001",
+      "/tmp": "rw,nosuid,nodev,size=2147483648"
     },
     "user": "10001:10001",
     "workspace": "/workspace"

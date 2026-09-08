@@ -8,17 +8,38 @@ x-ssh-target: &ssh-target
     - ${E2E_CODEX_PROVIDER_KEY_FILE:-/dev/null}:/run/secrets/codex-provider-key:ro
 
 services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
+      MYSQL_PASSWORD: codex-gateway-e2e-password
+      MYSQL_ROOT_PASSWORD: codex-gateway-e2e-root-password
+      MYSQL_USER: codex_gateway_e2e
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'mysqladmin ping -h 127.0.0.1 -uroot --password="$${MYSQL_ROOT_PASSWORD}" --silent',
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+    volumes:
+      - mysql-data:/var/lib/mysql
+
   agent-runtime-image:
     profiles: ["image-build"]
-    image: codex-agent-runtime:0.151.0
+    image: ${E2E_AGENT_IMAGE:-codex-agent-runtime:0.153.4}
     build:
       context: ../..
       dockerfile: docker/agent-runtime.Dockerfile
       args:
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+        PYPI_INDEX_URL: ${PYPI_INDEX_URL:-https://pypi.org/simple}
 
   agent-runtime-manager:
-    image: codex-runtime-manager-e2e:0.151.0
+    image: ${E2E_RUNTIME_MANAGER_IMAGE:-codex-runtime-manager-e2e:0.153.4}
     build:
       context: ../..
       dockerfile: docker/runtime-manager.Dockerfile
@@ -26,8 +47,16 @@ services:
         DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
     environment:
       NODE_ENV: test
+      RUNTIME_MANAGER_E2E_INSPECTION: "1"
+      RUNTIME_NODE_ID: node__a
+      RUNTIME_MANAGER_VERSION: "0.153.4"
+      RUNTIME_NODE_DATA_ROOT: /data
+      RUNTIME_NODE_CAPACITY_CPU_MILLIS: "8000"
+      RUNTIME_NODE_CAPACITY_MEMORY_BYTES: "17179869184"
+      RUNTIME_NODE_MAX_RUNTIMES: "1"
       RUNTIME_MANAGER_AGENT_NETWORK: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
-      RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"codex-agent-runtime:0.151.0","imageVersion":"0.151.0"}}'
+      RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: ${E2E_AGENT_EGRESS_NETWORK_NAME:-codex-gateway-e2e-agent-egress}
+      RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"${E2E_AGENT_IMAGE:-codex-agent-runtime:0.153.4}","imageVersion":"0.153.4"}}'
       RUNTIME_MANAGER_PORT: "8787"
       RUNTIME_MANAGER_RESOURCE_LABELS: '{"com.codex-gateway.e2e-managed":"${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}"}'
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
@@ -38,6 +67,44 @@ services:
       - runtime-manager-data:/data
     networks:
       - runtime-manager
+      - agent-runtime
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8787,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+  agent-runtime-manager-b:
+    image: ${E2E_RUNTIME_MANAGER_IMAGE:-codex-runtime-manager-e2e:0.153.4}
+    environment:
+      NODE_ENV: test
+      RUNTIME_MANAGER_E2E_INSPECTION: "1"
+      RUNTIME_NODE_ID: node__b
+      RUNTIME_MANAGER_VERSION: "0.153.4"
+      RUNTIME_NODE_DATA_ROOT: /data
+      RUNTIME_NODE_CAPACITY_CPU_MILLIS: "8000"
+      RUNTIME_NODE_CAPACITY_MEMORY_BYTES: "17179869184"
+      RUNTIME_NODE_MAX_RUNTIMES: "2"
+      RUNTIME_MANAGER_AGENT_NETWORK: ${E2E_AGENT_B_NETWORK_NAME:-codex-gateway-e2e-agent-runtime-b}
+      RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: ${E2E_AGENT_EGRESS_NETWORK_NAME:-codex-gateway-e2e-agent-egress}
+      RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"${E2E_AGENT_IMAGE:-codex-agent-runtime:0.153.4}","imageVersion":"0.153.4"}}'
+      RUNTIME_MANAGER_PORT: "8787"
+      RUNTIME_MANAGER_RESOURCE_LABELS: '{"com.codex-gateway.e2e-managed":"${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}"}'
+      RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_B_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-b-secret}
+    expose:
+      - "8787"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runtime-manager-data-b:/data
+    networks:
+      - runtime-manager
+      - agent-runtime-b
     healthcheck:
       test:
         [
@@ -80,6 +147,109 @@ services:
       timeout: 3s
       retries: 30
 
+  dataops-target:
+    image: node:22-bookworm
+    command: ["node", "/app/dataops-target-server.mjs"]
+    environment:
+      DATAOPS_TARGET_PORT: "8080"
+      DATAOPS_TARGET_SHARED_SECRET: dataops-e2e-shared-secret
+    volumes:
+      - ./dataops-target-server.mjs:/app/dataops-target-server.mjs:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/healthz').then((r)=>process.exit(r.status===204?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  searxng:
+    image: searxng/searxng@sha256:55e1fa15a63ff04e79e213e6aa2837549877b0c6d60757cdb633ae9111cb5fea
+    environment:
+      SEARXNG_SECRET: codex-gateway-e2e-search-secret
+    expose:
+      - "8080"
+    volumes:
+      - ../../docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - agent-egress
+      - search-backend
+
+  search-mcp:
+    image: codex-search-mcp-e2e:0.153.4
+    build:
+      context: ../..
+      dockerfile: docker/search-mcp.Dockerfile
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8788"
+      SEARXNG_URL: http://searxng:8080
+    expose:
+      - "8788"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m
+    depends_on:
+      searxng:
+        condition: service_started
+    networks:
+      - agent-runtime
+      - agent-runtime-b
+      - agent-egress
+      - search-backend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8788,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+  test-business-mcp:
+    image: codex-test-business-mcp-e2e:0.153.4
+    build:
+      context: ../..
+      dockerfile: docker/test-business-mcp.Dockerfile
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      BUSINESS_MCP_STATE_DIR: /tmp/test-business-mcp
+      HOST: 0.0.0.0
+      PORT: "8789"
+    expose:
+      - "8789"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10003,gid=10003,mode=0700
+    networks:
+      - agent-runtime
+      - agent-runtime-b
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8789,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
   ssh-target:
     build:
       context: ./docker
@@ -109,7 +279,7 @@ services:
     <<: *ssh-target
 
   build-runner:
-    image: codex-gateway-e2e-runner
+    image: ${E2E_RUNNER_IMAGE:-codex-gateway-e2e-runner}
     mem_limit: 2g
     build:
       context: ../..
@@ -118,23 +288,33 @@ services:
       # Keep enough cgroup headroom for Rolldown/Nitro native allocations while allowing the
       # JavaScript heap to finish the production bundle. The container remains capped at 2 GiB.
       NODE_OPTIONS: --max-old-space-size=1536
-      CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
+      DATABASE_URL: mysql://codex_gateway_e2e:codex-gateway-e2e-password@mysql:3306/${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
       E2E_GATEWAY_USERNAME: ${E2E_GATEWAY_USERNAME:-e2e}
       E2E_GATEWAY_PASSWORD: ${E2E_GATEWAY_PASSWORD:-codex-gateway-e2e-password}
+    depends_on:
+      mysql:
+        condition: service_healthy
     volumes:
       - build-output:/e2e-output
-      - e2e-data:/workspace/codex-gateway/.data-e2e
 
   gateway-under-test:
-    image: codex-gateway-e2e-runner
+    image: ${E2E_RUNNER_IMAGE:-codex-gateway-e2e-runner}
     mem_limit: 2g
     restart: unless-stopped
     depends_on:
       agent-runtime-manager:
         condition: service_healthy
+      agent-runtime-manager-b:
+        condition: service_healthy
       bark-target:
         condition: service_started
       model-target:
+        condition: service_healthy
+      search-mcp:
+        condition: service_healthy
+      dataops-target:
+        condition: service_healthy
+      mysql:
         condition: service_healthy
       ssh-target:
         condition: service_started
@@ -142,15 +322,29 @@ services:
         condition: service_started
       ssh-target-legacy-codex:
         condition: service_started
+      test-business-mcp:
+        condition: service_healthy
     environment:
       HOST: 0.0.0.0
       PORT: "3100"
       CODEX_GATEWAY_CONFIG_SECRET: e2e-config-secret
-      CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
+      DATABASE_URL: mysql://codex_gateway_e2e:codex-gateway-e2e-password@mysql:3306/${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
+      DATAOPS_BASE_URL: http://dataops-target:8080
+      DATAOPS_SSO_SHARED_SECRET: dataops-e2e-shared-secret
+      DATAOPS_ALLOWED_ORIGINS: http://dataops.127.0.0.1.nip.io:3100
       NUXT_IGNORE_LOCK: "1"
       RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
+      RUNTIME_IDENTITY_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
+      RUNTIME_MANAGER_DEFAULT_NODE_ID: node__a
+      RUNTIME_NODE_CAPACITY_CPU_MILLIS: "8000"
+      RUNTIME_NODE_CAPACITY_MEMORY_BYTES: "17179869184"
+      RUNTIME_NODE_MAX_RUNTIMES: "1"
+      RUNTIME_NODE_MINIMUM_FREE_DISK_BYTES: "0"
+      RUNTIME_NODE_HEALTH_FRESHNESS_MS: "30000"
+      RUNTIME_NODE_ALLOW_INSECURE_HTTP: "1"
       RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS: stable
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
+      RUNTIME_PROVIDER_PROXY_BASE_URL: http://gateway-under-test:3100/api/internal/providers
       # Preview origins enter through the nginx sidecar below. This mirrors production so remote
       # /_nuxt/* assets cannot be intercepted as Gateway public assets before reaching the proxy.
       BROWSER_PREVIEW_PUBLIC_PORT: "3200"
@@ -158,14 +352,19 @@ services:
       BROWSER_PREVIEW_SCHEME: http
     volumes:
       - build-output:/e2e-output:ro
-      - e2e-data:/workspace/codex-gateway/.data-e2e
     # Exercise the same V8 memory policy as production; the wider 2 GiB cgroup remains available
     # to Playwright's shared test topology and native browser/runtime allocations.
-    command: ["/usr/local/bin/codex-gateway-e2e-supervisor", "node", "--expose-gc", "--max-old-space-size=512", "/e2e-output/server/index.mjs"]
+    command:
+      [
+        "/usr/local/bin/codex-gateway-e2e-supervisor",
+        "node",
+        "--expose-gc",
+        "--max-old-space-size=512",
+        "/e2e-output/server/index.mjs",
+      ]
     networks:
       - default
       - runtime-manager
-      - agent-runtime
     healthcheck:
       test:
         [
@@ -195,7 +394,7 @@ services:
       retries: 30
 
   test-runner:
-    image: codex-gateway-e2e-runner
+    image: ${E2E_RUNNER_IMAGE:-codex-gateway-e2e-runner}
     mem_limit: 2g
     network_mode: service:gateway-under-test
     depends_on:
@@ -203,8 +402,11 @@ services:
         condition: service_healthy
     environment:
       CI: ${CI:-}
+      E2E_GATEWAY_USERNAME: ${E2E_GATEWAY_USERNAME:-e2e}
+      E2E_GATEWAY_PASSWORD: ${E2E_GATEWAY_PASSWORD:-codex-gateway-e2e-password}
       E2E_CONTAINERIZED: "1"
       E2E_DATABASE_PREPARED: "1"
+      DATABASE_URL: mysql://codex_gateway_e2e:codex-gateway-e2e-password@mysql:3306/${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
       E2E_SOURCE_DIR: /workspace/source
       E2E_CODEX_HOME: /codex-auth
       E2E_REMOTE_HOST: ssh-target
@@ -221,15 +423,20 @@ services:
       E2E_BARK_REQUEST_LOG: /bark-requests/requests.jsonl
       E2E_MANAGED_LABEL_VALUE: ${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}
       E2E_MANAGED_RUNTIME_ENABLED: "1"
+      E2E_RUNTIME_SECRET_FIXTURE: ${E2E_RUNTIME_SECRET_FIXTURE:-full-e2e-runtime-secret-fixture}
+      E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE: ${E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE:?E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE is required}
       PLAYWRIGHT_BASE_URL: http://codex.127.0.0.1.nip.io:3100
       RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
+      RUNTIME_MANAGER_B_BASE_URL: http://agent-runtime-manager-b:8787
+      RUNTIME_MANAGER_B_SHARED_SECRET: ${RUNTIME_MANAGER_B_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-b-secret}
+      RUNTIME_IDENTITY_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
+      RUNTIME_MANAGER_DEFAULT_NODE_ID: node__a
       HOME: /home/pwuser
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     volumes:
       - ${E2E_CODEX_HOME:-${HOME}/.codex}:/codex-auth:ro
       - ../../test-results:/workspace/codex-gateway/test-results
-      - e2e-data:/workspace/codex-gateway/.data-e2e
       - bark-requests:/bark-requests
       - runner-home:/home/pwuser
     working_dir: /workspace/codex-gateway
@@ -237,8 +444,9 @@ services:
 volumes:
   bark-requests:
   build-output:
-  e2e-data:
+  mysql-data:
   runtime-manager-data:
+  runtime-manager-data-b:
   runner-home:
 
 networks:
@@ -247,4 +455,11 @@ networks:
     internal: true
   agent-runtime:
     name: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
+    internal: true
+  agent-runtime-b:
+    name: ${E2E_AGENT_B_NETWORK_NAME:-codex-gateway-e2e-agent-runtime-b}
+    internal: true
+  agent-egress:
+    name: ${E2E_AGENT_EGRESS_NETWORK_NAME:-codex-gateway-e2e-agent-egress}
+  search-backend:
     internal: true

@@ -4,8 +4,8 @@
 
 ## 1. 基准与判定口径
 
-- Gateway 代码基准：`00bb652`。
-- Gateway 声明支持的 Codex 版本：`0.151.0`，定义于 `server/utils/gateway/infra/codex/codex-version.ts`。
+- Gateway 代码基准：本文档所在提交。
+- Gateway 声明支持的 Codex 版本：`0.153.4`，定义于 `server/utils/gateway/infra/codex/codex-version.ts`。
 - App Server 协议源码基准：`third_party/openai-codex` 提交 `78c290807ce710180111df227df3b7a4fe845452`。
 - 协议定义来源：`third_party/openai-codex/codex-rs/app-server-protocol/src/protocol/common.rs`。
 - Gateway 扫描范围：`app/`、`server/`、`shared/` 下的生产 TypeScript/Vue 源码，不把测试和第三方源码计入已实现。
@@ -22,11 +22,11 @@
 
 | 协议方向 | 接口总数 | 已显式适配 | 缺少 |
 |---|---:|---:|---:|
-| Client → App Server 请求 | 157 | 25 | 132 |
+| Client → App Server 请求 | 157 | 49 | 108 |
 | App Server → Client 反向请求 | 9 | 9 | 0 |
-| App Server → Client 通知 | 80 | 60 | 20 |
+| App Server → Client 通知 | 80 | 61 | 19 |
 | Client → App Server 通知 | 1 | 1 | 0 |
-| **合计** | **247** | **95** | **152** |
+| **合计** | **247** | **120** | **127** |
 
 客户端请求覆盖率不能直接用来衡量产品完成度。`thread/start`、`turn/start` 和事件流承载了主要 Agent 执行链路，而很多未适配方法属于插件市场、实时语音、远程控制、系统账号或开发终端等独立能力。
 
@@ -48,12 +48,12 @@
 | 12 | `thread/goal/set` | 已显式适配 |
 | 13 | `thread/goal/get` | 已显式适配 |
 | 14 | `thread/goal/clear` | 已显式适配 |
-| 15 | `thread/queue/add` | 缺少（未显式适配） |
-| 16 | `thread/queue/list` | 缺少（未显式适配） |
-| 17 | `thread/queue/update` | 缺少（未显式适配） |
-| 18 | `thread/queue/delete` | 缺少（未显式适配） |
-| 19 | `thread/queue/reorder` | 缺少（未显式适配） |
-| 20 | `thread/queue/start` | 缺少（未显式适配） |
+| 15 | `thread/queue/add` | 已显式适配 |
+| 16 | `thread/queue/list` | 已显式适配 |
+| 17 | `thread/queue/update` | 已显式适配 |
+| 18 | `thread/queue/delete` | 已显式适配 |
+| 19 | `thread/queue/reorder` | 已显式适配 |
+| 20 | `thread/queue/start` | 已显式适配 |
 | 21 | `thread/metadata/update` | 缺少（未显式适配） |
 | 22 | `thread/section/move` | 缺少（未显式适配） |
 | 23 | `thread/settings/update` | 已显式适配 |
@@ -87,13 +87,13 @@
 | 51 | `thread/turns/list` | 已显式适配 |
 | 52 | `thread/items/list` | 已显式适配 |
 | 53 | `thread/inject_items` | 缺少（未显式适配） |
-| 54 | `skills/list` | 缺少（未显式适配） |
-| 55 | `skills/extraRoots/set` | 缺少（未显式适配） |
+| 54 | `skills/list` | 已显式适配 |
+| 55 | `skills/extraRoots/set` | 已显式适配 |
 | 56 | `hooks/list` | 缺少（未显式适配） |
-| 57 | `marketplace/add` | 缺少（未显式适配） |
-| 58 | `marketplace/remove` | 缺少（未显式适配） |
-| 59 | `marketplace/upgrade` | 缺少（未显式适配） |
-| 60 | `plugin/list` | 缺少（未显式适配） |
+| 57 | `marketplace/add` | 已显式适配 |
+| 58 | `marketplace/remove` | 已显式适配 |
+| 59 | `marketplace/upgrade` | 已显式适配 |
+| 60 | `plugin/list` | 已显式适配 |
 | 61 | `plugin/search` | 缺少（未显式适配） |
 | 62 | `plugin/installed` | 缺少（未显式适配） |
 | 63 | `plugin/read` | 缺少（未显式适配） |
@@ -104,20 +104,20 @@
 | 68 | `plugin/share/checkout` | 缺少（未显式适配） |
 | 69 | `plugin/share/delete` | 缺少（未显式适配） |
 | 70 | `app/read` | 缺少（未显式适配） |
-| 71 | `app/list` | 缺少（未显式适配） |
-| 72 | `app/installed` | 缺少（未显式适配） |
+| 71 | `app/list` | 已显式适配 |
+| 72 | `app/installed` | 已显式适配 |
 | 73 | `fs/readFile` | 缺少（未显式适配） |
-| 74 | `fs/writeFile` | 缺少（未显式适配） |
-| 75 | `fs/createDirectory` | 缺少（未显式适配） |
+| 74 | `fs/writeFile` | 已显式适配 |
+| 75 | `fs/createDirectory` | 已显式适配 |
 | 76 | `fs/getMetadata` | 缺少（未显式适配） |
 | 77 | `fs/readDirectory` | 缺少（未显式适配） |
-| 78 | `fs/remove` | 缺少（未显式适配） |
+| 78 | `fs/remove` | 已显式适配 |
 | 79 | `fs/copy` | 缺少（未显式适配） |
 | 80 | `fs/watch` | 已显式适配 |
 | 81 | `fs/unwatch` | 已显式适配 |
-| 82 | `skills/config/write` | 缺少（未显式适配） |
-| 83 | `plugin/install` | 缺少（未显式适配） |
-| 84 | `plugin/uninstall` | 缺少（未显式适配） |
+| 82 | `skills/config/write` | 已显式适配 |
+| 83 | `plugin/install` | 已显式适配 |
+| 84 | `plugin/uninstall` | 已显式适配 |
 | 85 | `turn/start` | 已显式适配 |
 | 86 | `turn/settings/update` | 已显式适配 |
 | 87 | `turn/steer` | 已显式适配 |
@@ -147,8 +147,8 @@
 | 111 | `environment/add` | 缺少（未显式适配） |
 | 112 | `environment/info` | 缺少（未显式适配） |
 | 113 | `environment/status` | 缺少（未显式适配） |
-| 114 | `mcpServer/oauth/login` | 缺少（未显式适配） |
-| 115 | `config/mcpServer/reload` | 缺少（未显式适配） |
+| 114 | `mcpServer/oauth/login` | 已显式适配 |
+| 115 | `config/mcpServer/reload` | 已显式适配 |
 | 116 | `mcpServerStatus/list` | 已显式适配 |
 | 117 | `mcpServer/resource/read` | 缺少（未显式适配） |
 | 118 | `mcpServer/event/stream/start` | 已显式适配 |
@@ -175,12 +175,12 @@
 | 139 | `process/writeStdin` | 缺少（未显式适配） |
 | 140 | `process/kill` | 缺少（未显式适配） |
 | 141 | `process/resizePty` | 缺少（未显式适配） |
-| 142 | `config/read` | 缺少（未显式适配） |
+| 142 | `config/read` | 已显式适配 |
 | 143 | `externalAgentConfig/detect` | 缺少（未显式适配） |
 | 144 | `externalAgentConfig/import` | 缺少（未显式适配） |
 | 145 | `externalAgentConfig/import/recordHistory` | 缺少（未显式适配） |
 | 146 | `externalAgentConfig/import/readHistories` | 缺少（未显式适配） |
-| 147 | `config/value/write` | 缺少（未显式适配） |
+| 147 | `config/value/write` | 已显式适配 |
 | 148 | `config/batchWrite` | 缺少（未显式适配） |
 | 149 | `configRequirements/read` | 缺少（未显式适配） |
 | 150 | `account/read` | 缺少（未显式适配） |
@@ -224,7 +224,7 @@
 | 10 | `thread/name/updated` | 已显式适配 |
 | 11 | `thread/goal/updated` | 已显式适配 |
 | 12 | `thread/goal/cleared` | 已显式适配 |
-| 13 | `thread/queue/changed` | 缺少（未显式适配） |
+| 13 | `thread/queue/changed` | 已显式适配 |
 | 14 | `project/changed` | 缺少（未显式适配） |
 | 15 | `thread/project/updated` | 缺少（未显式适配） |
 | 16 | `thread/environment/connected` | 缺少（未显式适配） |
@@ -301,37 +301,48 @@
 
 ## 7. 第一阶段需要额外实现的 App Server 接口
 
-本节只讨论 Gateway 目前缺少、并且第一阶段产品需要新增的 App Server 协议适配。用户系统、项目授权、业务 MCP 鉴权、容器隔离、审计和幂等属于平台能力，不属于 App Server 接口，因此不列入本节。
+截至 2026 年 9 月 7 日，第一阶段核心链路所需的新增接口已经闭环：会话归档/删除/恢复、Skill 管理、Marketplace/Plugin 安装、App 列表、MCP 状态/热重载/OAuth、结构化配置读写和受控文件写入均有显式适配。营业额查询、知识库分析和业务写入通过 `turn/start` 内的 MCP Tool 调用完成，不要求浏览器直接调用业务工具。
 
-### 7.1 第一阶段最小必做
+### 7.1 第一阶段仍需额外实现
 
-| 优先级 | 接口 | 用途 | 配套通知 | 验收要求 |
-|---|---|---|---|---|
-| P0 | `thread/archive` | 用户归档不再活跃的会话，保持历史列表可管理 | `thread/archived` 已适配 | 归档后从默认列表移除；归档列表可查询；多浏览器状态同步；失败原因可见 |
-| P0 | `thread/delete` | 用户主动删除会话并满足数据生命周期要求 | `thread/deleted` 已适配 | 删除前确认；成功后清理路由、缓存和订阅；重复删除结果可控；其他浏览器同步退出该 Thread |
-| P0 | `thread/unarchive` | 恢复误归档或需要继续处理的会话 | `thread/unarchived` 已适配 | 恢复后回到正常列表；可重新打开和继续 Turn；多浏览器同步 |
-
-这三个请求的配套通知已经存在于 Gateway，因此主要新增工作是：Gateway 后端 Broker 方法、浏览器消息/HTTP 接口、前端操作入口、状态更新与真实 App Server E2E。
+当前没有阻断第一阶段运营场景的必做 App Server 接口。后续工作主要是业务 MCP、组织 Skill、权限策略、审计展示和用户体验，不是协议缺口。
 
 ### 7.2 第一阶段按部署方案条件实现
 
 | 条件 | 接口 | 何时需要 | 可以不实现的替代方式 |
 |---|---|---|---|
 | 第一阶段允许用户选择多个中国模型 Provider，并由 UI 动态判断能力 | `modelProvider/capabilities/read` | 需要展示 Provider 是否支持工具调用、推理等能力时 | 平台维护固定且经过验证的模型能力白名单 |
-| 用户切换项目时需要在不重启个人 Agent 的情况下热更新 MCP 配置 | `config/mcpServer/reload` | 每个项目使用不同 MCP 地址或凭证，且要求无重启切换时 | 每用户/项目启动独立运行时，或修改配置后安全重启该用户的 App Server |
 | 第一阶段允许管理员或用户选择 App Server Permission Profile | `permissionProfile/list` | UI 需要列出并选择可用权限配置时 | 平台服务端固定一个受控 Profile，不向普通用户开放选择 |
 
-如果第一阶段继续采用“每用户一个 Agent、平台固定模型白名单、MCP 凭证在启动时注入、权限配置由服务端固定”的最小改动路线，那么条件接口可以全部延后，第一阶段只需新增 `thread/archive`、`thread/delete`、`thread/unarchive`。
+`config/mcpServer/reload` 和 `mcpServer/oauth/login` 已经适配，因此项目能力变更和第三方 MCP OAuth 不再属于协议缺口。
 
 ### 7.3 第一阶段不需要因为业务 MCP 而额外实现的接口
 
 - 不需要 `mcpServer/tool/call`：Agent 在 `turn/start` 执行过程中会通过 Codex Harness 调用已配置的 MCP 工具，Gateway 不必直接发起 MCP Tool Call。
 - 不需要 `mcpServer/resource/read`：第一阶段知识库和业务数据都可以作为 MCP Tool 暴露；只有前端要直接浏览 MCP Resource 时才需要。
-- 不需要 `mcpServer/oauth/login`：第一阶段由平台向每用户运行时注入短期项目凭证，不让浏览器直接持有业务 MCP OAuth 凭证。
+- 业务 MCP 默认使用平台加密保存并注入的短期凭据；已适配的 `mcpServer/oauth/login` 只用于确实要求用户 OAuth 的第三方 MCP，Token 不返回浏览器。
 - 不需要 `thread/shellCommand`、`command/exec` 或 `process/spawn`：业务运营 Agent 的写操作应通过受审计的业务 MCP 完成，不能把通用 Shell/Process 暴露给 Web 用户。
 - 不需要 `project/*`：业务项目和 Codex Project 是不同领域对象；第一阶段以现有业务用户/项目系统为事实源。
 
-## 8. 维护规则
+## 8. 完整 Agent Runtime 验收
+
+`tests/e2e/full-agent-runtime.spec.ts` 在两个真实用户容器中验证以下能力：
+
+- 8 GiB / 4 CPU / 1024 PID、双网络、只读根文件系统、凭据 tmpfs 和用户/卷隔离。
+- 57 项 CLI 工具、22 个 Python 包、Chromium、PDF/Office/OCR、Pandas 和公网访问。
+- Search MCP、营业额查询与幂等写入、组织 Skill、文件凭据和真实模型 Turn。
+- Marketplace 添加、Plugin 实际安装、管理员分配，以及容器重建后的 Plugin、MCP、Memory、Skill 和工作区持久化。
+- `app/list` 与 `app/installed` 的真实协议调用。可返回的 App 由账号侧 Connector 目录与授权决定，测试环境不伪造托管 App。
+- Docker inspect、容器日志和跨用户目录中不存在精确 Secret 测试值。
+
+运行命令：
+
+```bash
+E2E_SKIP_AGENT_IMAGE_BUILD=1 E2E_EXPECT_MANAGED_RUNTIME=1 \
+  tests/e2e/run-in-containers.sh -- tests/e2e/full-agent-runtime.spec.ts
+```
+
+## 9. 维护规则
 
 1. 升级 `SUPPORTED_CODEX_VERSION` 时，先把 `third_party/openai-codex` 切到对应发布版本，再重新生成本矩阵。
 2. 新增 App Server 请求时，同时实现响应 Schema、错误透传、浏览器消息类型、UI 状态和真实 E2E；只有字符串出现在代码里不算完成。

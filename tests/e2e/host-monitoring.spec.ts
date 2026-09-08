@@ -21,7 +21,7 @@ test("streams Agent container metrics through the shared realtime connection", a
   await startManagedRuntime(request, session);
 
   await expect(page.getByTestId(`project-button-${project.id}`)).toBeVisible();
-  await page.getByTestId("open-host-monitor-button").click();
+  await openRuntimeMonitor(page);
   const panel = page.getByTestId("host-metrics-panel");
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("heading", { name: "运行时监控" })).toBeVisible();
@@ -36,8 +36,13 @@ test("streams Agent container metrics through the shared realtime connection", a
   const monitorTab = page.getByRole("tab", { name: "运行时监控" });
   await monitorTab.getByLabel(/关闭标签页|Close tab/).click();
   await expect(panel).toBeHidden();
-  await page.getByTestId("open-host-monitor-button").click();
+  await openRuntimeMonitor(page);
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("heading", { name: "运行时监控" })).toBeVisible();
   await expect(panel.getByTestId("host-metric-cpu")).toBeVisible();
 });
+
+async function openRuntimeMonitor(page: import("@playwright/test").Page) {
+  await page.getByTestId("workspace-tool-menu-trigger").click();
+  await page.getByRole("menuitem", { name: "运行时监控", exact: true }).click();
+}

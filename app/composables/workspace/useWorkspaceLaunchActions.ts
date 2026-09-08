@@ -8,11 +8,16 @@ import { useGatewayBrowserStore } from "@/stores/gateway-browser";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { useGatewayWorkspaceLayoutStore } from "@/stores/gateway-workspace-layout";
-import { titleForThread } from "@/stores/gateway/thread-utils/identity";
-import { browserWorkspacePanelId } from "@/stores/gateway/workspace-panels";
-import { HOST_METRICS_WORKSPACE_PANEL_ID } from "@/stores/gateway/workspace-panels";
+import { threadTitleFallbacks, titleForThread } from "@/stores/gateway/thread-utils/identity";
 import { useGatewayHostMetricsPanelStore } from "@/stores/gateway-host-metrics/panels";
+import { useFileGitReviewPanelStore } from "@/stores/file-workspace/git/review-panel";
 import { workspaceLayoutScopeKey } from "@/stores/gateway-workspace-layout";
+import {
+  browserWorkspacePanelId,
+  FILES_WORKSPACE_PANEL_ID,
+  GIT_REVIEW_WORKSPACE_PANEL_ID,
+  HOST_METRICS_WORKSPACE_PANEL_ID,
+} from "@/stores/gateway/workspace-panels";
 import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 
 export function useWorkspaceLaunchActions() {
@@ -23,6 +28,7 @@ export function useWorkspaceLaunchActions() {
   const layout = useGatewayWorkspaceLayoutStore();
   const terminal = useGatewayTerminalTransport();
   const hostMetricsPanels = useGatewayHostMetricsPanelStore();
+  const gitReviewPanels = useFileGitReviewPanelStore();
   const { hosts, projects } = storeToRefs(gateway);
   const { selectedHostId, selectedProjectId, selectedThreadId } = storeToRefs(navigation);
   const { t } = useI18n();
@@ -31,6 +37,30 @@ export function useWorkspaceLaunchActions() {
   const isLocalAgentHost = computed(
     () => selectedHost.value !== null && isManagedRuntimeHost(selectedHost.value),
   );
+
+  function currentScopeKey() {
+    return workspaceLayoutScopeKey(
+      selectedHostId.value,
+      selectedProjectId.value,
+      selectedThreadId.value,
+    );
+  }
+
+  function openFiles() {
+    if (selectedThreadId.value === null) return;
+    const scopeKey = currentScopeKey();
+    layout.setFilesPanelOpen(scopeKey, true);
+    layout.setToolSidebarOpen(scopeKey, true);
+    layout.requestPanelActivation(FILES_WORKSPACE_PANEL_ID);
+  }
+
+  function openGitReview() {
+    if (selectedThreadId.value === null) return;
+    const scopeKey = currentScopeKey();
+    gitReviewPanels.open(scopeKey);
+    layout.setToolSidebarOpen(scopeKey, true);
+    layout.requestPanelActivation(GIT_REVIEW_WORKSPACE_PANEL_ID);
+  }
 
   function openTerminal() {
     if (selectedHostId.value === null || selectedHost.value === null || isLocalAgentHost.value)
@@ -43,7 +73,11 @@ export function useWorkspaceLaunchActions() {
         projectId: selectedProjectId.value,
         threadId: selectedThreadId.value,
         cwd: thread?.cwd ?? selectedProject.value?.remotePath ?? null,
-        title: titleForThread(thread ?? { id: selectedThreadId.value }),
+        title: titleForThread(
+          thread ?? { id: selectedThreadId.value },
+          threadTitleFallbacks(t),
+          threadView.history,
+        ),
       });
       return;
     }
@@ -79,22 +113,24 @@ export function useWorkspaceLaunchActions() {
   }
 
   function openHostMonitor() {
-    const scopeKey = workspaceLayoutScopeKey(
-      selectedHostId.value,
-      selectedProjectId.value,
-      selectedThreadId.value,
-    );
+    if (selectedHostId.value === null) return;
+    const scopeKey = currentScopeKey();
     hostMetricsPanels.open(scopeKey);
+    layout.setToolSidebarOpen(scopeKey, true);
     layout.requestPanelActivation(HOST_METRICS_WORKSPACE_PANEL_ID);
   }
 
   return {
     canLaunch: computed(() => selectedHostId.value !== null && !isLocalAgentHost.value),
+    canOpenThreadTools: computed(() => selectedThreadId.value !== null),
+    canMonitorHost: computed(() => selectedHostId.value !== null),
     selectedHostTitle: computed(() =>
       selectedHost.value === null || isLocalAgentHost.value
         ? t("app.workspaces")
         : selectedHost.value.name,
     ),
+    openFiles,
+    openGitReview,
     openTerminal,
     openBrowser,
     openHostMonitor,

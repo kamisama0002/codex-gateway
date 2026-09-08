@@ -10,9 +10,11 @@ import { ThreadGoalService } from "./thread-goals";
 import { ThreadSettingsService } from "./thread-settings";
 import { ThreadCatalogService } from "./thread-catalog";
 import { ThreadLifecycleService } from "./thread-lifecycle";
+import { ThreadQueueService } from "./thread-queue";
 import { ThreadHistoryReader } from "./thread-history-reader";
 import { McpRuntimeService } from "./mcp-runtime";
 import { AppServerFileService } from "./app-server-files";
+import { AppServerCapabilityService } from "./app-server-capabilities";
 
 class ThreadBroker {
   private readonly registry = new ControllerRegistry();
@@ -23,8 +25,10 @@ class ThreadBroker {
   private readonly settings = new ThreadSettingsService(this.registry);
   private readonly catalog = new ThreadCatalogService(this.registry);
   private readonly lifecycle = new ThreadLifecycleService(this.registry);
+  private readonly queue = new ThreadQueueService(this.registry);
   private readonly mcp = new McpRuntimeService(this.registry);
   private readonly files = new AppServerFileService(this.registry);
+  private readonly capabilities = new AppServerCapabilityService(this.registry);
 
   async openThread(
     host: HostRecord,
@@ -109,6 +113,49 @@ class ThreadBroker {
     return this.goals.clearThreadGoal(host, threadId);
   }
 
+  async listThreadQueue(host: HostRecord, threadId: string) {
+    return this.queue.list(host, threadId);
+  }
+
+  async addThreadQueue(
+    host: HostRecord,
+    threadId: string,
+    input: Array<Record<string, unknown>>,
+    clientUserMessageId: string,
+  ) {
+    return this.queue.add(host, threadId, input, clientUserMessageId);
+  }
+
+  async updateThreadQueue(
+    host: HostRecord,
+    threadId: string,
+    queuedSubmissionId: string,
+    input: Array<Record<string, unknown>>,
+  ) {
+    return this.queue.update(host, threadId, queuedSubmissionId, input);
+  }
+
+  async deleteThreadQueue(host: HostRecord, threadId: string, queuedSubmissionId: string) {
+    return this.queue.delete(host, threadId, queuedSubmissionId);
+  }
+
+  async reorderThreadQueue(host: HostRecord, threadId: string, queuedSubmissionIds: string[]) {
+    return this.queue.reorder(host, threadId, queuedSubmissionIds);
+  }
+
+  async startThreadQueue(host: HostRecord, threadId: string, queuedSubmissionId?: string | null) {
+    return this.queue.start(host, threadId, queuedSubmissionId);
+  }
+
+  async steerThreadQueue(
+    host: HostRecord,
+    threadId: string,
+    queuedSubmissionId: string,
+    expectedTurnId: string,
+  ) {
+    return this.queue.steer(host, threadId, queuedSubmissionId, expectedTurnId);
+  }
+
   async listThreads(host: HostRecord, params: Record<string, unknown>) {
     return this.catalog.listThreads(host, params);
   }
@@ -170,6 +217,26 @@ class ThreadBroker {
     return this.files.createDirectory(host, path);
   }
 
+  async existingFilePaths(host: HostRecord, paths: string[]) {
+    return this.files.existingPaths(host, paths);
+  }
+
+  async openFile(host: HostRecord, path: string, options: { maxSize: number }) {
+    return this.files.openFile(host, path, options);
+  }
+
+  async statFile(host: HostRecord, path: string) {
+    return this.files.statFile(host, path);
+  }
+
+  async writeFile(host: HostRecord, path: string, content: Buffer) {
+    return this.files.writeFile(host, path, content);
+  }
+
+  async removeFile(host: HostRecord, path: string) {
+    return this.files.removeFile(host, path);
+  }
+
   async searchProjectFiles(
     host: HostRecord,
     rootPath: string,
@@ -189,6 +256,10 @@ class ThreadBroker {
 
   async listMcpStatuses(host: HostRecord, threadId: string) {
     return this.mcp.listStatuses(host, threadId);
+  }
+
+  capabilityRuntime() {
+    return this.capabilities;
   }
 
   async startMcpEventStream(

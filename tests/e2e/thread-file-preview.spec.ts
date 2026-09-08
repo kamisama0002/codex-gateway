@@ -191,11 +191,11 @@ done
     },
   });
 
-  await expect(filesWorkspaceTab(page)).toBeVisible();
+  await expect(page.getByTestId("workspace-tool-home")).toBeVisible();
   await page.getByRole("link", { name: "preview target" }).click();
   const panel = page.getByTestId("workspace-file-panel");
   await expect(panel).toBeVisible();
-  await page.getByRole("button", { name: "向右分屏" }).click();
+  await expect(page.getByRole("button", { name: "向右分屏" })).toHaveCount(0);
   await expect(page.getByTestId("chat-main-pane")).toBeVisible();
   await expect(panel).toBeVisible();
   const [agentDockBox, filesDockBox] = await Promise.all([
@@ -260,7 +260,7 @@ done
   const reviewPanel = page.getByTestId("git-review-panel");
   await expect(reviewPanel).toBeVisible();
   await page
-    .getByRole("region", { name: "审查变更" })
+    .getByRole("tab", { name: "审查变更" })
     .getByRole("button", { name: "关闭标签页" })
     .click();
   await expect(reviewPanel).toBeHidden();
@@ -274,7 +274,7 @@ done
     "deleted file baseline",
   );
   await page
-    .getByRole("region", { name: "审查变更" })
+    .getByRole("tab", { name: "审查变更" })
     .getByRole("button", { name: "关闭标签页" })
     .click();
   await expect(reviewPanel).toBeHidden();

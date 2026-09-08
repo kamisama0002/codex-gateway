@@ -12,7 +12,12 @@ import { respondToServerRequest } from "./transport";
 export function createGatewayThreadTurnActions() {
   const t = useGatewayTranslator();
   return {
-    sendTurn: (text: string, options?: ComposerTurnOptions) => sendTurn(t, text, options),
+    sendTurn: (
+      text: string,
+      options?: ComposerTurnOptions,
+      controller?: AbortController,
+      behavior?: { delivery?: "default" | "steer" },
+    ) => sendTurn(t, text, options, controller, behavior),
     retryLastTurn: () => retryLastTurn(t),
     loadOlderTurns: (options?: { limit?: number }) => loadOlderTurns(t, options),
     loadTurnItems: (turnId: string) => loadTurnItems(t, turnId),

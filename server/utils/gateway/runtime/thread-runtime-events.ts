@@ -7,8 +7,9 @@ import { threadSnapshotStore } from "../state/thread-snapshots";
 import { dispatchThreadRuntimeNotification } from "../notifications/thread-notification-dispatcher";
 import { applyEventToOpenSnapshot } from "./open-snapshot-events";
 import { runtimePhaseFromEvent, runtimeStatusFromEvent } from "~~/shared/thread-runtime-status";
-import { idFromUnknown, recordFromUnknown } from "~~/shared/utils/records";
+import { idFromUnknown, recordFromUnknown, stringFromUnknown } from "~~/shared/utils/records";
 import { threadRuntimeStatusHub } from "./thread-runtime-status-hub";
+import { threadMetadataStore } from "../state/thread-metadata";
 
 type ThreadEventSubscriber = (event: GatewayEvent) => void;
 export type ThreadGoalResolver = () => Promise<unknown>;
@@ -25,6 +26,12 @@ class ThreadRuntimeEventBus {
     options: { resolveGoal?: ThreadGoalResolver; resolveThread?: ThreadMetadataResolver } = {},
   ) {
     const envelope = parseRpcEnvelope(payload);
+    if (method === "thread/name/updated") {
+      const title = stringFromUnknown(recordFromUnknown(envelope.params)?.threadName)?.trim();
+      if (title !== undefined && title !== "") {
+        threadMetadataStore.updateTitle(hostId, threadId, title);
+      }
+    }
     const event = gatewayEventStore.add(hostId, threadId, method, envelope);
     subAgentThreadStore.recordRuntimeEvent(hostId, threadId, method, envelope);
     threadSnapshotStore.update(hostId, threadId, (snapshot) =>

@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { posix } from "node:path";
+import { Readable } from "node:stream";
+import { createError } from "h3";
+import pLimit from "p-limit";
 import type {
   HostRecord,
   ProjectFileSearchResult,
@@ -9,14 +12,29 @@ import type {
 import {
   fsChangedNotificationFromUnknown,
   parseFsCreateDirectoryResponse,
+  parseFsGetMetadataResponse,
   parseFsReadDirectoryResponse,
+  parseFsReadFileResponse,
+  parseFsRemoveResponse,
   parseFsWatchResponse,
+  parseFsWriteFileResponse,
   parseFuzzyFileSearchResponse,
 } from "~~/shared/runtime/app-server/file-system";
+import {
+  isInsideManagedWorkspace,
+  isManagedRuntimeHost,
+  resolveManagedWorkspaceBrowsePath,
+} from "~~/shared/runtime/managed-runtime";
 import type { CodexRpcClient } from "../infra/rpc/rpc";
+import type { RemoteFileMetadata, RemoteFileResult } from "../infra/ssh/ssh-types";
+import {
+  RemoteFileInvalidPathError,
+  RemoteFileNotRegularError,
+  RemoteFileTooLargeError,
+} from "../infra/files/remote-file-errors";
+import { CodexRpcError } from "../http/errors";
 import { bindGatewayUser, currentGatewayUserId } from "../state/memory";
 import { normalizeReferencePath } from "../project-files/project-file-references";
-import type { ControllerRegistry } from "./controller-registry";
 
 const FILE_RPC_TIMEOUT_MS = 120_000;
 const FILE_WATCH_COALESCE_MS = 150;
@@ -43,13 +61,17 @@ interface FileWatchLease {
   release: () => void;
 }
 
+export interface AppServerFileControllerRegistry {
+  getHostClient(host: HostRecord): Promise<CodexRpcClient>;
+}
+
 export class AppServerFileService {
   private readonly watches = new Map<
     string,
     { token: object; pending: Promise<ActiveFileWatch> }
   >();
 
-  constructor(private readonly registry: ControllerRegistry) {}
+  constructor(private readonly registry: AppServerFileControllerRegistry) {}
 
   async listDirectory(host: HostRecord, path: string): Promise<RemoteDirectoryResult> {
     const client = await this.registry.getHostClient(host);
@@ -76,12 +98,107 @@ export class AppServerFileService {
   }
 
   async createDirectory(host: HostRecord, path: string) {
+    const resolvedPath = directoryPathForHost(host, path);
     const client = await this.registry.getHostClient(host);
     await client.request(
       "fs/createDirectory",
-      { path, recursive: true },
+      { path: resolvedPath, recursive: true },
       FILE_RPC_TIMEOUT_MS,
       parseFsCreateDirectoryResponse,
+    );
+  }
+
+  async existingPaths(host: HostRecord, inputPaths: string[]) {
+    const paths = [...new Set(inputPaths.map((path) => filePathForHost(host, path)))];
+    const client = await this.registry.getHostClient(host);
+    const inspect = pLimit(8);
+    const existing = await Promise.all(
+      paths.map((path) =>
+        inspect(async () => {
+          try {
+            await client.request(
+              "fs/getMetadata",
+              { path },
+              FILE_RPC_TIMEOUT_MS,
+              parseFsGetMetadataResponse,
+            );
+            return path;
+          } catch (error) {
+            if (isMissingAppServerPathError(error)) return null;
+            throw error;
+          }
+        }),
+      ),
+    );
+    return existing.filter((path): path is string => path !== null);
+  }
+
+  async openFile(
+    host: HostRecord,
+    inputPath: string,
+    options: { maxSize: number },
+  ): Promise<RemoteFileResult> {
+    const path = filePathForHost(host, inputPath);
+    const client = await this.registry.getHostClient(host);
+    const metadata = await this.getFileMetadata(client, path);
+    const response = await client.request(
+      "fs/readFile",
+      { path },
+      FILE_RPC_TIMEOUT_MS,
+      parseFsReadFileResponse,
+    );
+    const contents = Buffer.from(response.dataBase64, "base64");
+    if (contents.byteLength > options.maxSize) {
+      throw new RemoteFileTooLargeError(path, options.maxSize);
+    }
+    return {
+      path,
+      size: contents.byteLength,
+      modifiedAt: metadata.modifiedAtMs,
+      sample: contents.subarray(0, Math.min(contents.byteLength, 515)),
+      stream: Readable.from(contents),
+    };
+  }
+
+  async statFile(host: HostRecord, inputPath: string): Promise<RemoteFileMetadata> {
+    const path = filePathForHost(host, inputPath);
+    const client = await this.registry.getHostClient(host);
+    const metadata = await this.getFileMetadata(client, path);
+    const response = await client.request(
+      "fs/readFile",
+      { path },
+      FILE_RPC_TIMEOUT_MS,
+      parseFsReadFileResponse,
+    );
+    return {
+      path,
+      size: Buffer.from(response.dataBase64, "base64").byteLength,
+      modifiedAt: metadata.modifiedAtMs,
+    };
+  }
+
+  async writeFile(host: HostRecord, inputPath: string, content: Buffer) {
+    const path = filePathForHost(host, inputPath);
+    const client = await this.registry.getHostClient(host);
+    await client.request(
+      "fs/writeFile",
+      { path, dataBase64: content.toString("base64") },
+      FILE_RPC_TIMEOUT_MS,
+      parseFsWriteFileResponse,
+    );
+    const metadata = await this.getFileMetadata(client, path);
+    return { path, size: content.byteLength, modifiedAt: metadata.modifiedAtMs };
+  }
+
+  async removeFile(host: HostRecord, inputPath: string) {
+    const path = filePathForHost(host, inputPath);
+    const client = await this.registry.getHostClient(host);
+    await this.getFileMetadata(client, path);
+    await client.request(
+      "fs/remove",
+      { path, recursive: false, force: false },
+      FILE_RPC_TIMEOUT_MS,
+      parseFsRemoveResponse,
     );
   }
 
@@ -190,6 +307,17 @@ export class AppServerFileService {
     }
   }
 
+  private async getFileMetadata(client: CodexRpcClient, path: string) {
+    const metadata = await client.request(
+      "fs/getMetadata",
+      { path },
+      FILE_RPC_TIMEOUT_MS,
+      parseFsGetMetadataResponse,
+    );
+    if (!metadata.isFile) throw new RemoteFileNotRegularError(path);
+    return metadata;
+  }
+
   private handleNotification(watch: ActiveFileWatch, message: RpcEnvelope) {
     if (message.method !== "fs/changed") return;
     const changed = fsChangedNotificationFromUnknown(message.params);
@@ -218,6 +346,44 @@ export class AppServerFileService {
       });
     }
   }
+}
+
+function filePathForHost(host: HostRecord, inputPath: string) {
+  const trimmed = inputPath.trim();
+  if (!trimmed.startsWith("/")) throw new RemoteFileInvalidPathError(trimmed);
+  if (!isManagedRuntimeHost(host)) return trimmed;
+  const path = resolveManagedWorkspaceBrowsePath(trimmed);
+  if (!isInsideManagedWorkspace(path) || path === "/workspace") {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Managed workspace files must stay under /workspace",
+      data: { code: "invalidManagedWorkspaceFilePath" },
+    });
+  }
+  return path;
+}
+
+function directoryPathForHost(host: HostRecord, inputPath: string) {
+  const trimmed = inputPath.trim();
+  if (!trimmed.startsWith("/")) throw new RemoteFileInvalidPathError(trimmed);
+  if (!isManagedRuntimeHost(host)) return trimmed;
+  const path = resolveManagedWorkspaceBrowsePath(trimmed);
+  if (!isInsideManagedWorkspace(path)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Managed workspace folders must stay under /workspace",
+      data: { code: "invalidManagedWorkspaceDirectoryPath" },
+    });
+  }
+  return path;
+}
+
+function isMissingAppServerPathError(error: unknown) {
+  return (
+    error instanceof CodexRpcError &&
+    error.rpcMethod === "fs/getMetadata" &&
+    /not found|no such file|cannot find the (?:file|path)/iu.test(error.message)
+  );
 }
 
 function watchKey(userId: number, hostId: number, path: string) {

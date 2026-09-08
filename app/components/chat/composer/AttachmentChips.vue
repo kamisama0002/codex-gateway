@@ -12,6 +12,7 @@ import { presentComposerAttachment } from "./attachment-presentation";
 
 const props = defineProps<{
   files: ComposerAttachment[];
+  disabled: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -34,7 +35,11 @@ const presentations = computed(() => props.files.map(presentComposerAttachment))
       <AttachmentPreview />
       <AttachmentInfo class="max-w-48" />
       <!-- AI Elements hides inline removal until hover; touch users need a persistent target. -->
-      <AttachmentRemove :label="t('app.removeAttachment')" class="opacity-100" />
+      <AttachmentRemove
+        :label="t('app.removeAttachment')"
+        :disabled="disabled"
+        class="opacity-100"
+      />
     </Attachment>
   </Attachments>
 </template>

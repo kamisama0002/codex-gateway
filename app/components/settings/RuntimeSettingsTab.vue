@@ -4,29 +4,30 @@ import { FetchError } from "ofetch";
 import { computed, onMounted, ref } from "vue";
 import { Badge } from "@codex-gateway/ui/badge";
 import { Button } from "@codex-gateway/ui/button";
+import type { ManagedRuntimeStatusView } from "@codex-gateway/agent-runtime-contracts";
 import { gatewayApi } from "@/utils/gateway-api";
+import {
+  runtimePolicySummary,
+  shouldShowRuntimePolicy,
+  type RuntimePolicyBadge,
+} from "@/utils/runtime-policy-view";
 import { errorMessageLabels, messageFromError } from "@/stores/gateway/thread-utils/identity";
+import RuntimeNodeSettings from "./RuntimeNodeSettings.vue";
 
-interface RuntimeStatusView {
-  userId: number;
-  username?: string;
-  runtimeType: string;
-  imageVersion: string;
-  runtimeVersion: string;
-  status: string;
-  lastError: string | null;
-  updatedAt: string;
-}
+type RuntimeStatusView = ManagedRuntimeStatusView;
 
 const { t } = useI18n();
 const errorLabels = computed(() => errorMessageLabels(t));
 const loading = ref(true);
 const starting = ref(false);
+const restartingMine = ref(false);
 const restartingUserId = ref<number | null>(null);
 const error = ref("");
 const mine = ref<RuntimeStatusView | null>(null);
 const runtimes = ref<RuntimeStatusView[]>([]);
 const canAdminister = ref(false);
+const minePolicy = computed(() => (mine.value === null ? null : runtimePolicySummary(mine.value)));
+const mineHasPolicy = computed(() => mine.value !== null && shouldShowRuntimePolicy(mine.value));
 
 function statusVariant(status: string) {
   if (status === "ready") return "default" as const;
@@ -81,12 +82,32 @@ async function restartRuntime(userId: number) {
     const next = await gatewayApi<RuntimeStatusView>(`/api/admin/runtimes/${userId}/restart`, {
       method: "POST",
     });
-    runtimes.value = runtimes.value.map((runtime) => (runtime.userId === userId ? next : runtime));
-    if (mine.value?.userId === userId) mine.value = next;
+    runtimes.value = runtimes.value.map((runtime) =>
+      runtime.runtime?.userId === userId ? next : runtime,
+    );
+    if (mine.value?.runtime?.userId === userId) mine.value = next;
   } catch (caught: unknown) {
     error.value = messageFromError(caught, t("app.runtimeRestartFailed"), errorLabels.value);
   } finally {
     restartingUserId.value = null;
+  }
+}
+
+async function restartMine() {
+  restartingMine.value = true;
+  error.value = "";
+  try {
+    const next = await gatewayApi<RuntimeStatusView>("/api/runtime/restart", { method: "POST" });
+    mine.value = next;
+    if (canAdminister.value) {
+      runtimes.value = runtimes.value.map((runtime) =>
+        runtime.runtime?.userId === next.runtime?.userId ? next : runtime,
+      );
+    }
+  } catch (caught: unknown) {
+    error.value = messageFromError(caught, t("app.runtimeRestartFailed"), errorLabels.value);
+  } finally {
+    restartingMine.value = false;
   }
 }
 
@@ -104,10 +125,18 @@ function statusLabel(status: string) {
   return translated === key ? status : translated;
 }
 
-function runtimeTitle(runtime: RuntimeStatusView) {
-  return runtime.username === undefined || runtime.username === ""
-    ? t("app.runtimeUserFallback", { id: runtime.userId })
-    : runtime.username;
+function runtimeTitle(userId: number | undefined) {
+  return userId === undefined
+    ? t("app.runtimeMineAbsent")
+    : t("app.runtimeUserFallback", { id: userId });
+}
+
+function policyBadgeLabel(badge: RuntimePolicyBadge) {
+  return t(badge === "restart" ? "app.runtimeRestartRequired" : "app.runtimeUpgradeRequired");
+}
+
+function policyBadgeVariant(badge: RuntimePolicyBadge) {
+  return badge === "restart" ? ("secondary" as const) : ("destructive" as const);
 }
 
 function formatUpdatedAt(value: string) {
@@ -125,10 +154,7 @@ function formatUpdatedAt(value: string) {
       </p>
     </div>
 
-    <div
-      v-if="error"
-      class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
-    >
+    <div v-if="error" class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
       {{ error }}
     </div>
 
@@ -143,19 +169,101 @@ function formatUpdatedAt(value: string) {
             <Loader2Icon class="size-4 animate-spin" />
             {{ t("app.runtimeLoading") }}
           </div>
-          <div v-else-if="mine" class="space-y-1 text-sm">
-            <div class="flex flex-wrap items-center gap-2">
-              <Badge :variant="statusVariant(mine.status)">{{ statusLabel(mine.status) }}</Badge>
-              <span class="text-ink-muted">{{ mine.runtimeVersion }}</span>
+          <div v-else class="space-y-2 text-sm">
+            <template v-if="mine?.runtime">
+              <div class="flex flex-wrap items-center gap-2">
+                <Badge :variant="statusVariant(mine.runtime.status)">{{
+                  statusLabel(mine.runtime.status)
+                }}</Badge>
+                <span class="text-ink-muted">{{ mine.runtime.runtimeVersion }}</span>
+              </div>
+              <div v-if="minePolicy?.badges.length" class="flex flex-wrap gap-2">
+                <Badge
+                  v-for="badge in minePolicy.badges"
+                  :key="badge"
+                  :variant="policyBadgeVariant(badge)"
+                >
+                  {{ policyBadgeLabel(badge) }}
+                </Badge>
+              </div>
+            </template>
+            <div v-if="mineHasPolicy" class="space-y-2">
+              <div v-if="minePolicy?.assigned" class="space-y-1 border-t border-hairline pt-2">
+                <div class="text-xs font-medium text-ink-secondary">
+                  {{ t("app.runtimeAssignedPolicy") }}
+                </div>
+                <div class="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeMemory") }}</span>
+                    <span>{{ minePolicy.assigned.memory }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeCpu") }}</span>
+                    <span>{{ minePolicy.assigned.cpu }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimePids") }}</span>
+                    <span>{{ minePolicy.assigned.pids }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeImageAlias") }}</span>
+                    <span>{{ minePolicy.assigned.imageAlias }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="minePolicy?.actual" class="space-y-1 border-t border-hairline pt-2">
+                <div class="text-xs font-medium text-ink-secondary">
+                  {{ t("app.runtimeActualResources") }}
+                </div>
+                <div class="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeMemory") }}</span>
+                    <span>{{ minePolicy.actual.memory }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeCpu") }}</span>
+                    <span>{{ minePolicy.actual.cpu }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimePids") }}</span>
+                    <span>{{ minePolicy.actual.pids }}</span>
+                  </div>
+                  <div
+                    v-if="minePolicy.actual.imageAlias"
+                    class="flex items-center justify-between gap-2"
+                  >
+                    <span class="text-ink-muted">{{ t("app.runtimeImageAlias") }}</span>
+                    <span>{{ minePolicy.actual.imageAlias }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <p v-if="mine.lastError" class="text-destructive">{{ mine.lastError }}</p>
-            <p class="text-ink-muted">
-              {{ t("app.runtimeUpdatedAt", { time: formatUpdatedAt(mine.updatedAt) }) }}
+            <template v-if="mine?.runtime">
+              <p v-if="mine.runtime.lastError" class="text-destructive">
+                {{ mine.runtime.lastError }}
+              </p>
+              <p class="text-ink-muted">
+                {{ t("app.runtimeUpdatedAt", { time: formatUpdatedAt(mine.runtime.updatedAt) }) }}
+              </p>
+            </template>
+            <p v-if="!mine?.runtime && !mineHasPolicy" class="text-sm text-ink-secondary">
+              {{ t("app.runtimeMineAbsent") }}
             </p>
           </div>
-          <p v-else class="text-sm text-ink-secondary">{{ t("app.runtimeMineAbsent") }}</p>
         </div>
         <Button
+          v-if="mine?.runtime"
+          data-testid="runtime-self-restart-button"
+          class="shrink-0"
+          :disabled="loading || restartingMine"
+          @click="restartMine"
+        >
+          <Loader2Icon v-if="restartingMine" class="size-4 animate-spin" />
+          <RefreshCwIcon v-else class="size-4" />
+          {{ t("app.runtimeRestart") }}
+        </Button>
+        <Button
+          v-else
           data-testid="runtime-start-button"
           class="shrink-0"
           :disabled="loading || starting"
@@ -178,36 +286,38 @@ function formatUpdatedAt(value: string) {
       </div>
       <div
         v-for="runtime in runtimes"
-        :key="runtime.userId"
+        :key="runtime.runtime?.userId ?? runtime.runtime?.updatedAt"
         class="rounded-md border border-hairline bg-canvas-soft p-3"
         data-testid="runtime-admin-row"
       >
-        <div class="flex flex-wrap items-start justify-between gap-3">
+        <div v-if="runtime.runtime" class="flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0 space-y-1">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="text-sm font-medium">{{ runtimeTitle(runtime) }}</span>
-              <Badge :variant="statusVariant(runtime.status)">{{
-                statusLabel(runtime.status)
+              <span class="text-sm font-medium">{{ runtimeTitle(runtime.runtime.userId) }}</span>
+              <Badge :variant="statusVariant(runtime.runtime.status)">{{
+                statusLabel(runtime.runtime.status)
               }}</Badge>
             </div>
             <p class="text-sm text-ink-muted">
-              {{ runtime.imageVersion }} · {{ runtime.runtimeVersion }}
+              {{ runtime.runtime.imageVersion }} · {{ runtime.runtime.runtimeVersion }}
             </p>
-            <p v-if="runtime.lastError" class="text-sm text-destructive">{{ runtime.lastError }}</p>
+            <p v-if="runtime.runtime.lastError" class="text-sm text-destructive">
+              {{ runtime.runtime.lastError }}
+            </p>
             <p class="text-sm text-ink-muted">
-              {{ t("app.runtimeUpdatedAt", { time: formatUpdatedAt(runtime.updatedAt) }) }}
+              {{ t("app.runtimeUpdatedAt", { time: formatUpdatedAt(runtime.runtime.updatedAt) }) }}
             </p>
           </div>
           <Button
             variant="outline"
             size="sm"
             class="shrink-0"
-            :disabled="restartingUserId === runtime.userId"
+            :disabled="restartingUserId === runtime.runtime.userId"
             data-testid="runtime-restart-button"
-            @click="restartRuntime(runtime.userId)"
+            @click="restartRuntime(runtime.runtime.userId)"
           >
             <Loader2Icon
-              v-if="restartingUserId === runtime.userId"
+              v-if="restartingUserId === runtime.runtime.userId"
               class="size-4 animate-spin"
             />
             <RefreshCwIcon v-else class="size-4" />
@@ -215,6 +325,8 @@ function formatUpdatedAt(value: string) {
           </Button>
         </div>
       </div>
+
+      <RuntimeNodeSettings />
     </section>
   </div>
 </template>

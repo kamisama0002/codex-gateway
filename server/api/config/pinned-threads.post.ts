@@ -19,7 +19,7 @@ const bodySchema = z.discriminatedUnion("pinned", [
 export default defineGatewayConfigMutationHandler(async (event) => {
   const userId = event.context.auth!.user.id;
   const body = await readValidatedBody(event, (value) => bodySchema.parse(value));
-  return userConfigMutationService.commit(userId, () => {
+  return await userConfigMutationService.commit(userId, () => {
     const config = runtimeConfigStore.export();
     const hostId = body.pinned ? body.thread.hostId : body.hostId;
     const threadId = body.pinned ? body.thread.threadId : body.threadId;

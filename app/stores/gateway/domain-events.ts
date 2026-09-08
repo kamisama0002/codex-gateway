@@ -90,6 +90,11 @@ export type GatewayDomainEventMap = {
     hostId: number;
     thread: AppServerThread;
   };
+  "thread-title-detected": {
+    hostId: number;
+    threadId: string;
+    title: string;
+  };
   "thread-status-detected": {
     hostId: number;
     threadId: string;
@@ -130,6 +135,7 @@ export type GatewayDomainEventMap = {
     threadId: string;
     tokenUsage: ThreadTokenUsageState;
   };
+  "thread-queue-invalidated": { hostId: number; threadId: string };
   "history-item-upsert": { hostId: number; threadId: string; item: ThreadHistoryItem };
   "history-agent-delta": { hostId: number; threadId: string; params: AppServerEventParams };
   "history-plan-delta": { hostId: number; threadId: string; params: AppServerEventParams };

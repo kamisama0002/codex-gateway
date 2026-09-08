@@ -1,0 +1,20 @@
+{
+  "name": "org__e2e",
+  "interface": {
+    "displayName": "Org E2e"
+  },
+  "plugins": [
+    {
+      "name": "org-e2e-runtime",
+      "source": {
+        "source": "local",
+        "path": "./plugins/org-e2e-runtime"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

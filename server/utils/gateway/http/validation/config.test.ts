@@ -6,6 +6,39 @@ import {
 import { parseGatewayConfig } from "./config";
 
 describe("parseGatewayConfig", () => {
+  it("defaults and normalizes pet settings for stored legacy configs", () => {
+    const config = parseGatewayConfig({ version: 1 });
+    expect(config.pet).toEqual({ enabled: true, petId: "congming", animations: true });
+  });
+
+  it("keeps explicit pet settings", () => {
+    const config = parseGatewayConfig({
+      version: 1,
+      pet: { enabled: false, petId: "  jiangjiang  ", animations: false },
+    });
+    expect(config.pet).toEqual({ enabled: false, petId: "jiangjiang", animations: false });
+  });
+
+  it.each(["codex", "dewey", "fireball", "rocky", "seedy", "stacky", "bsod", "null-signal"])(
+    "migrates the legacy pet id %s to the new default",
+    (petId) => {
+      const config = parseGatewayConfig({
+        version: 1,
+        pet: { enabled: true, petId, animations: true },
+      });
+      expect(config.pet.petId).toBe("congming");
+    },
+  );
+
+  it("rejects unknown pet ids", () => {
+    expect(() =>
+      parseGatewayConfig({
+        version: 1,
+        pet: { enabled: true, petId: "unknown-pet", animations: true },
+      }),
+    ).toThrow(/Invalid option/);
+  });
+
   it("strips the reserved local Agent host instead of storing it as SSH config", () => {
     const config = parseGatewayConfig({
       version: 1,
@@ -47,5 +80,6 @@ describe("parseGatewayConfig", () => {
       expect.objectContaining({ id: 1, name: "centos10", sshHost: "192.168.48.110" }),
     ]);
     expect(config.projects).toEqual([]);
+    expect(config.notifications.bark.group).toBe("Agent Platform");
   });
 });

@@ -6,6 +6,7 @@ import { MessageAction, MessageActions } from "@codex-gateway/ai-elements/messag
 import { toast } from "@codex-gateway/ui/sonner";
 import TurnDurationLabel from "@/components/thread/TurnDurationLabel.vue";
 import TurnUsageAmountLabel from "@/components/thread/TurnUsageAmountLabel.vue";
+import MessageTimeLabel from "@/components/thread/MessageTimeLabel.vue";
 import type { ThreadResponseUsage } from "~~/shared/thread-history/types";
 import type { DisplayedTurnTiming } from "@/utils/turn-timing";
 
@@ -13,6 +14,8 @@ const props = defineProps<{
   text: string;
   turnTiming?: DisplayedTurnTiming | null;
   responseUsage?: ThreadResponseUsage[];
+  actionsAvailable?: boolean;
+  messageTimeMs?: number | null;
 }>();
 
 const { t } = useI18n();
@@ -36,18 +39,21 @@ async function copyText() {
 </script>
 
 <template>
-  <!-- The parent withholds actions only while the Agent loop can still append a continuation. -->
+  <!-- Keep the message time visible; turn metrics and copy wait until the Agent loop settles. -->
   <MessageActions data-testid="agent-message-actions" class="mt-1.5 flex items-center gap-2">
-    <TurnDurationLabel v-if="turnTiming" :timing="turnTiming" />
-    <TurnUsageAmountLabel :usage="responseUsage" />
-    <MessageAction
-      :tooltip="t('app.copyAgentOutput')"
-      size="sm"
-      class="size-7 p-0 text-ink-muted hover:bg-canvas-soft hover:text-ink"
-      @click="copyText"
-    >
-      <CheckIcon v-if="copied" class="size-4 text-accent-green" />
-      <CopyIcon v-else class="size-4" />
-    </MessageAction>
+    <template v-if="actionsAvailable">
+      <TurnDurationLabel v-if="turnTiming" :timing="turnTiming" />
+      <TurnUsageAmountLabel :usage="responseUsage" />
+      <MessageAction
+        :tooltip="t('app.copyAgentOutput')"
+        size="sm"
+        class="size-7 p-0 text-ink-muted hover:bg-canvas-soft hover:text-ink"
+        @click="copyText"
+      >
+        <CheckIcon v-if="copied" class="size-4 text-accent-green" />
+        <CopyIcon v-else class="size-4" />
+      </MessageAction>
+    </template>
+    <MessageTimeLabel :time-ms="messageTimeMs ?? null" />
   </MessageActions>
 </template>

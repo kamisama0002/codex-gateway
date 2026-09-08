@@ -11,7 +11,8 @@ let recoveryTimer: number | null = null;
 
 const state = computed(() => {
   if (realtime.connected) return recovered.value ? "recovered" : "hidden";
-  return realtime.reconnectAttempt > 0 ? "connecting" : "disconnected";
+  if (realtime.reconnectExhausted) return "disconnected";
+  return realtime.reconnectAttempt > 0 || realtime.socket !== null ? "connecting" : "disconnected";
 });
 const label = computed(() => {
   if (state.value === "recovered") return t("app.realtimeRecovered");

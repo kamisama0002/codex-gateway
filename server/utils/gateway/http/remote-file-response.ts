@@ -1,8 +1,10 @@
 import { isBinaryFileSync } from "isbinaryfile";
 import type { H3Event } from "h3";
 import { getHeader, sendStream, setResponseHeader, setResponseStatus } from "h3";
+import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
 import { remoteFiles } from "../infra/host-services";
 import type { HostWithSecret } from "../infra/ssh/ssh-types";
+import { threadBroker } from "../runtime/broker";
 
 export async function sendRemoteFile(
   event: H3Event,
@@ -10,9 +12,9 @@ export async function sendRemoteFile(
   path: string,
   options: { maxSize: number; contentType: string; previewKind: "document" | "detect" },
 ) {
-  const file = await remoteFiles.openRemoteFile(host, path, {
-    maxSize: options.maxSize,
-  });
+  const file = isManagedRuntimeHost(host)
+    ? await threadBroker.openFile(host, path, { maxSize: options.maxSize })
+    : await remoteFiles.openRemoteFile(host, path, { maxSize: options.maxSize });
   const etag = remoteFileEtag(file.size, file.modifiedAt);
   setResponseHeader(event, "etag", etag);
   setResponseHeader(event, "last-modified", new Date(file.modifiedAt).toUTCString());

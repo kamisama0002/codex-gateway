@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { ThreadHistoryItem } from "~~/shared/types";
 import { useTimestamp } from "@vueuse/core";
-import { BrainIcon, Loader2Icon } from "@lucide/vue";
+import { BrainIcon, ChevronDownIcon } from "@lucide/vue";
 import { computed, watch } from "vue";
+import { Collapsible, CollapsibleTrigger } from "@codex-gateway/ui/collapsible";
+import DeferredCollapsibleContent from "@/components/common/DeferredCollapsibleContent.vue";
 import MarkdownContent from "@/components/common/MarkdownContent.vue";
 import { isItemInProgress, threadItemText } from "@/utils/thread-items";
 import { formatDurationMs, itemCompletedAtMs, itemStartedAtMs } from "@/utils/item-timing";
@@ -21,26 +23,48 @@ const elapsedMs = computed(() => {
 const timeLabel = computed(() =>
   elapsedMs.value === null ? null : formatDurationMs(elapsedMs.value),
 );
+const summary = computed(() => {
+  const visible = text.value.trimEnd();
+  if (visible === "") {
+    return inProgress.value ? t("app.thinking") : t("app.turnProcessThoughtForAWhile");
+  }
+  const lines = visible.split("\n");
+  return inProgress.value ? (lines.at(-1) ?? visible) : (lines[0] ?? visible);
+});
 
 watch(inProgress, (active) => (active ? resume() : pause()), { immediate: true });
 </script>
 
 <template>
-  <div class="max-w-4xl text-sm leading-6 text-ink-muted">
-    <div class="flex items-start gap-2">
-      <Loader2Icon v-if="inProgress" class="mt-1 size-4 shrink-0 animate-spin text-primary" />
-      <BrainIcon v-else class="mt-1 size-4 shrink-0" />
-      <div class="min-w-0 flex-1">
-        <div class="mb-1 flex items-center gap-2 text-xs text-ink-muted">
-          <span>{{ t("app.thinking") }}</span>
-          <span
-            v-if="timeLabel !== null"
-            class="rounded-full bg-surface/80 px-2 py-0.5 font-mono text-[0.6875rem] text-ink-secondary"
-            >{{ timeLabel }}</span
-          >
-        </div>
+  <Collapsible v-slot="{ open }" class="max-w-4xl text-ink-muted">
+    <CollapsibleTrigger
+      class="timeline-process-row group/reasoning flex h-6 w-full min-w-0 items-center text-left text-sm"
+      :data-state="inProgress ? 'running' : undefined"
+      :aria-label="t('app.turnProcessAccessibleLabel', { title: t('app.reasoning'), summary })"
+    >
+      <span class="relative mr-1.5 inline-flex size-4 shrink-0 items-center justify-center">
+        <ChevronDownIcon v-if="open" class="size-3.5 text-ink-muted" />
+        <template v-else>
+          <BrainIcon class="size-3.5 text-ink-muted group-hover/reasoning:hidden" />
+          <ChevronDownIcon
+            class="hidden size-3.5 -rotate-90 text-ink-muted group-hover/reasoning:block"
+          />
+        </template>
+      </span>
+      <span class="shrink-0 text-ink-muted">{{ t("app.reasoning") }}</span>
+      <span class="mx-2 size-0.5 shrink-0 rounded-full bg-ink-faint" aria-hidden="true" />
+      <span class="min-w-0 flex-1 truncate text-[0.8125rem] text-ink-faint">{{ summary }}</span>
+      <span
+        v-if="timeLabel !== null"
+        class="ml-2 shrink-0 font-mono text-[0.6875rem] text-ink-faint"
+      >
+        {{ timeLabel }}
+      </span>
+    </CollapsibleTrigger>
+    <DeferredCollapsibleContent :open="open">
+      <div class="py-1 pl-6 text-[0.8125rem] leading-5 text-ink-faint">
         <MarkdownContent v-if="text" :content="text" :streaming="inProgress" compact />
       </div>
-    </div>
-  </div>
+    </DeferredCollapsibleContent>
+  </Collapsible>
 </template>
