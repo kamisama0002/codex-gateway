@@ -55,4 +55,21 @@ describe("platform integration state", () => {
       "degraded",
     );
   });
+
+  it("stays pending after generated plaintext is cleared when refreshed code metadata remains", () => {
+    const refreshed = {
+      pairingCode: { expiresAt: "2026-09-08T00:00:10.000Z" },
+      active: null,
+    };
+    const localAfterClose = clearPairingCode({
+      status: "pending" as const,
+      pairingCode: "plaintext-once-code",
+      expiresAt: refreshed.pairingCode.expiresAt,
+    });
+
+    expect(localAfterClose.pairingCode).toBeNull();
+    expect(
+      platformIntegrationView(refreshed, null, Date.parse("2026-09-08T00:00:00.000Z")).status,
+    ).toBe("pending");
+  });
 });

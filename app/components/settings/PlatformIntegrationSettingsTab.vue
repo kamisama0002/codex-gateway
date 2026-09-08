@@ -68,6 +68,7 @@ async function generate() {
     expiresAt.value = result.expiresAt;
     dialogOpen.value = true;
     tick();
+    await refresh();
   } finally {
     loading.value = false;
   }
