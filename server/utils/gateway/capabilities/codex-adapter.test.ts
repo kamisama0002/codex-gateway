@@ -27,6 +27,46 @@ const managedHost = {
 } satisfies HostRecord;
 
 describe("planChanges", () => {
+  it("maps authenticated HTTP MCP settings to Codex config keys", () => {
+    const desired = [
+      definition("org__infinity", "mcp", {
+        transport: "streamable_http",
+        url: "http://172.25.106.252:8000/api/v1/mcp/",
+        bearerTokenEnvVar: "INFINITY_MCP_TOKEN",
+        httpHeaders: { "X-Infinity-Tenant-ID": "1" },
+      }),
+    ];
+
+    expect(planChanges(desired, emptyActualCapabilityState())).toEqual([
+      {
+        operation: "configureMcp",
+        capabilityId: "org__infinity",
+        config: {
+          url: "http://172.25.106.252:8000/api/v1/mcp/",
+          bearer_token_env_var: "INFINITY_MCP_TOKEN",
+          http_headers: { "X-Infinity-Tenant-ID": "1" },
+        },
+      },
+    ]);
+    expect(
+      planChanges(desired, {
+        ...emptyActualCapabilityState(),
+        mcpServers: [
+          {
+            name: "org__infinity",
+            config: {
+              url: "http://172.25.106.252:8000/api/v1/mcp/",
+              bearer_token_env_var: "INFINITY_MCP_TOKEN",
+              http_headers: { "X-Infinity-Tenant-ID": "1" },
+            },
+            runtimeStatus: "connected",
+            authStatus: "bearerToken",
+          },
+        ],
+      }),
+    ).toEqual([]);
+  });
+
   it("produces a deterministic plan for missing capabilities", () => {
     const desired = [
       definition("org__revenue", "skill", { entryPath: "SKILL.md" }),

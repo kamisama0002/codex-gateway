@@ -1,6 +1,7 @@
 import { MANAGED_RUNTIME_HOST_ID } from "../../../../shared/runtime/managed-runtime.ts";
 import {
   DEFAULT_BROWSER_CAPABILITY_ID,
+  DEFAULT_INFINITY_MCP_CAPABILITY_ID,
   DEFAULT_WEB_SEARCH_CAPABILITY_ID,
 } from "../../../../shared/types/capabilities.ts";
 
@@ -533,6 +534,46 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
   },
   {
     version: 15,
+    statements: [
+      `
+        INSERT IGNORE INTO capability_definitions (
+          id, kind, display_name, description, version, source_json, config_json,
+          sensitive_fields_json, enabled, created_by_user_id, created_at, updated_at
+        ) VALUES (
+          '${DEFAULT_INFINITY_MCP_CAPABILITY_ID}',
+          'mcp',
+          'Infinity Dinky',
+          'Query and operate the Dinky data platform through the managed Infinity MCP service.',
+          '1.0.0',
+          JSON_OBJECT('type', 'internal', 'locator', 'infinity-mcp'),
+          JSON_OBJECT(
+            'transport', 'streamable_http',
+            'url', 'http://172.25.106.252:8000/api/v1/mcp/',
+            'bearerTokenEnvVar', 'INFINITY_MCP_TOKEN',
+            'httpHeaders', JSON_OBJECT('X-Infinity-Tenant-ID', '1')
+          ),
+          JSON_ARRAY('INFINITY_MCP_TOKEN'),
+          1,
+          NULL,
+          DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ'),
+          DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')
+        )
+      `,
+      `
+        INSERT IGNORE INTO capability_assignments (
+          capability_id, user_id, project_id, created_at
+        )
+        SELECT
+          '${DEFAULT_INFINITY_MCP_CAPABILITY_ID}',
+          id,
+          NULL,
+          DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')
+        FROM users
+      `,
+    ],
+  },
+  {
+    version: 16,
     statements: [
       `
         CREATE TABLE IF NOT EXISTS platform_integrations (

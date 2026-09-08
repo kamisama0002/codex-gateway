@@ -47,8 +47,18 @@ describe("MySQL capability schema", () => {
     expect(sql).toContain("INSERT IGNORE INTO capability_assignments");
   });
 
-  it("adds versioned DataOps integration pairing state in migration 15", () => {
+  it("seeds the authenticated Infinity Dinky MCP in migration 15", () => {
     const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 15);
+    const sql = migration?.statements.join("\n") ?? "";
+    expect(sql).toContain("org__infinity");
+    expect(sql).toContain("http://172.25.106.252:8000/api/v1/mcp/");
+    expect(sql).toContain("bearerTokenEnvVar");
+    expect(sql).toContain("INFINITY_MCP_TOKEN");
+    expect(sql).toContain("INSERT IGNORE INTO capability_assignments");
+  });
+
+  it("adds versioned DataOps integration pairing state in migration 16", () => {
+    const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 16);
     const sql = migration?.statements.join("\n") ?? "";
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS platform_integrations");
     expect(sql).toContain("encrypted_shared_secret LONGTEXT NOT NULL");

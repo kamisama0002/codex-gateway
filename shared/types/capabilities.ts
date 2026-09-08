@@ -2,6 +2,7 @@ export type CapabilityKind = "skill" | "plugin" | "app" | "mcp" | "search";
 
 export const DEFAULT_WEB_SEARCH_CAPABILITY_ID = "org__web_search";
 export const DEFAULT_BROWSER_CAPABILITY_ID = "org__browser";
+export const DEFAULT_INFINITY_MCP_CAPABILITY_ID = "org__infinity";
 
 export interface CapabilitySource {
   type: "builtin" | "git" | "internal" | "upload";
@@ -32,6 +33,7 @@ export interface HttpMcpCapabilityConfig {
   transport: "streamable_http";
   url: string;
   bearerTokenEnvVar?: string;
+  httpHeaders?: Record<string, string>;
   envHttpHeaders?: Record<string, string>;
 }
 

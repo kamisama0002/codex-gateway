@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseCapabilityCreateInput } from "./schemas";
 
-const definition = {
+const dinkyDefinition = {
   id: "org__dinky_mcp",
   kind: "mcp" as const,
   displayName: "Dinky Business MCP",
@@ -14,20 +14,46 @@ const definition = {
   config: {
     transport: "streamable_http" as const,
     url: "https://dinky.example.test/api/infinity/mcp/transport",
+    bearerTokenEnvVar: "INFINITY_USER_TOKEN",
     envHttpHeaders: { "X-INFINITY-TENANT-ID": "INFINITY_TENANT_ID" },
   },
 };
 
-describe("authenticated HTTP MCP schema", () => {
-  it("accepts standard HTTP token header names", () => {
-    expect(parseCapabilityCreateInput(definition)).toMatchObject({ kind: "mcp" });
+describe("capability schemas", () => {
+  it("accepts literal and environment-backed authentication for a private HTTP MCP", () => {
+    expect(
+      parseCapabilityCreateInput({
+        id: "org__infinity",
+        kind: "mcp",
+        displayName: "Infinity Dinky",
+        description: "Dinky MCP",
+        version: "1.0.0",
+        source: { type: "internal", locator: "infinity-mcp" },
+        config: {
+          transport: "streamable_http",
+          url: "http://172.25.106.252:8000/api/v1/mcp/",
+          bearerTokenEnvVar: "INFINITY_MCP_TOKEN",
+          httpHeaders: { "X-Infinity-Tenant-ID": "1" },
+        },
+        sensitiveFields: ["INFINITY_MCP_TOKEN"],
+      }),
+    ).toMatchObject({
+      config: {
+        bearerTokenEnvVar: "INFINITY_MCP_TOKEN",
+        httpHeaders: { "X-Infinity-Tenant-ID": "1" },
+      },
+    });
+    expect(parseCapabilityCreateInput(dinkyDefinition)).toMatchObject({ kind: "mcp" });
   });
 
   it.each(["X Header", ":authority", "X-租户"])("rejects non-token header %s", (header) => {
     expect(() =>
       parseCapabilityCreateInput({
-        ...definition,
-        config: { ...definition.config, envHttpHeaders: { [header]: "INFINITY_TENANT_ID" } },
+        ...dinkyDefinition,
+        config: {
+          ...dinkyDefinition.config,
+          envHttpHeaders: { [header]: "INFINITY_TENANT_ID" },
+        },
       }),
     ).toThrow();
   });

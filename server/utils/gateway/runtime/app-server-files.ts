@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { posix } from "node:path";
 import { Readable } from "node:stream";
 import { createError } from "h3";
+import pLimit from "p-limit";
 import type {
   HostRecord,
   ProjectFileSearchResult,
@@ -31,6 +32,7 @@ import {
   RemoteFileNotRegularError,
   RemoteFileTooLargeError,
 } from "../infra/files/remote-file-errors";
+import { CodexRpcError } from "../http/errors";
 import { bindGatewayUser, currentGatewayUserId } from "../state/memory";
 import { normalizeReferencePath } from "../project-files/project-file-references";
 
@@ -96,13 +98,39 @@ export class AppServerFileService {
   }
 
   async createDirectory(host: HostRecord, path: string) {
+    const resolvedPath = directoryPathForHost(host, path);
     const client = await this.registry.getHostClient(host);
     await client.request(
       "fs/createDirectory",
-      { path, recursive: true },
+      { path: resolvedPath, recursive: true },
       FILE_RPC_TIMEOUT_MS,
       parseFsCreateDirectoryResponse,
     );
+  }
+
+  async existingPaths(host: HostRecord, inputPaths: string[]) {
+    const paths = [...new Set(inputPaths.map((path) => filePathForHost(host, path)))];
+    const client = await this.registry.getHostClient(host);
+    const inspect = pLimit(8);
+    const existing = await Promise.all(
+      paths.map((path) =>
+        inspect(async () => {
+          try {
+            await client.request(
+              "fs/getMetadata",
+              { path },
+              FILE_RPC_TIMEOUT_MS,
+              parseFsGetMetadataResponse,
+            );
+            return path;
+          } catch (error) {
+            if (isMissingAppServerPathError(error)) return null;
+            throw error;
+          }
+        }),
+      ),
+    );
+    return existing.filter((path): path is string => path !== null);
   }
 
   async openFile(
@@ -333,6 +361,29 @@ function filePathForHost(host: HostRecord, inputPath: string) {
     });
   }
   return path;
+}
+
+function directoryPathForHost(host: HostRecord, inputPath: string) {
+  const trimmed = inputPath.trim();
+  if (!trimmed.startsWith("/")) throw new RemoteFileInvalidPathError(trimmed);
+  if (!isManagedRuntimeHost(host)) return trimmed;
+  const path = resolveManagedWorkspaceBrowsePath(trimmed);
+  if (!isInsideManagedWorkspace(path)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Managed workspace folders must stay under /workspace",
+      data: { code: "invalidManagedWorkspaceDirectoryPath" },
+    });
+  }
+  return path;
+}
+
+function isMissingAppServerPathError(error: unknown) {
+  return (
+    error instanceof CodexRpcError &&
+    error.rpcMethod === "fs/getMetadata" &&
+    /not found|no such file|cannot find the (?:file|path)/iu.test(error.message)
+  );
 }
 
 function watchKey(userId: number, hostId: number, path: string) {

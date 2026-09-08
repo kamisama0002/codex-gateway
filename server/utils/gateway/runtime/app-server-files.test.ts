@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import type { HostRecord } from "~~/shared/types";
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
+import { CodexRpcError } from "../http/errors";
 import { RemoteFileTooLargeError } from "../infra/files/remote-file-errors";
 import { CodexRpcClient } from "../infra/rpc/rpc";
 import { AppServerFileService, type AppServerFileControllerRegistry } from "./app-server-files";
@@ -91,6 +92,38 @@ describe("AppServerFileService managed workspace files", () => {
       ["fs/getMetadata", { path: "/workspace/report.md" }],
       ["fs/remove", { path: "/workspace/report.md", recursive: false, force: false }],
     ]);
+  });
+
+  it("returns only existing workspace paths when metadata reports a missing file", async () => {
+    const client = new CodexRpcClient(managedHost, { skipVersionCheck: true });
+    const request = vi.spyOn(client, "request").mockImplementation(async (method, params) => {
+      if (method !== "fs/getMetadata") throw new Error(`Unexpected method ${method}`);
+      if (
+        params === null ||
+        typeof params !== "object" ||
+        !("path" in params) ||
+        typeof params.path !== "string"
+      ) {
+        throw new Error("Expected a metadata path");
+      }
+      const path = params.path;
+      if (path.endsWith("missing.txt")) {
+        throw new CodexRpcError(method, -32603, "No such file or directory");
+      }
+      return {
+        isDirectory: false,
+        isFile: true,
+        isSymlink: false,
+        createdAtMs: 10,
+        modifiedAtMs: 20,
+      };
+    });
+    const service = new AppServerFileService({ getHostClient: async () => client });
+
+    await expect(
+      service.existingPaths(managedHost, ["/workspace/report.txt", "/workspace/missing.txt"]),
+    ).resolves.toEqual(["/workspace/report.txt"]);
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it("does not send managed file RPCs outside /workspace", async () => {
