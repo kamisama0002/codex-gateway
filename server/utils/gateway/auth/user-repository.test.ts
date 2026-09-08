@@ -74,7 +74,7 @@ describe("UserRepository", () => {
     await expect(store.login("login-user", "correct-password")).resolves.toBeNull();
   });
 
-  it("assigns the default web search and browser capabilities to every new user", async () => {
+  it("assigns the default web search, browser, and Infinity capabilities to every new user", async () => {
     const repository = new UserRepository(db);
     await db.execute("UPDATE capability_definitions SET enabled = 0 WHERE id = ?", [
       "org__web_search",
@@ -92,6 +92,7 @@ describe("UserRepository", () => {
       ),
     ).resolves.toEqual([
       { capability_id: "org__browser" },
+      { capability_id: "org__infinity" },
       { capability_id: "org__web_search" },
     ]);
   });

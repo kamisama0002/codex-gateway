@@ -444,7 +444,16 @@ function mcpConfig(definition: CapabilityDefinition): McpCapabilityConfig {
 function desiredMcpConfig(config: McpCapabilityConfig): Record<string, unknown> {
   return config.transport === "stdio"
     ? { command: config.command, args: config.args }
-    : { url: config.url };
+    : {
+        url: config.url,
+        ...(config.bearerTokenEnvVar === undefined
+          ? {}
+          : { bearer_token_env_var: config.bearerTokenEnvVar }),
+        ...(config.httpHeaders === undefined ? {} : { http_headers: config.httpHeaders }),
+        ...(config.envHttpHeaders === undefined
+          ? {}
+          : { env_http_headers: config.envHttpHeaders }),
+      };
 }
 
 function normalizeActualMcpConfig(value: unknown): Record<string, unknown> | null {
@@ -457,7 +466,22 @@ function normalizeActualMcpConfig(value: unknown): Record<string, unknown> | nul
         : [],
     };
   }
-  return typeof config.url === "string" ? { url: config.url } : null;
+  if (typeof config.url !== "string") return null;
+  const bearerTokenEnvVar =
+    typeof config.bearer_token_env_var === "string" ? config.bearer_token_env_var : undefined;
+  const httpHeaders = stringRecordFromUnknown(config.http_headers);
+  const envHttpHeaders = stringRecordFromUnknown(config.env_http_headers);
+  return {
+    url: config.url,
+    ...(bearerTokenEnvVar === undefined ? {} : { bearer_token_env_var: bearerTokenEnvVar }),
+    ...(httpHeaders === null ? {} : { http_headers: httpHeaders }),
+    ...(envHttpHeaders === null ? {} : { env_http_headers: envHttpHeaders }),
+  };
+}
+
+function stringRecordFromUnknown(value: unknown): Record<string, string> | null {
+  const parsed = z.record(z.string(), z.string()).safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {

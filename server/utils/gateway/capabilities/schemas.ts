@@ -75,10 +75,26 @@ const stdioMcpConfigSchema = z
   })
   .strict();
 
+const environmentNameSchema = z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u);
+const httpHeaderNameSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/u);
+const httpHeadersSchema = z
+  .record(httpHeaderNameSchema, z.string().max(4_096))
+  .refine((headers) => Object.keys(headers).length <= 32, "Too many MCP HTTP headers");
+const environmentHttpHeadersSchema = z
+  .record(httpHeaderNameSchema, environmentNameSchema)
+  .refine((headers) => Object.keys(headers).length <= 32, "Too many MCP environment headers");
+
 const httpMcpConfigSchema = z
   .object({
     transport: z.literal("streamable_http"),
     url: z.string().trim().min(1).max(2_048),
+    bearerTokenEnvVar: environmentNameSchema.optional(),
+    httpHeaders: httpHeadersSchema.optional(),
+    envHttpHeaders: environmentHttpHeadersSchema.optional(),
   })
   .strict()
   .superRefine((config, context) => {

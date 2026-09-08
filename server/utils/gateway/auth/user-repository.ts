@@ -1,6 +1,7 @@
 import type { DbRow, GatewayDb } from "../storage/contracts";
 import {
   DEFAULT_BROWSER_CAPABILITY_ID,
+  DEFAULT_INFINITY_MCP_CAPABILITY_ID,
   DEFAULT_WEB_SEARCH_CAPABILITY_ID,
 } from "../../../../shared/types/capabilities.ts";
 
@@ -76,11 +77,12 @@ export class UserRepository {
        )
        SELECT id, ?, NULL, ?
        FROM capability_definitions
-       WHERE id IN (?, ?)`,
+       WHERE id IN (?, ?, ?)`,
       [
         result.insertId,
         input.now,
         DEFAULT_BROWSER_CAPABILITY_ID,
+        DEFAULT_INFINITY_MCP_CAPABILITY_ID,
         DEFAULT_WEB_SEARCH_CAPABILITY_ID,
       ],
     );

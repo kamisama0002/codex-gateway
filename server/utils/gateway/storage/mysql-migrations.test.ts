@@ -38,7 +38,7 @@ describe("MySQL gateway migrations", () => {
     );
     expect(
       await db.one("SELECT version, checksum FROM schema_migrations ORDER BY version DESC"),
-    ).toEqual(expect.objectContaining({ version: 14 }));
+    ).toEqual(expect.objectContaining({ version: 15 }));
   });
 
   it("rejects a changed checksum for an applied migration", async () => {
@@ -314,6 +314,7 @@ describe("MySQL gateway migrations", () => {
       { version: 12, count: 1 },
       { version: 13, count: 1 },
       { version: 14, count: 1 },
+      { version: 15, count: 1 },
     ]);
   });
 
@@ -388,5 +389,31 @@ describe("MySQL gateway migrations", () => {
         ["browser-user", "org__browser"],
       ),
     ).resolves.toEqual({ capability_id: "org__browser" });
+  });
+
+  it("assigns the Infinity Dinky MCP to users that predate migration 15", async () => {
+    const db = await freshMysqlTestDatabase();
+    await migrateMysqlGatewayDatabase(db);
+    await db.execute("DELETE FROM schema_migrations WHERE version = ?", [15]);
+    await db.execute("DELETE FROM capability_assignments WHERE capability_id = ?", [
+      "org__infinity",
+    ]);
+    await db.execute("DELETE FROM capability_definitions WHERE id = ?", ["org__infinity"]);
+    await db.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", [
+      "infinity-user",
+      "password-hash",
+    ]);
+
+    await migrateMysqlGatewayDatabase(db);
+
+    await expect(
+      db.one(
+        `SELECT a.capability_id
+         FROM capability_assignments a
+         JOIN users u ON u.id = a.user_id
+         WHERE u.username = ? AND a.capability_id = ?`,
+        ["infinity-user", "org__infinity"],
+      ),
+    ).resolves.toEqual({ capability_id: "org__infinity" });
   });
 });
