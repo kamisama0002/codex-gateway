@@ -35,14 +35,14 @@
 - Create: `server/utils/gateway/integrations/pairing-code-repository.test.ts`
 
 **Interfaces:**
-- Add MySQL migration version `10`.
+- Add MySQL migration version `15` because `origin/dev` already contains versions 1–14.
 - Produce `type DataOpsBindingStatus = "pending" | "active" | "grace" | "retired"`.
 - Produce `DataOpsIntegrationRepository` methods `active()`, `acceptedForAuthentication()`, `pending(pairingId)`, `stage(input)`, `confirm(pairingId, revision, graceExpiresAt)`, and `finalize(pairingId, revision)`.
 - Produce `PairingCodeRepository` methods `create(actorUserId, codeHash, expiresAt)`, `consume(codeHash, pairingId, now)`, `revokeActive(now)`, and `activeStatus(now)`.
 
 - [ ] **Step 1: Write migration and repository tests**
 
-Tests must use the repository's real MySQL test helper. Assert migration 10 creates `platform_integrations` and `integration_pairing_codes`, raw encrypted values exclude a fixture secret, one active plus one pending version can coexist, stale revisions fail, expired/reused pairing codes fail, and concurrent consume has one winner.
+Tests must use the repository's real MySQL test helper. Assert migration 15 creates `platform_integrations` and `integration_pairing_codes`, raw encrypted values exclude a fixture secret, one active plus one pending version can coexist, stale revisions fail, expired/reused pairing codes fail, and concurrent consume has one winner.
 
 - [ ] **Step 2: Run tests and verify RED**
 
