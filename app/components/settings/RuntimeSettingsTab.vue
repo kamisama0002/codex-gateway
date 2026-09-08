@@ -12,6 +12,7 @@ import {
   type RuntimePolicyBadge,
 } from "@/utils/runtime-policy-view";
 import { errorMessageLabels, messageFromError } from "@/stores/gateway/thread-utils/identity";
+import RuntimeNodeSettings from "./RuntimeNodeSettings.vue";
 
 type RuntimeStatusView = ManagedRuntimeStatusView;
 
@@ -324,6 +325,8 @@ function formatUpdatedAt(value: string) {
           </Button>
         </div>
       </div>
+
+      <RuntimeNodeSettings />
     </section>
   </div>
 </template>

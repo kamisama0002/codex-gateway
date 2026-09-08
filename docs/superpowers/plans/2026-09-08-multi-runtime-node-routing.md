@@ -598,7 +598,7 @@ git commit -m "feat(runtime): route users through node placement"
 - Admins can list, add, probe, rename, resize, drain, disable, and reactivate nodes.
 - Create and update requests never accept encrypted values, container IDs, Docker paths, runtime IDs, or service tokens.
 
-- [ ] **Step 1: Write authorization and redaction tests**
+- [x] **Step 1: Write authorization and redaction tests**
 
 ```ts
 it("returns node capacity and health without base URL or encrypted secret", async () => {
@@ -609,28 +609,31 @@ it("returns node capacity and health without base URL or encrypted secret", asyn
 });
 ```
 
-- [ ] **Step 2: Verify route RED**
+- [x] **Step 2: Verify route RED**
 
 ```bash
 pnpm exec vitest run server/utils/gateway/runtime-manager/runtime-node-routes.test.ts
 ```
 
-- [ ] **Step 3: Implement fixed-action admin APIs**
+- [x] **Step 3: Implement fixed-action admin APIs**
 
 Node creation validates URL policy, encrypts the secret, performs a signed status probe, verifies returned node ID, and only then inserts the node. A node with placements cannot be deleted; this milestone does not add delete.
 
-- [ ] **Step 4: Add node cards to Runtime settings**
+- [x] **Step 4: Add node cards to Runtime settings**
 
 Display health, scheduling state, capacity, reservation, runtime count, disk free, version, last seen, and fixed actions. Secret input is write-only and never rendered after save.
 
-- [ ] **Step 5: Run routes, component typecheck, i18n, and formatting**
+- [x] **Step 5: Run routes, component typecheck, i18n, and formatting**
+
+Repository note: the active locale files are `i18n/locales/zh.json` and `i18n/locales/en.json`;
+the stale `zh-CN.json` / `en-US.json` names in the original file list do not exist.
 
 ```bash
 pnpm exec vitest run server/utils/gateway/runtime-manager/runtime-node-routes.test.ts
 pnpm lint
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/api/admin/runtime-nodes server/utils/gateway/runtime-manager/runtime-node-routes.test.ts app/components/settings/RuntimeNodeSettings.vue app/components/settings/RuntimeSettingsTab.vue i18n/locales/zh-CN.json i18n/locales/en-US.json
