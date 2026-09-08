@@ -11,6 +11,7 @@
     { "command": "rg", "versionArgs": ["--version"] },
     { "command": "fd", "versionArgs": ["--version"] },
     { "command": "rsync", "versionArgs": ["--version"] },
+    { "command": "tmux", "versionArgs": ["-V"] },
     { "command": "patch", "versionArgs": ["--version"] },
     { "command": "zip", "versionArgs": ["--version"] },
     { "command": "unzip", "versionArgs": ["-v"] },

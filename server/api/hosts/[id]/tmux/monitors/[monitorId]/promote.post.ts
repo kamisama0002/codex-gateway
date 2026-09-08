@@ -4,14 +4,13 @@ import {
   hostLogContext,
   setGatewayRequestLogContext,
 } from "../../../../../../utils/gateway/http/errors";
-import { requireRecord } from "../../../../../../utils/gateway/http/validation/common";
-import { hostStore } from "../../../../../../utils/gateway/state/hosts";
+import { requireWorkspaceHost } from "../../../../../../utils/gateway/runtime-manager/local-workspace";
 import { tmuxMonitorService } from "../../../../../../utils/gateway/tmux-monitor/monitor-service";
 
 export default defineGatewayEventHandler(async (event) => {
   const hostId = Number(getRouterParam(event, "id"));
   const monitorId = Number(getRouterParam(event, "monitorId"));
-  const host = requireRecord(hostStore.getWithSecret(hostId), "Host not found");
+  const host = await requireWorkspaceHost(hostId);
   setGatewayRequestLogContext(event, "tmux.monitors.promote", {
     ...hostLogContext(host),
     monitorId,

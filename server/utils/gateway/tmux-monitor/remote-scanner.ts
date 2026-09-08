@@ -1,16 +1,16 @@
 import type { TmuxPaneOutput, TmuxPaneSnapshot, TmuxSessionSnapshot } from "~~/shared/types";
 import pLimit from "p-limit";
-import { remoteLoginShellCommand } from "../infra/ssh/remote-command";
-import { sshConnections } from "../infra/host-services";
 import { shellQuote } from "../infra/ssh/shell";
 import type { HostWithSecret } from "../infra/ssh/ssh-types";
 import { currentGatewayUserId } from "../state/memory";
 import { hostRuntimeFingerprint } from "../runtime/host-runtime-fingerprint";
+import { tmuxCommandExecutor, type TmuxCommandExecutor } from "./command-executor";
 
 const FIELD_SEPARATOR = "|";
 const RECORD_KIND = "pane";
 const TMUX_SCAN_CONCURRENCY = 3;
 const TMUX_COMMAND_TIMEOUT_MS = 45_000;
+const TMUX_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 
 export class TmuxUnavailableError extends Error {
   constructor(message = "tmux is not installed on the remote host") {
@@ -22,6 +22,8 @@ export class TmuxUnavailableError extends Error {
 export class RemoteTmuxScanner {
   private readonly scanLimit = pLimit(TMUX_SCAN_CONCURRENCY);
   private readonly pendingScans = new Map<string, Promise<TmuxSessionSnapshot[]>>();
+
+  constructor(private readonly executor: TmuxCommandExecutor = tmuxCommandExecutor) {}
 
   async scan(host: HostWithSecret): Promise<TmuxSessionSnapshot[]> {
     // Host ids are user-config identifiers, not remote-machine identities. Including the runtime
@@ -42,9 +44,10 @@ export class RemoteTmuxScanner {
   }
 
   private async scanNow(host: HostWithSecret): Promise<TmuxSessionSnapshot[]> {
-    const result = await sshConnections.runBackground(host, () =>
-      sshConnections.exec(host, remoteLoginShellCommand(scanPayload()), {
+    const result = await this.executor.runBackground(host, () =>
+      this.executor.exec(host, scanPayload(), {
         timeoutMs: TMUX_COMMAND_TIMEOUT_MS,
+        maxOutputBytes: TMUX_MAX_OUTPUT_BYTES,
       }),
     );
     if (result.code === 127 && result.stderr.includes("codex_gateway_tmux_unavailable")) {
@@ -60,11 +63,10 @@ export class RemoteTmuxScanner {
     host: HostWithSecret,
     target: { sessionId: string; paneId: string },
   ): Promise<TmuxPaneOutput> {
-    const result = await sshConnections.exec(
-      host,
-      remoteLoginShellCommand(capturePanePayload(target)),
-      { timeoutMs: TMUX_COMMAND_TIMEOUT_MS },
-    );
+    const result = await this.executor.exec(host, capturePanePayload(target), {
+      timeoutMs: TMUX_COMMAND_TIMEOUT_MS,
+      maxOutputBytes: TMUX_MAX_OUTPUT_BYTES,
+    });
     if (result.code !== 0) {
       throw new Error(
         result.stderr.trim() || result.stdout.trim() || "Failed to capture tmux pane",

@@ -141,6 +141,7 @@ describe("Agent runtime image policy", () => {
         "rg",
         "fd",
         "rsync",
+        "tmux",
         "python3",
         "uv",
         "node",
@@ -222,6 +223,7 @@ describe("Agent runtime image policy", () => {
     expect(requirements.length).toBeGreaterThan(10);
     expect(requirements.every((line) => /^[A-Za-z0-9_.-]+==[^=\s]+$/u.test(line))).toBe(true);
     expect(readFileSync(agentDockerfilePath, "utf8")).toContain(" AS full");
+    expect(readFileSync(agentDockerfilePath, "utf8")).toContain("      tmux \\");
   });
 
   it("builds only the Runtime Manager package graph after suppressing root lifecycle scripts", () => {

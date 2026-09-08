@@ -403,5 +403,5 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z
   }, "SSH-only workspace actions are not available on the local Agent");
 
 function isSshOnlyManagedHostMessage(type: string) {
-  return type.startsWith("tmux.") || type.startsWith("terminal.") || type.startsWith("browser.");
+  return type.startsWith("terminal.") || type.startsWith("browser.");
 }
