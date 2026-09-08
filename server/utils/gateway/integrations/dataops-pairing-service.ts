@@ -261,6 +261,20 @@ export const dataOpsPairingService = {
     productionService().probe(pairingId, revision, bearerSecret),
 };
 
+export async function authenticateDataOpsServiceRequest(
+  pairingId: string,
+  revision: number,
+  bearerSecret: string,
+): Promise<void> {
+  await acceptedBinding(
+    createDataOpsIntegrationRepository(),
+    () => new Date(),
+    pairingId,
+    revision,
+    bearerSecret,
+  );
+}
+
 const probeResponseSchema = z.looseObject({
   pairingId: z.string(),
   revision: z.number(),

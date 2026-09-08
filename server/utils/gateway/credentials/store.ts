@@ -35,6 +35,7 @@ const encryptedPayloadSchema = z
 
 export interface CredentialStore {
   create(input: CredentialCreateInput): Promise<CredentialDescriptor>;
+  upsert(input: CredentialCreateInput): Promise<CredentialDescriptor>;
   get(id: string): Promise<CredentialDescriptor | null>;
   list(userId?: number): Promise<CredentialDescriptor[]>;
   rotate(id: string, secret: Record<string, string>): Promise<CredentialDescriptor>;
@@ -74,6 +75,62 @@ export function createCredentialStore(
         ],
       );
       return await requiredDescriptor(db, credential.id);
+    },
+
+    async upsert(input) {
+      const credential = parseCredentialCreateInput(input);
+      return await db.transaction(async (tx) => {
+        const row = await tx.one("SELECT * FROM credentials WHERE id = ? FOR UPDATE", [
+          credential.id,
+        ]);
+        if (row === null) {
+          const timestamp = now();
+          await tx.execute(
+            `INSERT INTO credentials (
+               id, capability_id, user_id, project_id, kind, encrypted_payload, mappings_json,
+               not_before, expires_at, revoked_at, version, created_at, updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?, ?)`,
+            [
+              credential.id,
+              credential.capabilityId,
+              credential.userId,
+              credential.projectId,
+              credential.kind,
+              encryptedCredential(credential, 1),
+              JSON.stringify(credential.mappings),
+              credential.notBefore,
+              credential.expiresAt,
+              timestamp,
+              timestamp,
+            ],
+          );
+          return await requiredDescriptor(tx, credential.id);
+        }
+        const current = rowToDescriptor(row);
+        if (
+          current.capabilityId !== credential.capabilityId ||
+          current.userId !== credential.userId ||
+          current.projectId !== credential.projectId ||
+          current.kind !== credential.kind
+        ) {
+          throw new Error("Credential binding does not match its database scope");
+        }
+        const version = current.version + 1;
+        await tx.execute(
+          `UPDATE credentials SET encrypted_payload = ?, mappings_json = ?, not_before = ?,
+             expires_at = ?, revoked_at = NULL, version = ?, updated_at = ? WHERE id = ?`,
+          [
+            encryptedCredential(credential, version),
+            JSON.stringify(credential.mappings),
+            credential.notBefore,
+            credential.expiresAt,
+            version,
+            now(),
+            credential.id,
+          ],
+        );
+        return await requiredDescriptor(tx, credential.id);
+      });
     },
 
     async get(id) {
@@ -152,6 +209,9 @@ export function createCredentialStore(
 export const credentialStore: CredentialStore = {
   create(input) {
     return createCredentialStore(gatewayDatabase()).create(input);
+  },
+  upsert(input) {
+    return createCredentialStore(gatewayDatabase()).upsert(input);
   },
   get(id) {
     return createCredentialStore(gatewayDatabase()).get(id);

@@ -11,6 +11,7 @@ describe("GET /api/admin/integrations/dataops", () => {
           createdAt: "2026-09-08T00:00:00.000Z",
         },
         active: { pairingId: "pairing-fixed", revision: 1, status: "active" },
+        errorCode: null,
       }),
     };
 
