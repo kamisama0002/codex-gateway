@@ -17,19 +17,31 @@ const identitySchema = z
   .strict();
 
 export const dataOpsMcpCredentialBindSchema = identitySchema.extend({
+  tokenId: z.number().int().positive().optional(),
+  tokenLabel: z.string().trim().min(1).max(256).optional(),
   token: z
     .string()
     .min(1)
     .max(1024 * 1024),
+}).superRefine((input, context) => {
+  if ((input.tokenId === undefined) !== (input.tokenLabel === undefined)) {
+    context.addIssue({
+      code: "custom",
+      message: "Token descriptor fields must be supplied together",
+    });
+  }
 });
 export const dataOpsMcpCredentialIdentitySchema = identitySchema;
 
 type IdentityInput = z.infer<typeof dataOpsMcpCredentialIdentitySchema>;
+type BoundToken = { tokenId: number; tokenLabel: string };
 type PublicStatus = {
   status: "unbound" | "pending_sync" | "ready" | "runtime_not_ready" | "sync_failed";
   pairingId: string;
   revision: number;
   errorCode?: "runtime_not_ready" | "sync_failed";
+  tokenId?: number;
+  tokenLabel?: string;
 };
 
 const pendingRuntimeStatuses = new Set([
@@ -43,7 +55,10 @@ const pendingRuntimeStatuses = new Set([
 interface ServiceOptions {
   authenticate(pairingId: string, revision: number, bearerSecret: string): Promise<void>;
   resolveUser(tenantId: number, dataOpsUserId: number): Promise<number | null>;
-  credentials: Pick<typeof credentialStore, "get" | "upsert" | "revoke">;
+  credentials: Pick<
+    typeof credentialStore,
+    "get" | "upsert" | "revoke" | "resolveSecretsForContext"
+  >;
   capabilities: Pick<typeof capabilityStore, "assign" | "unassign">;
   runtime: Pick<typeof runtimeService, "getStatus" | "syncSecrets">;
 }
@@ -63,9 +78,12 @@ export function createDataOpsMcpCredentialService(options: ServiceOptions) {
     async bind(value: unknown, bearerSecret: string): Promise<PublicStatus> {
       const input = dataOpsMcpCredentialBindSchema.parse(value);
       const userId = await authenticatedUser(options, input, bearerSecret);
-      await options.credentials.upsert(credentialInput(userId, input.tenantId, input.token));
+      const boundToken = boundTokenFromInput(input);
+      await options.credentials.upsert(
+        credentialInput(userId, input.tenantId, input.token, boundToken),
+      );
       await options.capabilities.assign(assignment(userId));
-      return await synchronize(options, userId, input);
+      return await synchronize(options, userId, input, boundToken);
     },
 
     async unbind(value: unknown, bearerSecret: string): Promise<PublicStatus> {
@@ -92,7 +110,7 @@ export function createDataOpsMcpCredentialService(options: ServiceOptions) {
       const userId = await authenticatedUser(options, input, bearerSecret);
       const credential = await options.credentials.get(credentialId(userId));
       if (credential === null || credential.revokedAt !== null) return status(input, "unbound");
-      return await synchronize(options, userId, input);
+      return await synchronize(options, userId, input, await storedBoundToken(options, userId));
     },
   };
 }
@@ -121,30 +139,42 @@ async function synchronize(
   options: ServiceOptions,
   userId: number,
   input: IdentityInput,
+  boundToken?: BoundToken,
 ): Promise<PublicStatus> {
   const runtime = await options.runtime.getStatus(userId);
   if (runtime !== null && pendingRuntimeStatuses.has(runtime.status)) {
-    return status(input, "pending_sync");
+    return status(input, "pending_sync", undefined, boundToken);
   }
   if (runtime?.status !== "ready") {
-    return status(input, "runtime_not_ready", "runtime_not_ready");
+    return status(input, "runtime_not_ready", "runtime_not_ready", boundToken);
   }
   try {
     await options.runtime.syncSecrets(userId, null, userId);
-    return status(input, "ready");
+    return status(input, "ready", undefined, boundToken);
   } catch {
-    return status(input, "sync_failed", "sync_failed");
+    return status(input, "sync_failed", "sync_failed", boundToken);
   }
 }
 
-function credentialInput(userId: number, tenantId: number, token: string): CredentialCreateInput {
+function credentialInput(
+  userId: number,
+  tenantId: number,
+  token: string,
+  boundToken?: BoundToken,
+): CredentialCreateInput {
   return {
     id: credentialId(userId),
     capabilityId: DINKY_MCP_CAPABILITY_ID,
     userId,
     projectId: null,
     kind: "token",
-    secret: { token, tenantId: String(tenantId) },
+    secret: {
+      token,
+      tenantId: String(tenantId),
+      ...(boundToken === undefined
+        ? {}
+        : { tokenId: String(boundToken.tokenId), tokenLabel: boundToken.tokenLabel }),
+    },
     mappings: [
       { field: "token", target: { type: "env", name: "INFINITY_USER_TOKEN" } },
       { field: "tenantId", target: { type: "env", name: "INFINITY_TENANT_ID" } },
@@ -166,13 +196,39 @@ function status(
   input: IdentityInput,
   value: PublicStatus["status"],
   errorCode?: PublicStatus["errorCode"],
+  boundToken?: BoundToken,
 ): PublicStatus {
   return {
     status: value,
     pairingId: input.pairingId,
     revision: input.revision,
     ...(errorCode === undefined ? {} : { errorCode }),
+    ...(boundToken === undefined ? {} : boundToken),
   };
+}
+
+function boundTokenFromInput(
+  input: z.infer<typeof dataOpsMcpCredentialBindSchema>,
+): BoundToken | undefined {
+  if (input.tokenId === undefined || input.tokenLabel === undefined) return undefined;
+  return { tokenId: input.tokenId, tokenLabel: input.tokenLabel };
+}
+
+async function storedBoundToken(
+  options: ServiceOptions,
+  userId: number,
+): Promise<BoundToken | undefined> {
+  const credentials = await options.credentials.resolveSecretsForContext(
+    { userId, projectId: null },
+    [DINKY_MCP_CAPABILITY_ID],
+  );
+  const credential = credentials.find((item) => item.id === credentialId(userId));
+  const tokenId = Number(credential?.secret.tokenId);
+  const tokenLabel = credential?.secret.tokenLabel?.trim();
+  if (!Number.isSafeInteger(tokenId) || tokenId <= 0 || tokenLabel === undefined || tokenLabel === "") {
+    return undefined;
+  }
+  return { tokenId, tokenLabel };
 }
 
 async function resolveDataOpsUser(tenantId: number, dataOpsUserId: number): Promise<number | null> {

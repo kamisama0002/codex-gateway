@@ -11,12 +11,20 @@ describe("DataOpsMcpCredentialService", () => {
         revision: 3,
         tenantId: 7,
         dataOpsUserId: 42,
+        tokenId: 9,
+        tokenLabel: "Token #9",
         token: "long-lived-dinky-token",
       },
       "paired-secret",
     );
 
-    expect(result).toEqual({ status: "ready", pairingId: "pairing-fixed", revision: 3 });
+    expect(result).toEqual({
+      status: "ready",
+      pairingId: "pairing-fixed",
+      revision: 3,
+      tokenId: 9,
+      tokenLabel: "Token #9",
+    });
     expect(fixture.authenticate).toHaveBeenCalledWith("pairing-fixed", 3, "paired-secret");
     expect(fixture.resolveUser).toHaveBeenCalledWith(7, 42);
     expect(fixture.capabilities.assign).toHaveBeenCalledWith({
@@ -28,7 +36,12 @@ describe("DataOpsMcpCredentialService", () => {
       expect.objectContaining({
         id: "cred__dinky_mcp_9",
         userId: 9,
-        secret: { token: "long-lived-dinky-token", tenantId: "7" },
+        secret: {
+          token: "long-lived-dinky-token",
+          tenantId: "7",
+          tokenId: "9",
+          tokenLabel: "Token #9",
+        },
       }),
     );
     expect(fixture.runtime.syncSecrets).toHaveBeenCalledWith(9, null, 9);
@@ -186,6 +199,46 @@ describe("DataOpsMcpCredentialService", () => {
       ),
     ).resolves.toEqual({ status: "unbound", pairingId: "pairing-fixed", revision: 3 });
   });
+
+  it("returns the encrypted binding descriptor on later probes without exposing the token", async () => {
+    const fixture = createFixture();
+    fixture.credentials.resolveSecretsForContext.mockResolvedValue([
+      {
+        id: "cred__dinky_mcp_9",
+        capabilityId: "org__dinky_mcp",
+        userId: 9,
+        projectId: null,
+        kind: "token",
+        mappings: [],
+        notBefore: null,
+        expiresAt: null,
+        revokedAt: null,
+        version: 2,
+        createdAt: "2026-09-08T00:00:00.000Z",
+        updatedAt: "2026-09-08T00:00:00.000Z",
+        secret: {
+          token: "long-lived-dinky-token",
+          tenantId: "7",
+          tokenId: "9",
+          tokenLabel: "Token #9",
+        },
+      },
+    ]);
+
+    const result = await fixture.service.probe(
+      { pairingId: "pairing-fixed", revision: 3, tenantId: 7, dataOpsUserId: 42 },
+      "paired-secret",
+    );
+
+    expect(result).toEqual({
+      status: "ready",
+      pairingId: "pairing-fixed",
+      revision: 3,
+      tokenId: 9,
+      tokenLabel: "Token #9",
+    });
+    expect(JSON.stringify(result)).not.toContain("long-lived-dinky-token");
+  });
 });
 
 function createFixture() {
@@ -199,6 +252,7 @@ function createFixture() {
     }),
     upsert: vi.fn().mockResolvedValue({ id: "cred__dinky_mcp_9", version: 2, revokedAt: null }),
     revoke: vi.fn().mockResolvedValue({ id: "cred__dinky_mcp_9", version: 2, revokedAt: "now" }),
+    resolveSecretsForContext: vi.fn().mockResolvedValue([]),
   };
   const capabilities = { assign: vi.fn(), unassign: vi.fn() };
   const runtime = {
