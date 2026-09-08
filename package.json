@@ -78,6 +78,7 @@
     "embla-carousel-vue": "^8.6.0",
     "ensure-error": "^5.0.0",
     "h3": "1.15.11",
+    "ioredis": "^5.11.1",
     "isbinaryfile": "^6.0.0",
     "klona": "^2.0.6",
     "lru-cache": "^11.5.2",

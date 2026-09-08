@@ -1,10 +1,7 @@
 import { createError, defineEventHandler, readValidatedBody, type H3Event } from "h3";
 import { z } from "zod";
-import {
-  dataOpsSsoClientFromEnvironment,
-  DataOpsSsoError,
-  type DataOpsSsoClient,
-} from "../../utils/gateway/auth/dataops-client";
+import { DataOpsSsoError, type DataOpsSsoClient } from "../../utils/gateway/auth/dataops-client";
+import { dataOpsIntegrationProvider } from "../../utils/gateway/integrations/dataops-integration-provider";
 import {
   externalIdentityStore,
   type ExternalIdentityStore,
@@ -29,17 +26,15 @@ export async function loginWithDataOpsForEvent(
 }
 
 export default defineEventHandler(async (event) => {
-  let client: DataOpsSsoClient;
-  try {
-    client = dataOpsSsoClientFromEnvironment();
-  } catch {
+  const integration = await dataOpsIntegrationProvider.current();
+  if (integration === null) {
     throw createError({
       statusCode: 503,
       statusMessage: "dataops_not_configured",
       message: "dataops_not_configured",
     });
   }
-  return await loginWithDataOpsForEvent(event, client, externalIdentityStore);
+  return await loginWithDataOpsForEvent(event, integration.client, externalIdentityStore);
 });
 
 function dataOpsErrorStatus(code: string): number {

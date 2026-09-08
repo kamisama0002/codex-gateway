@@ -73,13 +73,6 @@ export function createDataOpsSsoClient(options: DataOpsSsoClientOptions): DataOp
   };
 }
 
-export function dataOpsSsoClientFromEnvironment(): DataOpsSsoClient {
-  return createDataOpsSsoClient({
-    baseUrl: process.env.DATAOPS_BASE_URL ?? "",
-    sharedSecret: process.env.DATAOPS_SSO_SHARED_SECRET ?? "",
-  });
-}
-
 function normalizeBaseUrl(value: string) {
   const url = new URL(value);
   if (
