@@ -13,6 +13,9 @@ const lifecycle = vi.hoisted(() => {
     verifyGatewayDatabase: vi.fn(async () => {
       calls.push("verify database");
     }),
+    bootstrapLegacyRuntimeNode: vi.fn(async () => {
+      calls.push("bootstrap legacy runtime node");
+    }),
     start: vi.fn(() => {
       calls.push("start supervisor");
     }),
@@ -43,6 +46,10 @@ vi.mock("../utils/gateway/runtime/host-runtime-supervisor", () => ({
     bootstrapStoredUsers: lifecycle.bootstrapStoredUsers,
     stop: lifecycle.stop,
   },
+}));
+
+vi.mock("../utils/gateway/runtime-manager/runtime-node-bootstrap", () => ({
+  bootstrapLegacyRuntimeNodeFromEnvironment: lifecycle.bootstrapLegacyRuntimeNode,
 }));
 
 beforeEach(() => {
@@ -80,6 +87,7 @@ describe("host runtime supervisor Nitro lifecycle", () => {
 
     expect(lifecycle.calls).toEqual([
       "verify database",
+      "bootstrap legacy runtime node",
       "start supervisor",
       "bootstrap stored users",
     ]);
@@ -111,9 +119,29 @@ describe("host runtime supervisor Nitro lifecycle", () => {
     expect(rejection).toMatchObject({ message: "stored config is invalid" });
     expect(lifecycle.calls).toEqual([
       "verify database",
+      "bootstrap legacy runtime node",
       "start supervisor",
       "bootstrap stored users",
       "stop supervisor",
+      "close database",
+    ]);
+  });
+
+  it("closes the pool without starting background work when legacy node bootstrap fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    lifecycle.bootstrapLegacyRuntimeNode.mockImplementationOnce(async () => {
+      lifecycle.calls.push("bootstrap legacy runtime node");
+      throw Object.assign(new Error("legacy node bootstrap failed"), {
+        code: "runtime_node_bootstrap_failed",
+      });
+    });
+
+    const rejection = await import("./host-runtime-supervisor").catch((error: unknown) => error);
+
+    expect(rejection).toMatchObject({ code: "runtime_node_bootstrap_failed" });
+    expect(lifecycle.calls).toEqual([
+      "verify database",
+      "bootstrap legacy runtime node",
       "close database",
     ]);
   });
@@ -127,6 +155,7 @@ describe("host runtime supervisor Nitro lifecycle", () => {
 
     expect(lifecycle.calls).toEqual([
       "verify database",
+      "bootstrap legacy runtime node",
       "start supervisor",
       "bootstrap stored users",
       "stop supervisor",

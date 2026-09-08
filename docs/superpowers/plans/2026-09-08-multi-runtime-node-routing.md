@@ -242,7 +242,7 @@ git commit -m "feat(runtime): schedule durable node placements"
 - Produces `bootstrapLegacyRuntimeNode()` and `RuntimeNodeClientRegistry.get(nodeId)`.
 - Adds `RUNTIME_IDENTITY_SECRET`, `RUNTIME_MANAGER_DEFAULT_NODE_ID`, node capacity, health freshness, and insecure-test URL settings.
 
-- [ ] **Step 1: Write bootstrap tests**
+- [x] **Step 1: Write bootstrap tests**
 
 ```ts
 it("creates node__default and backfills existing runtimes without changing runtime ids", async () => {
@@ -252,17 +252,17 @@ it("creates node__default and backfills existing runtimes without changing runti
 });
 ```
 
-- [ ] **Step 2: Verify bootstrap RED**
+- [x] **Step 2: Verify bootstrap RED**
 
 ```bash
 pnpm exec vitest run server/utils/gateway/runtime-manager/runtime-node-bootstrap.test.ts
 ```
 
-- [ ] **Step 3: Implement idempotent startup bootstrap**
+- [x] **Step 3: Implement idempotent startup bootstrap**
 
 Bootstrap uses the legacy manager URL and secret only when no node record exists. It encrypts `{ secret }`, inserts `node__default`, and backfills existing runtime rows with the stable identity-derived runtime ID, generation `1`, an opaque random workspace key, and their currently effective resources.
 
-- [ ] **Step 4: Write client registry isolation tests**
+- [x] **Step 4: Write client registry isolation tests**
 
 ```ts
 it("keeps one client per node revision and invalidates only the changed node", async () => {
@@ -273,11 +273,11 @@ it("keeps one client per node revision and invalidates only the changed node", a
 });
 ```
 
-- [ ] **Step 5: Implement encrypted client lookup**
+- [x] **Step 5: Implement encrypted client lookup**
 
 The registry reads the node record, decrypts the shared secret, validates the URL policy, constructs `RuntimeManagerClient`, and caches by `${node.id}:${node.configRevision}`. Errors expose only fixed codes.
 
-- [ ] **Step 6: Wire startup ordering**
+- [x] **Step 6: Wire startup ordering**
 
 `host-runtime-supervisor.ts` runs database verification, legacy node bootstrap, stored user bootstrap, then background supervisors. Add these defaults:
 
@@ -292,14 +292,14 @@ RUNTIME_NODE_HEALTH_FRESHNESS_MS=30000
 RUNTIME_NODE_ALLOW_INSECURE_HTTP=0
 ```
 
-- [ ] **Step 7: Run bootstrap, registry, startup, and type tests**
+- [x] **Step 7: Run bootstrap, registry, startup, and type tests**
 
 ```bash
 pnpm exec vitest run server/utils/gateway/runtime-manager/runtime-node-bootstrap.test.ts server/utils/gateway/runtime-manager/runtime-node-client-registry.test.ts server/plugins/host-runtime-supervisor.test.ts
 pnpm typecheck
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add server/utils/gateway/runtime-manager/runtime-node-bootstrap.ts server/utils/gateway/runtime-manager/runtime-node-bootstrap.test.ts server/utils/gateway/runtime-manager/runtime-node-client-registry.ts server/utils/gateway/runtime-manager/runtime-node-client-registry.test.ts server/plugins/host-runtime-supervisor.ts .env.example docker-compose.yml

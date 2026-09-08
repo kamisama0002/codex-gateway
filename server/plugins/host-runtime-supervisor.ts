@@ -1,4 +1,5 @@
 import { hostRuntimeSupervisor } from "../utils/gateway/runtime/host-runtime-supervisor";
+import { bootstrapLegacyRuntimeNodeFromEnvironment } from "../utils/gateway/runtime-manager/runtime-node-bootstrap";
 import {
   closeGatewayDatabase,
   databaseUnavailableError,
@@ -13,6 +14,8 @@ try {
   } catch (error) {
     throw databaseUnavailableError(error);
   }
+  startupPhase = "legacy_runtime_node_bootstrap";
+  await bootstrapLegacyRuntimeNodeFromEnvironment();
   hostRuntimeSupervisor.start();
   supervisorStarted = true;
   startupPhase = "stored_user_bootstrap";
