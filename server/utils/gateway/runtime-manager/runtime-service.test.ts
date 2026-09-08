@@ -1,7 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type {
-  ManagedRuntimeEndpoint,
   ManagedRuntimeStatusView,
   RuntimeResourcePolicy,
   RuntimeStatus,
@@ -289,11 +288,7 @@ describe("ManagedRuntimeService", () => {
       imageAlias: "stable",
       imageVersion: "0.151.1",
       status: "running" as const,
-      endpoint: {
-        runtimeId: placement.runtimeId,
-        websocketUrl: "ws://runtime-01:4500",
-        serviceToken: "runtime-token",
-      },
+      endpoint: null,
       actualResources: {
         memoryBytes: 2 * 1024 * 1024 * 1024,
         nanoCpus: 2_000_000_000,
@@ -387,11 +382,7 @@ describe("ManagedRuntimeService", () => {
       imageAlias: "tenant-stable",
       imageVersion: "0.151.1",
       status: "running" as const,
-      endpoint: {
-        runtimeId: placement.runtimeId,
-        websocketUrl: "ws://runtime-01:4500",
-        serviceToken: "runtime-token",
-      },
+      endpoint: null,
       actualResources: resources,
     }));
     fixture.manager.inspect.mockImplementation(async (placement) => ({
@@ -585,11 +576,7 @@ describe("ManagedRuntimeService", () => {
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running",
-      endpoint: {
-        runtimeId: "wrong-runtime",
-        websocketUrl: "ws://runtime-01:4500",
-        serviceToken: "runtime-token",
-      },
+      endpoint: null,
       actualResources: assignedResources(),
     });
 
@@ -783,11 +770,6 @@ function runtimeFixture(
     assignedPolicy?: AssignedRuntimePolicy | null;
   } = {},
 ) {
-  const endpoint: ManagedRuntimeEndpoint = {
-    runtimeId: "placeholder",
-    websocketUrl: "ws://runtime-01:4500",
-    serviceToken: "runtime-token",
-  };
   const records = new Map<number, UserAgentRuntimeRecord>();
   const statuses: RuntimeStatus[] = [];
   const defaultResources: RuntimeResourcePolicy = {
@@ -852,13 +834,18 @@ function runtimeFixture(
     ),
   };
   const manager = {
+    relayTarget: vi.fn((placement: { runtimeId: string }) => ({
+      runtimeId: placement.runtimeId,
+      websocketUrl: "ws://runtime-manager:8787/v1/runtimes/relay",
+      headers: () => ({ "x-runtime-nonce": "fresh-relay-nonce" }),
+    })),
     provision: vi.fn(async (request: ProvisionRuntimeRequest) => ({
       runtimeId: request.runtimeId,
       containerId: "container-01",
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "stopped" as const,
-      endpoint: { ...endpoint, runtimeId: request.runtimeId },
+      endpoint: null,
       actualResources: request.resources ?? defaultResources,
     })),
     start: vi.fn(async (placement: { runtimeId: string }, resources?: RuntimeResourcePolicy) => ({
@@ -867,7 +854,7 @@ function runtimeFixture(
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running" as const,
-      endpoint: { ...endpoint, runtimeId: placement.runtimeId },
+      endpoint: null,
       actualResources: resources ?? defaultResources,
     })),
     inspect: vi.fn(async (placement: { runtimeId: string }): Promise<RuntimeLifecycleResult> => ({
@@ -876,7 +863,7 @@ function runtimeFixture(
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running" as const,
-      endpoint: { ...endpoint, runtimeId: placement.runtimeId },
+      endpoint: null,
       actualResources: defaultResources,
     })),
     stop: vi.fn(async (placement: { runtimeId: string }) => ({
@@ -885,7 +872,7 @@ function runtimeFixture(
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "stopped" as const,
-      endpoint: { ...endpoint, runtimeId: placement.runtimeId },
+      endpoint: null,
       actualResources: defaultResources,
     })),
     stats: vi.fn(async (placement: { runtimeId: string }) => ({
@@ -922,7 +909,7 @@ function runtimeFixture(
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running" as const,
-      endpoint: { ...endpoint, runtimeId: placement.runtimeId },
+      endpoint: null,
       actualResources: resources ?? defaultResources,
     })),
     syncSecrets: vi.fn(async (input: SyncRuntimeSecretsRequest) => ({
@@ -931,7 +918,7 @@ function runtimeFixture(
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running" as const,
-      endpoint: { ...endpoint, runtimeId: input.runtimeId },
+      endpoint: null,
       actualResources: defaultResources,
     })),
     forwardOAuthCallback: vi.fn(async () => undefined),

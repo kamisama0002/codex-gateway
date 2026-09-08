@@ -5,13 +5,15 @@ import type { APIRequestContext } from "@playwright/test";
 import {
   managedRuntimeStatusViewSchema,
   runtimeResourcePolicySchema,
-  type ManagedRuntimeEndpoint,
 } from "@codex-gateway/agent-runtime-contracts";
 import { z } from "zod";
 
 import { parseThreadListPage, parseThreadStartResult } from "../../../shared/runtime/app-server";
 import type { RpcEnvelope } from "../../../shared/types";
-import { createManagedRuntimeHost } from "../../../server/utils/gateway/infra/rpc/managed-rpc-transport";
+import {
+  createManagedRuntimeHost,
+  type ManagedRuntimeRelayTarget,
+} from "../../../server/utils/gateway/infra/rpc/managed-rpc-transport";
 import { CodexRpcClient } from "../../../server/utils/gateway/infra/rpc/rpc";
 import { RuntimeManagerClient } from "../../../server/utils/gateway/runtime-manager/client";
 export {
@@ -122,7 +124,7 @@ export class ManagedRuntimeRpcSession {
   private readonly client: CodexRpcClient;
   private transportCloseCount = 0;
 
-  constructor(userId: number, endpoint: ManagedRuntimeEndpoint) {
+  constructor(userId: number, endpoint: ManagedRuntimeRelayTarget) {
     const timestamp = new Date().toISOString();
     const host = createManagedRuntimeHost(
       userId,
@@ -371,10 +373,11 @@ export async function inspectManagedRuntime(session: GatewaySession) {
     secret,
   });
   const runtime = await client.inspect(placement);
-  const { containerId, endpoint } = runtime;
-  if (runtime.status !== "running" || containerId === null || endpoint === null) {
+  const { containerId } = runtime;
+  if (runtime.status !== "running" || containerId === null) {
     throw new Error("Managed Runtime Manager returned a non-running E2E runtime");
   }
+  const endpoint = client.relayTarget(placement);
   return { ...runtime, containerId, endpoint };
 }
 
@@ -432,12 +435,15 @@ export async function execManagedRuntimeText(session: GatewaySession, command: s
 
 export async function isManagedRuntimeTokenRejected(
   userId: number,
-  endpoint: ManagedRuntimeEndpoint,
+  endpoint: ManagedRuntimeRelayTarget,
   candidateToken: string,
 ) {
   const wrongTokenClient = new ManagedRuntimeRpcSession(userId, {
     ...endpoint,
-    serviceToken: candidateToken,
+    headers: () => ({
+      ...endpoint.headers(),
+      "x-runtime-signature": candidateToken,
+    }),
   });
   try {
     await wrongTokenClient.connect();

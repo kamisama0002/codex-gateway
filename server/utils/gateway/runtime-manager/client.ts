@@ -259,6 +259,12 @@ export interface ForwardOAuthCallbackRequest extends RuntimePlacementIdentity {
   pathAndQuery: string;
 }
 
+export interface RuntimeRelayTarget {
+  runtimeId: string;
+  websocketUrl: string;
+  headers(): Record<string, string>;
+}
+
 export interface RuntimeLifecycleResult {
   runtimeId: string;
   containerId: string | null;
@@ -336,6 +342,18 @@ export class RuntimeManagerClient {
       throw new RuntimeManagerClientError("runtime_manager_invalid_response");
     }
     return health;
+  }
+
+  relayTarget(input: RuntimePlacementIdentity): RuntimeRelayTarget {
+    const placement = this.placement(input);
+    const path = `/v1/runtimes/${encodeURIComponent(placement.runtimeId)}/generations/${placement.placementGeneration}/rpc`;
+    const managerUrl = new URL(this.baseUrl);
+    const protocol = managerUrl.protocol === "https:" ? "wss:" : "ws:";
+    return {
+      runtimeId: placement.runtimeId,
+      websocketUrl: `${protocol}//${managerUrl.host}${path}`,
+      headers: () => this.signedHeaders("GET", path, ""),
+    };
   }
 
   stats(input: RuntimePlacementIdentity): Promise<AgentRuntimeStatsResult> {
@@ -484,20 +502,7 @@ export class RuntimeManagerClient {
     timeoutMs = this.timeoutMs,
   ): Promise<T> {
     const body = payload === undefined ? "" : JSON.stringify(payload);
-    const timestamp = this.now();
-    const nonce = this.nonce();
-    const bodySha256 = createHash("sha256").update(body).digest("hex");
-    const headers: Record<string, string> = {
-      "x-runtime-body-sha256": bodySha256,
-      "x-runtime-nonce": nonce,
-      "x-runtime-signature": createHmac("sha256", this.secret)
-        .update(
-          `${method}\n${normalizeRequestPath(path)}\n${timestamp}\n${nonce}\n${bodySha256}`,
-          "utf8",
-        )
-        .digest("hex"),
-      "x-runtime-timestamp": String(timestamp),
-    };
+    const headers = this.signedHeaders(method, path, body);
     if (payload !== undefined) headers["content-type"] = "application/json";
 
     const controller = new AbortController();
@@ -533,6 +538,27 @@ export class RuntimeManagerClient {
     } finally {
       clearTimeout(deadline);
     }
+  }
+
+  private signedHeaders(
+    method: "GET" | "POST",
+    path: string,
+    body: string,
+  ): Record<string, string> {
+    const timestamp = this.now();
+    const nonce = this.nonce();
+    const bodySha256 = createHash("sha256").update(body).digest("hex");
+    return {
+      "x-runtime-body-sha256": bodySha256,
+      "x-runtime-nonce": nonce,
+      "x-runtime-signature": createHmac("sha256", this.secret)
+        .update(
+          `${method}\n${normalizeRequestPath(path)}\n${timestamp}\n${nonce}\n${bodySha256}`,
+          "utf8",
+        )
+        .digest("hex"),
+      "x-runtime-timestamp": String(timestamp),
+    };
   }
 }
 

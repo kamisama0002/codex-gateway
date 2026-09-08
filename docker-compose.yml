@@ -106,7 +106,6 @@ services:
       - web-common
       - gateway-database
       - runtime-manager
-      - agent-runtime
 
   searxng:
     image: ${SEARXNG_IMAGE:?SEARXNG_IMAGE must be a pinned tag or digest}
@@ -246,6 +245,7 @@ services:
       - runtime-manager-data:/data
     networks:
       - runtime-manager
+      - agent-runtime
 
 networks:
   web-common:

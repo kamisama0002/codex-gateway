@@ -17,7 +17,7 @@ describe("CodexAppServerDriver", () => {
       {
         runtimeId: "runtime_01",
         websocketUrl: "ws://runtime-01:4500",
-        serviceToken: "real-runtime-token",
+        headers: () => ({ "x-runtime-nonce": "real-runtime-token" }),
       },
     );
     const startTurn = vi.fn(
@@ -89,7 +89,7 @@ describe("CodexAppServerDriver", () => {
       {
         runtimeId: "runtime_01",
         websocketUrl: "ws://runtime-01:4500",
-        serviceToken: "real-runtime-token",
+        headers: () => ({ "x-runtime-nonce": "real-runtime-token" }),
       },
     );
     const startThread = vi.fn(async () => ({

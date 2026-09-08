@@ -352,6 +352,9 @@ importers:
       dockerode:
         specifier: ^4.0.8
         version: 4.0.12(supports-color@10.2.2)
+      ws:
+        specifier: ^8.21.3
+        version: 8.21.3
       zod:
         specifier: ^4.5.2
         version: 4.5.2
@@ -362,6 +365,9 @@ importers:
       '@types/node':
         specifier: ^26.4.0
         version: 26.4.0
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       esbuild:
         specifier: ^0.28.1
         version: 0.28.1

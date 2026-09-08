@@ -451,7 +451,7 @@ git commit -m "feat(runtime): enforce placement generations"
 - `RuntimeManagerClient.relayTarget(placement)` returns a URL and a fresh signed-header factory.
 - Gateway no longer receives the container service token or container DNS endpoint.
 
-- [ ] **Step 1: Write relay integration tests**
+- [x] **Step 1: Write relay integration tests**
 
 ```ts
 it("relays frames to the local App Server without exposing its service token", async () => {
@@ -464,18 +464,18 @@ it("relays frames to the local App Server without exposing its service token", a
 
 Also test invalid HMAC, replay nonce, wrong runtime ID, stale generation, and downstream close propagation.
 
-- [ ] **Step 2: Verify relay RED**
+- [x] **Step 2: Verify relay RED**
 
 ```bash
 pnpm --filter @codex-gateway/agent-runtime-manager test
 pnpm exec vitest run server/utils/gateway/infra/rpc/managed-rpc-transport.test.ts
 ```
 
-- [ ] **Step 3: Implement Manager relay**
+- [x] **Step 3: Implement Manager relay**
 
 Use the existing HMAC authenticator against the exact upgrade path and empty-body hash. Resolve the matching managed container, read its local service token from Docker inspection, connect to the container App Server, and forward binary/text frames bidirectionally with per-message compression disabled.
 
-- [ ] **Step 4: Attach Runtime Manager to the Agent network**
+- [x] **Step 4: Attach Runtime Manager to the Agent network**
 
 ```yaml
 agent-runtime-manager:
@@ -486,18 +486,18 @@ agent-runtime-manager:
 
 The Agent network remains internal. Manager port exposure remains limited to the configured private Runtime Manager endpoint.
 
-- [ ] **Step 5: Replace direct managed transport endpoints**
+- [x] **Step 5: Replace direct managed transport endpoints**
 
 `ManagedCodexRpcTransport.connect()` requests fresh signed relay headers on each connection attempt. It never connects to a container name and never receives `CODEX_REMOTE_TOKEN`.
 
-- [ ] **Step 6: Run relay and current single-node RPC tests**
+- [x] **Step 6: Run relay and current single-node RPC tests**
 
 ```bash
 pnpm --filter @codex-gateway/agent-runtime-manager test
 pnpm exec vitest run server/utils/gateway/infra/rpc/managed-rpc-transport.test.ts server/utils/gateway/runtime-manager/runtime-service.test.ts
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/agent-runtime-manager package.json pnpm-lock.yaml docker-compose.yml server/utils/gateway/runtime-manager/client.ts server/utils/gateway/infra/rpc/managed-rpc-transport.ts server/utils/gateway/infra/rpc/managed-rpc-transport.test.ts

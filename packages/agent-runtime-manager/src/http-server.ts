@@ -30,6 +30,7 @@ import {
 import { DockerodeEngine } from "./docker-engine.js";
 import type { E2eDockerInspection } from "./docker-engine.js";
 import { RuntimeLifecycleError, RuntimeLifecycleService } from "./lifecycle-service.js";
+import { attachRuntimeRpcRelay } from "./rpc-relay.js";
 import {
   parseAgentMemoryBytes,
   parseAgentNanoCpus,
@@ -118,7 +119,7 @@ async function handleRequest(
           placementGeneration: Number(match[2]),
         }),
       );
-      return sendJson(response, 200, result);
+      return sendJson(response, 200, publicRuntimeLifecycleResult(result));
     }
 
     if (request.method !== "POST") return sendJson(response, 404, { error: "not_found" });
@@ -166,7 +167,7 @@ async function handleRequest(
         result = await options.service.syncSecrets(syncRuntimeSecretsRequestSchema.parse(payload));
         break;
     }
-    return sendJson(response, 200, result);
+    return sendJson(response, 200, publicRuntimeLifecycleResult(result));
   } catch (error) {
     if (error instanceof RuntimeAuthenticationError) {
       return sendJson(response, 401, { error: "unauthorized" });
@@ -265,6 +266,10 @@ export function startRuntimeManager(environment: NodeJS.ProcessEnv = process.env
   const server = createServer(
     createRuntimeManagerRequestHandler({ authenticator, service, environment, e2eInspector }),
   );
+  attachRuntimeRpcRelay(server, {
+    authenticator,
+    resolveTarget: async (input) => await service.resolveRpcRelay(input),
+  });
   const port = Number(environment.RUNTIME_MANAGER_PORT ?? "8787");
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error("RUNTIME_MANAGER_PORT must be a valid TCP port");
@@ -328,6 +333,10 @@ function isLifecycleAction(
     value === "remove" ||
     value === "secrets"
   );
+}
+
+function publicRuntimeLifecycleResult(result: RuntimeLifecycleResult): RuntimeLifecycleResult {
+  return { ...result, endpoint: null };
 }
 
 const entrypoint = process.argv[1] ? resolve(process.argv[1]) : "";

@@ -55,6 +55,30 @@ describe("RuntimeManagerClient", () => {
     });
   });
 
+  it("creates a relay target with fresh signed headers for every connection", () => {
+    let nonce = 0;
+    const client = new RuntimeManagerClient({
+      baseUrl: "https://node-a.runtime.internal",
+      nodeId: "node__a",
+      secret: "manager-secret",
+      now: () => 1_788_134_400_000,
+      nonce: () => `relay-${++nonce}`,
+    });
+
+    const target = client.relayTarget(runtimePlacement());
+    const first = target.headers();
+    const second = target.headers();
+
+    expect(target).toMatchObject({
+      runtimeId: "runtime_01",
+      websocketUrl: "wss://node-a.runtime.internal/v1/runtimes/runtime_01/generations/2/rpc",
+    });
+    expect(first["x-runtime-nonce"]).toBe("relay-1");
+    expect(second["x-runtime-nonce"]).toBe("relay-2");
+    expect(first["x-runtime-signature"]).not.toBe(second["x-runtime-signature"]);
+    expect(JSON.stringify(target)).not.toContain("manager-secret");
+  });
+
   it("signs requested start resources in the exact request body", async () => {
     const timestamp = 1_788_131_200_000;
     const nonce = "resources-nonce";

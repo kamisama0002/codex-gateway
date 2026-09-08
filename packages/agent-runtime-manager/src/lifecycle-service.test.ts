@@ -985,6 +985,14 @@ describe("RuntimeLifecycleService", () => {
       "com.codex-gateway.placement-generation": "2",
       "com.codex-gateway.workspace-key": "ws__1234567890abcdef1234567890abcdef",
     });
+    await service.start(placedAction("runtime-generation", 2));
+    const relay = await service.resolveRpcRelay({
+      runtimeId: "runtime-generation",
+      placementGeneration: 2,
+    });
+    expect(relay.websocketUrl).toMatch(/^ws:\/\/codex-runtime-/);
+    expect(relay.serviceToken).toBeTypeOf("string");
+    expect(relay.serviceToken.length).toBeGreaterThan(0);
     await expect(service.start(placedAction("runtime-generation", 1))).rejects.toMatchObject({
       code: "stale_placement_generation",
     });
@@ -1259,10 +1267,14 @@ describe("Runtime Manager HTTP API", () => {
     });
 
     expect(provisionResponse.status).toBe(200);
-    expect(await provisionResponse.json()).toMatchObject({
+    const provisionPayload = await provisionResponse.json();
+    expect(provisionPayload).toMatchObject({
       runtimeId: "runtime-http",
       status: "stopped",
+      endpoint: null,
     });
+    expect(JSON.stringify(provisionPayload)).not.toContain("http-service-token");
+    expect(JSON.stringify(provisionPayload)).not.toContain("codex-runtime-");
     expect(inspectResponse.status).toBe(200);
     expect(await inspectResponse.json()).toMatchObject({
       runtimeId: "runtime-http",

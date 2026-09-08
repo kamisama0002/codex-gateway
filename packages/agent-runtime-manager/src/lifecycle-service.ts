@@ -17,6 +17,7 @@ import {
   provisionRuntimeRequestSchema,
   runtimeActionRequestSchema,
   runtimeManagerPolicySchema,
+  runtimeLookupRequestSchema,
   runtimeNodeHealthSchema,
   runtimeResourceActionRequestSchema,
   syncRuntimeSecretsRequestSchema,
@@ -144,6 +145,18 @@ export class RuntimeLifecycleService {
     const container = await this.findManagedContainer(request.runtimeId);
     if (container) this.assertLookup(container, request);
     return container ? toResult(container) : absentResult(request.runtimeId);
+  }
+
+  async resolveRpcRelay(request: RuntimeLookupRequest) {
+    const normalized = runtimeLookupRequestSchema.parse(request);
+    const container = await this.findManagedContainer(normalized.runtimeId);
+    if (container === null) throw new RuntimeLifecycleError("runtime_not_found");
+    this.assertLookup(container, normalized);
+    if (!container.running) throw new RuntimeLifecycleError("runtime_not_found");
+    return {
+      websocketUrl: `ws://${container.containerName}:${container.internalPort}`,
+      serviceToken: container.serviceToken,
+    };
   }
 
   async stats(request: RuntimeLookupRequest): Promise<AgentRuntimeStatsResult> {
