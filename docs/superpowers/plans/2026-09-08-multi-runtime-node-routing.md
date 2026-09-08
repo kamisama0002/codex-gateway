@@ -151,7 +151,7 @@ git commit -m "feat(runtime): add node and placement schema"
 - Produces `createRuntimeNodeStore(db)`, `scheduleRuntimeNode(input)`, and `createRuntimePlacementStore(db)`.
 - `ensurePlacement(input)` returns the existing placement or atomically creates one under a serializable transaction.
 
-- [ ] **Step 1: Write scheduler tests**
+- [x] **Step 1: Write scheduler tests**
 
 ```ts
 it("chooses the node with the largest bottleneck capacity and a stable id tie-break", () => {
@@ -171,7 +171,7 @@ it("does not select draining, stale, full, or disk-unsafe nodes", () => {
 });
 ```
 
-- [ ] **Step 2: Verify scheduler RED**
+- [x] **Step 2: Verify scheduler RED**
 
 ```bash
 pnpm exec vitest run server/utils/gateway/runtime-manager/runtime-node-scheduler.test.ts
@@ -179,7 +179,7 @@ pnpm exec vitest run server/utils/gateway/runtime-manager/runtime-node-scheduler
 
 Expected: scheduler module is missing.
 
-- [ ] **Step 3: Implement deterministic scheduling**
+- [x] **Step 3: Implement deterministic scheduling**
 
 ```ts
 export function scheduleRuntimeNode(input: ScheduleRuntimeNodeInput): RuntimeNodeRecord {
@@ -195,7 +195,7 @@ export function scheduleRuntimeNode(input: ScheduleRuntimeNodeInput): RuntimeNod
 }
 ```
 
-- [ ] **Step 4: Write concurrent placement tests against MySQL**
+- [x] **Step 4: Write concurrent placement tests against MySQL**
 
 ```ts
 it("creates one placement for two concurrent first starts", async () => {
@@ -208,17 +208,17 @@ it("creates one placement for two concurrent first starts", async () => {
 });
 ```
 
-- [ ] **Step 5: Implement repositories with `SELECT ... FOR UPDATE`**
+- [x] **Step 5: Implement repositories with `SELECT ... FOR UPDATE`**
 
 `ensurePlacement` runs at serializable isolation, locks eligible node rows, aggregates existing reservations, calls `scheduleRuntimeNode`, and updates only a runtime row whose `runtime_node_id IS NULL`. A duplicate user race re-reads and returns the committed placement.
 
-- [ ] **Step 6: Run scheduler and repository tests**
+- [x] **Step 6: Run scheduler and repository tests**
 
 ```bash
 pnpm exec vitest run server/utils/gateway/runtime-manager/runtime-node-store.test.ts server/utils/gateway/runtime-manager/runtime-node-scheduler.test.ts server/utils/gateway/runtime-manager/runtime-placement-store.test.ts
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add server/utils/gateway/runtime-manager/runtime-node-store.ts server/utils/gateway/runtime-manager/runtime-node-store.test.ts server/utils/gateway/runtime-manager/runtime-node-scheduler.ts server/utils/gateway/runtime-manager/runtime-node-scheduler.test.ts server/utils/gateway/runtime-manager/runtime-placement-store.ts server/utils/gateway/runtime-manager/runtime-placement-store.test.ts
