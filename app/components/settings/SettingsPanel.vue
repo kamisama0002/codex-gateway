@@ -2,6 +2,7 @@
 import {
   BellIcon,
   BlocksIcon,
+  CableIcon,
   BotIcon,
   BracesIcon,
   ContainerIcon,
@@ -21,6 +22,7 @@ import PetSettingsTab from "./PetSettingsTab.vue";
 import ProviderSettingsTab from "./ProviderSettingsTab.vue";
 import CapabilitySettingsTab from "./CapabilitySettingsTab.vue";
 import RuntimeSettingsTab from "./RuntimeSettingsTab.vue";
+import PlatformIntegrationSettingsTab from "./PlatformIntegrationSettingsTab.vue";
 
 const emit = defineEmits<{ close: [] }>();
 const active = ref<SettingsPanelKind>("appearance");
@@ -34,6 +36,7 @@ const panelDefinitions = [
   { id: "hosts", labelKey: "app.hosts", icon: ServerIcon },
   { id: "notifications", labelKey: "app.notificationSettings", icon: BellIcon },
   { id: "config", labelKey: "app.configJson", icon: BracesIcon },
+  { id: "integrations", labelKey: "app.platformIntegrations", icon: CableIcon },
 ] as const satisfies ReadonlyArray<{
   id: SettingsPanelKind;
   labelKey: string;
@@ -53,6 +56,7 @@ const activeComponent = computed(() => {
     hosts: HostSettingsTab,
     notifications: NotificationSettingsTab,
     config: ConfigSettingsTab,
+    integrations: PlatformIntegrationSettingsTab,
   } satisfies Record<SettingsPanelKind, object>;
   return components[active.value];
 });

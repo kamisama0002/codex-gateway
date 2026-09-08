@@ -10,6 +10,7 @@ const allPanels = [
   "hosts",
   "notifications",
   "config",
+  "integrations",
 ];
 
 describe("settingsPanelsForUser", () => {
@@ -31,7 +32,7 @@ describe("settingsPanelsForUser", () => {
     ).toEqual(["appearance", "pet", "capabilities", "runtime", "notifications"]);
   });
 
-  it("keeps all settings for DataOps administrators and standalone users", () => {
+  it("keeps integrations for administrators but hides it from ordinary standalone users", () => {
     expect(
       settingsPanelsForUser({
         id: 1,
@@ -48,7 +49,7 @@ describe("settingsPanelsForUser", () => {
       }),
     ).toEqual(allPanels);
     expect(settingsPanelsForUser({ id: 8, username: "standalone", role: "user" })).toEqual(
-      allPanels,
+      allPanels.filter((panel) => panel !== "integrations"),
     );
   });
 });

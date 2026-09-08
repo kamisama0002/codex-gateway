@@ -3,7 +3,7 @@ import { getDataOpsIntegrationStatusForEvent } from "./index.get";
 import { dataOpsAdmin, eventForUser, localAdmin } from "../../../integrations/dataops/test-utils";
 
 describe("GET /api/admin/integrations/dataops", () => {
-  it("requires a standalone local administrator and returns redacted status", async () => {
+  it("allows administrators to read redacted status", async () => {
     const service = {
       status: async () => ({
         pairingCode: {
@@ -19,8 +19,6 @@ describe("GET /api/admin/integrations/dataops", () => {
     expect(Object.hasOwn(status.active ?? {}, "sharedSecret")).toBe(false);
     await expect(
       getDataOpsIntegrationStatusForEvent(eventForUser(dataOpsAdmin), service),
-    ).rejects.toMatchObject({
-      statusCode: 403,
-    });
+    ).resolves.toEqual(status);
   });
 });
