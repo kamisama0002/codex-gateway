@@ -150,6 +150,7 @@ function isSystemCapability(item: CatalogItem) {
           {{ userName(users, assignment.userId) }}
           <span v-if="assignment.projectId !== null">· P{{ assignment.projectId }}</span>
           <Button
+            v-if="!isSystemCapability(item)"
             type="button"
             variant="ghost"
             size="icon-sm"
@@ -174,7 +175,7 @@ function isSystemCapability(item: CatalogItem) {
             {{ t("app.revoked") }}
           </span>
           <Button
-            v-if="admin && credential.revokedAt === null"
+            v-if="admin && !isSystemCapability(item) && credential.revokedAt === null"
             type="button"
             variant="ghost"
             size="icon-sm"

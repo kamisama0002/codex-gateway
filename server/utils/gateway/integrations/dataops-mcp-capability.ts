@@ -1,8 +1,9 @@
 import type { CapabilityDefinition } from "~~/shared/types";
-import type { DataOpsIntegrationSnapshot } from "./dataops-integration-provider";
 import { capabilityStore } from "../capabilities/store";
 
 export const DINKY_MCP_CAPABILITY_ID = "org__dinky_mcp";
+
+type DinkyMcpBinding = { revision: number; dataOpsBaseUrl: string };
 
 type CapabilityStore = {
   get(id: string): Promise<CapabilityDefinition | null>;
@@ -17,12 +18,7 @@ type CapabilityStore = {
 
 export function createDinkyMcpCapabilityService(store: CapabilityStore) {
   return {
-    async ensure(binding: {
-      pairingId: string;
-      revision: number;
-      dataOpsBaseUrl: string;
-      sharedSecret: string;
-    }) {
+    async ensure(binding: DinkyMcpBinding) {
       const url = new URL("/api/infinity/mcp/transport", binding.dataOpsBaseUrl).toString();
       const input = {
         id: DINKY_MCP_CAPABILITY_ID,
@@ -70,7 +66,7 @@ export function dinkyMcpCapabilityMatches(
 }
 
 export async function ensureDinkyMcpCapability(
-  binding: DataOpsIntegrationSnapshot,
+  binding: DinkyMcpBinding,
 ): Promise<CapabilityDefinition> {
   return await createDinkyMcpCapabilityService(capabilityStore).ensure(binding);
 }

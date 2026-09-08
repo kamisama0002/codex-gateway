@@ -15,10 +15,8 @@ describe("Dinky MCP capability", () => {
     };
     const service = createDinkyMcpCapabilityService(store);
     const result = await service.ensure({
-      pairingId: "pairing-fixed",
       revision: 4,
       dataOpsBaseUrl: "https://dinky.example.test",
-      sharedSecret: "secret",
     });
     expect(result).toMatchObject({
       id: DINKY_MCP_CAPABILITY_ID,
@@ -26,11 +24,45 @@ describe("Dinky MCP capability", () => {
     });
     expect(JSON.stringify(store.create.mock.calls)).not.toContain("secret");
     await service.ensure({
-      pairingId: "pairing-fixed",
       revision: 4,
       dataOpsBaseUrl: "https://dinky.example.test",
-      sharedSecret: "secret",
     });
     expect(store.update).not.toHaveBeenCalled();
+  });
+
+  it("updates the same system capability when a re-pair changes revision and URL", async () => {
+    let current: CapabilityDefinition | null = null;
+    const store = {
+      get: vi.fn(async () => current),
+      create: vi.fn(async (value: Omit<CapabilityDefinition, "createdAt" | "updatedAt">) => {
+        current = { ...value, createdAt: "now", updatedAt: "now" };
+        return current;
+      }),
+      update: vi.fn(async (_id: string, value: Partial<CapabilityDefinition>) => {
+        current = { ...current!, ...value, updatedAt: "later" } as CapabilityDefinition;
+        return current;
+      }),
+    };
+    const service = createDinkyMcpCapabilityService(store);
+
+    await service.ensure({
+      revision: 4,
+      dataOpsBaseUrl: "https://old.example.test",
+    });
+    await service.ensure({
+      revision: 5,
+      dataOpsBaseUrl: "https://new.example.test",
+    });
+    await service.ensure({
+      revision: 5,
+      dataOpsBaseUrl: "https://new.example.test",
+    });
+
+    expect(store.create).toHaveBeenCalledTimes(1);
+    expect(store.update).toHaveBeenCalledTimes(1);
+    expect(current).toMatchObject({
+      version: "5",
+      config: { url: "https://new.example.test/api/infinity/mcp/transport" },
+    });
   });
 });

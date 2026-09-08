@@ -176,6 +176,7 @@ export class CapabilityAdministrationService {
     },
     actorUserId: number,
   ) {
+    this.assertMutable(input.capabilityId);
     const assignmentInput = {
       capabilityId: input.capabilityId,
       userId: input.userId,
@@ -199,6 +200,7 @@ export class CapabilityAdministrationService {
   }
 
   async createCredential(input: CredentialCreateInput, actorUserId: number) {
+    this.assertMutable(input.capabilityId);
     const credential = await this.options.credentials.create(input);
     await this.auditCredential("credential.create", credential, actorUserId);
     return {
@@ -209,6 +211,7 @@ export class CapabilityAdministrationService {
 
   async rotateCredential(id: string, secret: Record<string, string>, actorUserId: number) {
     const current = await this.requiredCredential(id);
+    this.assertMutable(current.capabilityId);
     const credential = await this.options.credentials.rotate(id, secret);
     await this.auditCredential("credential.rotate", credential, actorUserId);
     return {
@@ -219,6 +222,7 @@ export class CapabilityAdministrationService {
 
   async revokeCredential(id: string, actorUserId: number) {
     const current = await this.requiredCredential(id);
+    this.assertMutable(current.capabilityId);
     const credential = await this.options.credentials.revoke(id);
     await this.auditCredential("credential.revoke", credential, actorUserId);
     return {

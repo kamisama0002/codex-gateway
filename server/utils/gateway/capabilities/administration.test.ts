@@ -68,6 +68,29 @@ describe("CapabilityAdministrationService", () => {
     await expect(fixture.service.deleteCapability("org__dinky_mcp", 1)).rejects.toMatchObject({
       message: "system_capability_read_only",
     });
+    await expect(
+      fixture.service.setAssignment(
+        { capabilityId: "org__dinky_mcp", userId: 7, projectId: null, assigned: true },
+        1,
+      ),
+    ).rejects.toMatchObject({ message: "system_capability_read_only" });
+    await expect(
+      fixture.service.createCredential(
+        { ...credentialInput(), capabilityId: "org__dinky_mcp" },
+        1,
+      ),
+    ).rejects.toMatchObject({ message: "system_capability_read_only" });
+
+    fixture.credentials.get.mockResolvedValue({
+      ...credentialDescriptor(),
+      capabilityId: "org__dinky_mcp",
+    });
+    await expect(
+      fixture.service.rotateCredential("cred__business", { token: "rotated" }, 1),
+    ).rejects.toMatchObject({ message: "system_capability_read_only" });
+    await expect(fixture.service.revokeCredential("cred__business", 1)).rejects.toMatchObject({
+      message: "system_capability_read_only",
+    });
   });
 });
 

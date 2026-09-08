@@ -4,6 +4,7 @@ import { createDataOpsIntegrationRepository } from "./dataops-integration-reposi
 import { normalizeDataOpsBaseUrl, positiveSafeRevision } from "./dataops-types";
 import { createPairingCodeRepository } from "./pairing-code-repository";
 import { capabilityStore } from "../capabilities/store";
+import type { CapabilityDefinition } from "~~/shared/types";
 import {
   createDinkyMcpCapabilityService,
   dinkyMcpCapabilityMatches,
@@ -63,6 +64,7 @@ export interface DataOpsPairingServiceOptions {
     dataOpsBaseUrl: string;
     sharedSecret: string;
   }) => Promise<unknown>;
+  getMcp?: () => Promise<CapabilityDefinition | null>;
 }
 
 export function createDataOpsPairingService(options: DataOpsPairingServiceOptions = {}) {
@@ -75,13 +77,14 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
   const publish = options.publish ?? (() => undefined);
   const mcpService = createDinkyMcpCapabilityService(capabilityStore);
   const ensureMcp = options.ensureMcp ?? (async (binding) => await mcpService.ensure(binding));
+  const getMcp = options.getMcp ?? (() => capabilityStore.get("org__dinky_mcp"));
 
   return {
     async status() {
       const [pairingCode, active, capability] = await Promise.all([
         codes.activeStatus(now().toISOString()),
         integrations.active(),
-        capabilityStore.get("org__dinky_mcp"),
+        getMcp(),
       ]);
       return {
         pairingCode,

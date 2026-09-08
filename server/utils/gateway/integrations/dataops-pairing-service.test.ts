@@ -111,6 +111,26 @@ describe("DataOpsPairingService", () => {
     );
   });
 
+  it("reports a missing capability as degraded and recovers on a confirmation retry", async () => {
+    const fixture = createFixture();
+    fixture.integrations.pending.mockResolvedValue(null);
+    fixture.integrations.active.mockResolvedValue(binding({ status: "active" }));
+    fixture.getMcp.mockResolvedValue(null);
+    fixture.ensureMcp.mockRejectedValueOnce(new Error("database unavailable")).mockResolvedValue({});
+
+    await expect(fixture.service.status()).resolves.toMatchObject({
+      active: { status: "active" },
+      errorCode: "dinky_mcp_sync_failed",
+    });
+    await expect(
+      fixture.service.confirm("pairing-fixed", 1, "fixture-shared-secret-with-at-least-32-bytes"),
+    ).rejects.toThrow("dinky_mcp_sync_failed");
+    await expect(
+      fixture.service.confirm("pairing-fixed", 1, "fixture-shared-secret-with-at-least-32-bytes"),
+    ).resolves.toMatchObject({ status: "active" });
+    expect(fixture.ensureMcp).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects pending bindings for authenticated protocol actions", async () => {
     const fixture = createFixture();
     fixture.integrations.acceptedForAuthentication.mockResolvedValue([]);
@@ -249,11 +269,13 @@ function createFixture(
   };
   const publish = vi.fn();
   const ensureMcp = vi.fn();
+  const getMcp = vi.fn().mockResolvedValue(null);
   return {
     integrations,
     codes,
     publish,
     ensureMcp,
+    getMcp,
     service: createDataOpsPairingService({
       integrations,
       codes,
@@ -263,6 +285,7 @@ function createFixture(
       rateLimit: options.rateLimit,
       publish,
       ensureMcp,
+      getMcp,
     }),
   };
 }
