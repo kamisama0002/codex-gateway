@@ -67,6 +67,14 @@ export function requireAdminUser(event: H3Event): AuthenticatedUser {
   return user;
 }
 
+export function requireLocalAdminUser(event: H3Event): AuthenticatedUser {
+  const user = requireAdminUser(event);
+  if (user.dataOps !== undefined) {
+    throw createError({ statusCode: 403, statusMessage: "Forbidden" });
+  }
+  return user;
+}
+
 export function requireDataOpsAdvancedSettingsAccess(event: H3Event): AuthenticatedUser {
   const user = requireAuthenticatedUser(event);
   if (user.dataOps && user.role !== "admin") {

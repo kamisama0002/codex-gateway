@@ -10,6 +10,7 @@ import {
   requireAdminUser,
   requireAuthenticatedUser,
   requireDataOpsAdvancedSettingsAccess,
+  requireLocalAdminUser,
 } from "./context";
 
 afterEach(() => {
@@ -65,6 +66,30 @@ describe("authentication context", () => {
 
     expect(requireAdminUser(adminEvent)).toMatchObject({ id: 1, role: "admin" });
     expect(() => requireAdminUser(userEvent)).toThrow(expect.objectContaining({ statusCode: 403 }));
+  });
+
+  it("requires a standalone local administrator for pairing codes", () => {
+    const localAdmin = eventFor(authenticatedUser({ id: 1, username: "admin", role: "admin" }));
+    const dataOpsAdmin = eventFor(
+      authenticatedUser({
+        id: 2,
+        username: "dataops-admin",
+        role: "admin",
+        dataOps: {
+          provider: "dataops",
+          externalSubject: "dataops:1:2",
+          tenantId: 1,
+          dataOpsUserId: 2,
+          projectId: 4,
+          authzVersion: 1,
+        },
+      }),
+    );
+
+    expect(requireLocalAdminUser(localAdmin)).toMatchObject({ id: 1, role: "admin" });
+    expect(() => requireLocalAdminUser(dataOpsAdmin)).toThrow(
+      expect.objectContaining({ statusCode: 403 }),
+    );
   });
 
   it("restricts advanced settings only for ordinary DataOps sessions", () => {
