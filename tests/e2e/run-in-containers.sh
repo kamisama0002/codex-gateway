@@ -523,9 +523,14 @@ verify_runner_image
 # preview tests without coupling process memory.
 docker compose -p "$project_name" -f "$compose_file" up -d --wait mysql
 docker compose -p "$project_name" -f "$compose_file" run --rm --no-deps build-runner \
-  bash -lc 'rm -rf .output .nuxt /e2e-output/* && pnpm exec nuxt build --extends ./tests/e2e/nuxt-layer && cp -a .output/. /e2e-output/ && node scripts/database/migrate.mjs && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD" --role admin && node scripts/create-user.mjs runtime-a managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-b managed-runtime-e2e-password --role user && pnpm exec tsx tests/e2e/seed-dataops-integration.mjs'
+  bash -lc 'rm -rf .output .nuxt /e2e-output/* && pnpm exec nuxt build --extends ./tests/e2e/nuxt-layer && cp -a .output/. /e2e-output/ && node scripts/database/migrate.mjs && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD" --role admin && node scripts/create-user.mjs runtime-a managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-b managed-runtime-e2e-password --role user'
 docker compose -p "$project_name" -f "$compose_file" up -d --wait \
   agent-runtime-manager gateway-under-test browser-preview-ingress
+docker compose -p "$project_name" -f "$compose_file" exec -T \
+  -e E2E_GATEWAY_USERNAME="$E2E_GATEWAY_USERNAME" \
+  -e E2E_GATEWAY_PASSWORD="$E2E_GATEWAY_PASSWORD" \
+  gateway-under-test \
+  node -e '(async () => { const login = await fetch("http://127.0.0.1:3100/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: process.env.E2E_GATEWAY_USERNAME, password: process.env.E2E_GATEWAY_PASSWORD }) }); if (!login.ok) throw new Error(`Gateway E2E login failed: ${login.status} ${await login.text()}`); const session = await login.json(); const seed = await fetch("http://127.0.0.1:3100/api/e2e/dataops-integration", { method: "POST", headers: { authorization: `Bearer ${session.token}` } }); if (!seed.ok) throw new Error(`DataOps E2E seed failed: ${seed.status} ${await seed.text()}`); })().catch((error) => { console.error(error); process.exit(1); })'
 docker compose -p "$project_name" -f "$compose_file" run --rm test-runner \
   bash -lc 'if [ -e /var/run/docker.sock ]; then echo "test-runner must not receive the Docker socket" >&2; exit 1; fi; exec pnpm exec playwright test "$@"' \
   e2e "$@"
