@@ -108,7 +108,7 @@ services:
     command: ["node", "/app/dataops-target-server.mjs"]
     environment:
       DATAOPS_TARGET_PORT: "8080"
-      DATAOPS_TARGET_SHARED_SECRET: dataops-e2e-shared-secret
+      DATAOPS_TARGET_SHARED_SECRET: dataops-e2e-shared-secret-at-least-32-bytes
     volumes:
       - ./dataops-target-server.mjs:/app/dataops-target-server.mjs:ro
     healthcheck:
@@ -242,7 +242,10 @@ services:
       # Keep enough cgroup headroom for Rolldown/Nitro native allocations while allowing the
       # JavaScript heap to finish the production bundle. The container remains capped at 2 GiB.
       NODE_OPTIONS: --max-old-space-size=1536
+      CODEX_GATEWAY_CONFIG_SECRET: e2e-config-secret
       DATABASE_URL: mysql://codex_gateway_e2e:codex-gateway-e2e-password@mysql:3306/${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
+      DATAOPS_BASE_URL: http://dataops-target:8080
+      DATAOPS_SSO_SHARED_SECRET: dataops-e2e-shared-secret-at-least-32-bytes
       E2E_GATEWAY_USERNAME: ${E2E_GATEWAY_USERNAME:-e2e}
       E2E_GATEWAY_PASSWORD: ${E2E_GATEWAY_PASSWORD:-codex-gateway-e2e-password}
     depends_on:
@@ -282,7 +285,7 @@ services:
       CODEX_GATEWAY_CONFIG_SECRET: e2e-config-secret
       DATABASE_URL: mysql://codex_gateway_e2e:codex-gateway-e2e-password@mysql:3306/${E2E_MYSQL_DATABASE:?E2E_MYSQL_DATABASE is required}
       DATAOPS_BASE_URL: http://dataops-target:8080
-      DATAOPS_SSO_SHARED_SECRET: dataops-e2e-shared-secret
+      DATAOPS_SSO_SHARED_SECRET: dataops-e2e-shared-secret-at-least-32-bytes
       DATAOPS_ALLOWED_ORIGINS: http://dataops.127.0.0.1.nip.io:3100
       NUXT_IGNORE_LOCK: "1"
       RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
