@@ -31,6 +31,8 @@ export interface StdioMcpCapabilityConfig {
 export interface HttpMcpCapabilityConfig {
   transport: "streamable_http";
   url: string;
+  bearerTokenEnvVar?: string;
+  envHttpHeaders?: Record<string, string>;
 }
 
 export type McpCapabilityConfig = StdioMcpCapabilityConfig | HttpMcpCapabilityConfig;

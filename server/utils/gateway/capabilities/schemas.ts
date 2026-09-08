@@ -79,6 +79,26 @@ const httpMcpConfigSchema = z
   .object({
     transport: z.literal("streamable_http"),
     url: z.string().trim().min(1).max(2_048),
+    bearerTokenEnvVar: z
+      .string()
+      .regex(/^[A-Z][A-Z0-9_]{0,127}$/u)
+      .optional(),
+    envHttpHeaders: z
+      .record(
+        z
+          .string()
+          .min(1)
+          .max(256)
+          .refine((value) => {
+            for (let index = 0; index < value.length; index += 1) {
+              const code = value.charCodeAt(index);
+              if (code < 32 || code === 127) return false;
+            }
+            return true;
+          }),
+        z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u),
+      )
+      .optional(),
   })
   .strict()
   .superRefine((config, context) => {

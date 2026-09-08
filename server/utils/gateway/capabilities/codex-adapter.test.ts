@@ -126,6 +126,34 @@ describe("planChanges", () => {
     expect(planChanges(desired, actual)).toEqual([]);
     expect(planChanges([...desired].reverse(), actual)).toEqual([]);
   });
+
+  it("renders and reconciles authenticated HTTP MCP configuration", () => {
+    const desired = [
+      definition("org__dinky_mcp", "mcp", {
+        transport: "streamable_http",
+        url: "https://dinky.example.test/api/infinity/mcp/transport",
+        bearerTokenEnvVar: "INFINITY_USER_TOKEN",
+        envHttpHeaders: { "X-INFINITY-TENANT-ID": "INFINITY_TENANT_ID" },
+      }),
+    ];
+    const actual = {
+      ...emptyActualCapabilityState(),
+      mcpServers: [
+        {
+          name: "org__dinky_mcp",
+          config: {
+            url: "https://dinky.example.test/api/infinity/mcp/transport",
+            bearer_token_env_var: "INFINITY_USER_TOKEN",
+            env_http_headers: { "X-INFINITY-TENANT-ID": "INFINITY_TENANT_ID" },
+          },
+          runtimeStatus: "connected" as const,
+          authStatus: "bearerToken" as const,
+        },
+      ],
+    };
+
+    expect(planChanges(desired, actual)).toEqual([]);
+  });
 });
 
 describe("CodexCapabilityAdapter", () => {
