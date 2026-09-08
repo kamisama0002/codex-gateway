@@ -9,6 +9,43 @@ import {
 } from "./docker-engine.js";
 
 describe("DockerodeEngine", () => {
+  it("recognizes a fully legacy managed container without inventing placement labels", async () => {
+    const docker = Object.assign(new Docker(), {
+      listContainers: vi.fn(async () => [{ Id: "legacy-container" }]),
+      getContainer: vi.fn(() => ({
+        inspect: vi.fn(async () => ({
+          Id: "legacy-container",
+          Name: "/codex-runtime-legacy",
+          Config: {
+            Env: [
+              "CODEX_APP_SERVER_PORT=4500",
+              "CODEX_REMOTE_TOKEN=legacy-token",
+              "CODEX_RUNTIME_IMAGE_ALIAS=stable",
+            ],
+            Labels: {
+              [runtimeResourceLabels.imageVersion]: "0.153.4",
+              [runtimeResourceLabels.managed]: "true",
+              [runtimeResourceLabels.runtimeId]: "runtime-legacy",
+              [runtimeResourceLabels.runtimeType]: "codex-app-server",
+              [runtimeResourceLabels.userHash]: "ab".repeat(32),
+            },
+          },
+          HostConfig: { Memory: 1024, NanoCpus: 1_000_000_000, PidsLimit: 128 },
+          State: { Running: true },
+        })),
+      })),
+    });
+
+    await expect(
+      new DockerodeEngine(docker).findManagedContainer("runtime-legacy"),
+    ).resolves.toMatchObject({
+      nodeId: null,
+      placementGeneration: null,
+      workspaceKey: null,
+      containerId: "legacy-container",
+    });
+  });
+
   it("fails closed when more than one managed container matches a runtime id", async () => {
     const docker = Object.assign(new Docker(), {
       listContainers: vi.fn(async () => [{ Id: "container-a" }, { Id: "container-b" }]),

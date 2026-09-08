@@ -187,7 +187,7 @@ export class RuntimeLifecycleService {
     const normalized = runtimeResourceActionRequestSchema.parse(request);
     const resources = this.resources(normalized.resources);
     const container = await this.requireContainer(normalized);
-    const running = await this.startWithResources(container, resources);
+    const running = await this.startWithResources(container, resources, normalized);
     await this.writePendingSecrets(request.runtimeId, running.containerId);
     return toResult(running);
   }
@@ -203,7 +203,7 @@ export class RuntimeLifecycleService {
     const normalized = runtimeResourceActionRequestSchema.parse(request);
     const resources = this.resources(normalized.resources);
     const container = await this.requireContainer(normalized);
-    const running = await this.startWithResources(container, resources);
+    const running = await this.startWithResources(container, resources, normalized);
     await this.writePendingSecrets(request.runtimeId, running.containerId);
     return toResult(running);
   }
@@ -246,9 +246,9 @@ export class RuntimeLifecycleService {
           runtimeId: existing.runtimeId,
           runtimeType: existing.runtimeType,
           userHash: existing.userHash,
-          nodeId: existing.nodeId,
-          placementGeneration: existing.placementGeneration,
-          workspaceKey: existing.workspaceKey,
+          nodeId: normalized.nodeId,
+          placementGeneration: normalized.placementGeneration,
+          workspaceKey: requiredWorkspaceKey(existing),
         },
         resources,
       ),
@@ -343,15 +343,12 @@ export class RuntimeLifecycleService {
   private async startWithResources(
     container: EngineContainerState,
     resources: RuntimeResourcePolicy,
+    request: Pick<RuntimeActionRequest, "runtimeId" | "nodeId" | "placementGeneration">,
   ): Promise<EngineContainerState> {
     if (container.running) await this.engine.stopContainer(container.containerId);
     await this.applyResourceLimits(container.containerId, resources);
     await this.engine.startContainer(container.containerId);
-    const running = await this.requireContainer({
-      runtimeId: container.runtimeId,
-      nodeId: container.nodeId,
-      placementGeneration: container.placementGeneration,
-    });
+    const running = await this.requireContainer(request);
     if (!running.running) throw new Error("Agent runtime did not start");
     return running;
   }
@@ -406,7 +403,7 @@ export class RuntimeLifecycleService {
     if (
       container.userHash !== request.userHash ||
       container.runtimeType !== request.runtimeType ||
-      container.workspaceKey !== request.workspaceKey
+      (container.workspaceKey !== null && container.workspaceKey !== request.workspaceKey)
     ) {
       throw new RuntimeLifecycleError("runtime_identity_conflict");
     }
@@ -414,6 +411,7 @@ export class RuntimeLifecycleService {
 
   private assertLookup(container: EngineContainerState, request: RuntimeLookupRequest) {
     const expectedNodeId = this.nodeStatus?.nodeId ?? container.nodeId;
+    if (expectedNodeId === null) throw new RuntimeLifecycleError("runtime_identity_conflict");
     this.assertPlacement(container, { ...request, nodeId: expectedNodeId });
   }
 
@@ -421,6 +419,26 @@ export class RuntimeLifecycleService {
     container: EngineContainerState,
     request: Pick<RuntimeActionRequest, "nodeId" | "placementGeneration">,
   ) {
+    if (
+      container.nodeId === null &&
+      container.placementGeneration === null &&
+      container.workspaceKey === null
+    ) {
+      if (
+        request.placementGeneration === 1 &&
+        (this.nodeStatus === undefined || request.nodeId === this.nodeStatus.nodeId)
+      ) {
+        return;
+      }
+      throw new RuntimeLifecycleError("runtime_identity_conflict");
+    }
+    if (
+      container.nodeId === null ||
+      container.placementGeneration === null ||
+      container.workspaceKey === null
+    ) {
+      throw new RuntimeLifecycleError("runtime_identity_conflict");
+    }
     if (container.placementGeneration > request.placementGeneration) {
       throw new RuntimeLifecycleError("stale_placement_generation");
     }
@@ -493,4 +511,11 @@ function statsResult(
 
 function cpuQuotaCpus(nanoCpus: number, onlineCpus: number) {
   return nanoCpus > 0 ? nanoCpus / 1_000_000_000 : onlineCpus;
+}
+
+function requiredWorkspaceKey(container: EngineContainerState) {
+  if (container.workspaceKey === null) {
+    throw new RuntimeLifecycleError("runtime_identity_conflict");
+  }
+  return container.workspaceKey;
 }

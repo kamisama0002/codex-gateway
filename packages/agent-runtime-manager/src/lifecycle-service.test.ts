@@ -137,7 +137,13 @@ class RecordingDockerEngine implements DockerEngine {
   };
   inspectedDataRoot: string | null = null;
 
-  constructor(options: { existingContainerId?: string; existingRunning?: boolean } = {}) {
+  constructor(
+    options: {
+      existingContainerId?: string;
+      existingRunning?: boolean;
+      legacyPlacement?: boolean;
+    } = {},
+  ) {
     if (options.existingContainerId !== undefined) {
       this.containers.set("runtime-a", {
         containerId: options.existingContainerId,
@@ -150,9 +156,12 @@ class RecordingDockerEngine implements DockerEngine {
         runtimeType: "codex-app-server",
         serviceToken: "existing-service-token",
         userHash,
-        nodeId: "node__default",
-        placementGeneration: 1,
-        workspaceKey: "ws__1234567890abcdef1234567890abcdef",
+        nodeId: options.legacyPlacement === true ? null : "node__default",
+        placementGeneration: options.legacyPlacement === true ? null : 1,
+        workspaceKey:
+          options.legacyPlacement === true
+            ? null
+            : "ws__1234567890abcdef1234567890abcdef",
         memoryBytes: 2 * 1024 * 1024 * 1024,
         nanoCpus: 0,
         pidsLimit: 256,
@@ -999,6 +1008,38 @@ describe("RuntimeLifecycleService", () => {
     await expect(service.start(placedAction("runtime-generation", 3))).rejects.toMatchObject({
       code: "runtime_identity_conflict",
     });
+  });
+
+  it("keeps a fully legacy generation-one container in place", async () => {
+    const engine = new RecordingDockerEngine({
+      existingContainerId: "legacy-container",
+      existingRunning: true,
+      legacyPlacement: true,
+    });
+    const service = new RuntimeLifecycleService(engine, testPolicy, {
+      nodeStatus: {
+        nodeId: "node__default",
+        managerVersion: "0.153.4",
+        dataRoot: "/data",
+        capacityCpuMillis: 16_000,
+        capacityMemoryBytes: 64 * 1024 * 1024 * 1024,
+        maxRuntimes: 30,
+      },
+    });
+
+    await expect(service.inspect(lookupFor("runtime-a"))).resolves.toMatchObject({
+      containerId: "legacy-container",
+      status: "running",
+    });
+    await expect(service.start(actionFor("runtime-a"))).resolves.toMatchObject({
+      containerId: "legacy-container",
+      status: "running",
+    });
+    await expect(service.start(actionFor("runtime-a", 2))).rejects.toMatchObject({
+      code: "runtime_identity_conflict",
+    });
+    expect(engine.createCalls).toHaveLength(0);
+    expect(engine.removeCalls).toHaveLength(0);
   });
 });
 

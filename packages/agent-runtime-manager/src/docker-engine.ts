@@ -75,9 +75,9 @@ export interface EngineContainerState {
   running: boolean;
   runtimeId: string;
   runtimeType: RuntimeType;
-  nodeId: string;
-  placementGeneration: number;
-  workspaceKey: string;
+  nodeId: string | null;
+  placementGeneration: number | null;
+  workspaceKey: string | null;
   serviceToken: string;
   userHash: string;
   memoryBytes: number;
@@ -358,9 +358,6 @@ export class DockerodeEngine implements DockerEngine {
         runtimeResourceLabels.runtimeId,
         runtimeResourceLabels.runtimeType,
         runtimeResourceLabels.userHash,
-        runtimeResourceLabels.nodeId,
-        runtimeResourceLabels.placementGeneration,
-        runtimeResourceLabels.workspaceKey,
       ];
       for (const key of identityLabels) {
         const expectedValue = spec.labels[key];
@@ -370,6 +367,24 @@ export class DockerodeEngine implements DockerEngine {
       }
       if (!existing.Labels?.[runtimeResourceLabels.imageVersion]) {
         throw new Error("managed volume image version label is missing");
+      }
+      const placementLabels = [
+        runtimeResourceLabels.nodeId,
+        runtimeResourceLabels.placementGeneration,
+        runtimeResourceLabels.workspaceKey,
+      ];
+      const presentPlacementLabels = placementLabels.filter(
+        (key) => existing.Labels?.[key] !== undefined,
+      );
+      if (presentPlacementLabels.length > 0) {
+        if (presentPlacementLabels.length !== placementLabels.length) {
+          throw new DockerRuntimeIdentityError();
+        }
+        for (const key of placementLabels) {
+          if (existing.Labels?.[key] !== spec.labels[key]) {
+            throw new DockerRuntimeIdentityError();
+          }
+        }
       }
     } catch (error) {
       if (!isDockerStatus(error, 404)) throw error;
@@ -393,6 +408,7 @@ export class DockerodeEngine implements DockerEngine {
     if (!Number.isInteger(internalPort) || internalPort < 1 || internalPort > 65_535) {
       throw new Error("managed container port label is invalid");
     }
+    const placement = placementMetadata(labels);
     return {
       containerId: inspected.Id,
       containerName: inspected.Name.replace(/^\//, ""),
@@ -402,11 +418,9 @@ export class DockerodeEngine implements DockerEngine {
       running: inspected.State.Running,
       runtimeId,
       runtimeType: runtimeTypeSchema.parse(required(labels[runtimeResourceLabels.runtimeType])),
-      nodeId: required(labels[runtimeResourceLabels.nodeId]),
-      placementGeneration: positiveInteger(
-        required(labels[runtimeResourceLabels.placementGeneration]),
-      ),
-      workspaceKey: required(labels[runtimeResourceLabels.workspaceKey]),
+      nodeId: placement.nodeId,
+      placementGeneration: placement.placementGeneration,
+      workspaceKey: placement.workspaceKey,
       serviceToken: required(environment.get("CODEX_REMOTE_TOKEN")),
       userHash: required(labels[runtimeResourceLabels.userHash]),
       memoryBytes: Math.max(0, inspected.HostConfig.Memory ?? 0),
@@ -528,6 +542,24 @@ function positiveInteger(value: string) {
     throw new DockerRuntimeIdentityError();
   }
   return parsed;
+}
+
+function placementMetadata(labels: Record<string, string>) {
+  const nodeId = labels[runtimeResourceLabels.nodeId];
+  const placementGeneration = labels[runtimeResourceLabels.placementGeneration];
+  const workspaceKey = labels[runtimeResourceLabels.workspaceKey];
+  const present = [nodeId, placementGeneration, workspaceKey].filter(
+    (value) => value !== undefined,
+  ).length;
+  if (present === 0) {
+    return { nodeId: null, placementGeneration: null, workspaceKey: null };
+  }
+  if (present !== 3) throw new DockerRuntimeIdentityError();
+  return {
+    nodeId: required(nodeId),
+    placementGeneration: positiveInteger(required(placementGeneration)),
+    workspaceKey: required(workspaceKey),
+  };
 }
 
 function safeFilesystemBytes(blocks: bigint, blockSize: bigint) {

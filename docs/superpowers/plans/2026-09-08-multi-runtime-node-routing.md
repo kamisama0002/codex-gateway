@@ -697,7 +697,7 @@ git commit -m "test(e2e): verify two runtime nodes"
 **Interfaces:**
 - Produces an exact migration, rollback, and second-node registration runbook.
 
-- [ ] **Step 1: Document the current-node bootstrap commands**
+- [x] **Step 1: Document the current-node bootstrap commands**
 
 The runbook records backup, migration 16, default node bootstrap, placement verification, relay smoke, and rollback commands. It explicitly forbids registering node B until every current user has node A placement and relay RPC succeeds.
 
@@ -705,11 +705,11 @@ The runbook records backup, migration 16, default node bootstrap, placement veri
 
 Use external MySQL and the existing Runtime Manager. Verify current runtime IDs, container IDs, named volumes, thread IDs, workspace files, model access, MCP access, tmux, upload, Gateway restart, and cold Gateway startup remain unchanged.
 
-- [ ] **Step 3: Verify rollback boundary**
+- [x] **Step 3: Verify rollback boundary**
 
 Before any node B placement exists, restore the pre-routing Gateway image while preserving migration 16 and default-node data. Confirm the old image remains blocked from production use if it cannot interpret placement-routed remote nodes.
 
-- [ ] **Step 4: Commit the rollout gate**
+- [x] **Step 4: Commit the rollout gate**
 
 ```bash
 git add docs/runbooks/runtime-node-routing-rollout.md .env.example docker-compose.yml
