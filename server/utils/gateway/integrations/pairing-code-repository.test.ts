@@ -20,7 +20,7 @@ describe("PairingCodeRepository", () => {
     store = createPairingCodeRepository(db);
   });
 
-  it("consumes a valid code exactly once", async () => {
+  it("allows exactly one concurrent consumer to consume a valid code", async () => {
     await store.create({
       actorUserId: 1,
       codeHash: "a".repeat(64),
@@ -28,12 +28,13 @@ describe("PairingCodeRepository", () => {
       now: "2026-09-08T00:00:00.000Z",
     });
 
-    await expect(
+    const consumed = await Promise.all([
       store.consume("a".repeat(64), "pairing-1", "2026-09-08T00:05:00.000Z"),
-    ).resolves.toBe(true);
-    await expect(
       store.consume("a".repeat(64), "pairing-2", "2026-09-08T00:05:00.000Z"),
-    ).resolves.toBe(false);
+    ]);
+
+    expect(consumed.filter(Boolean)).toHaveLength(1);
+    expect(consumed).toContain(false);
   });
 
   it("rejects expired codes and revokes the prior active code on replacement", async () => {

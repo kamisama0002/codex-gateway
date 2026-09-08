@@ -69,6 +69,9 @@ export function createDataOpsIntegrationRepository(db: GatewayDb = gatewayDataba
             }
             throw new DataOpsIntegrationRevisionConflictError();
           }
+          if (normalized.revision <= (await providerHighWaterRevision(tx))) {
+            throw new DataOpsIntegrationRevisionConflictError();
+          }
           await tx.execute(
             "UPDATE platform_integrations SET status = 'retired', updated_at = ? WHERE provider = ? AND status = 'pending'",
             [normalized.now, DATAOPS_INTEGRATION_PROVIDER],
@@ -115,6 +118,9 @@ export function createDataOpsIntegrationRepository(db: GatewayDb = gatewayDataba
           }
           if (row.status === "active") return requiredMappedRow(row);
           if (row.status !== "pending") throw new DataOpsIntegrationRevisionConflictError();
+          if (revision !== (await providerHighWaterRevision(tx))) {
+            throw new DataOpsIntegrationRevisionConflictError();
+          }
           const now = new Date().toISOString();
           await tx.execute(
             "UPDATE platform_integrations SET status = 'retired', updated_at = ? WHERE provider = ? AND status = 'grace'",
@@ -164,6 +170,14 @@ export function createDataOpsIntegrationRepository(db: GatewayDb = gatewayDataba
       );
     },
   };
+}
+
+async function providerHighWaterRevision(db: GatewayDb): Promise<number> {
+  const row = await db.one<{ revision: number | bigint | string }>(
+    "SELECT revision FROM platform_integrations WHERE provider = ? ORDER BY revision DESC LIMIT 1 FOR UPDATE",
+    [DATAOPS_INTEGRATION_PROVIDER],
+  );
+  return row === null ? 0 : positiveSafeRevision(row.revision);
 }
 
 function validateStageInput(input: StageDataOpsIntegrationInput): StageDataOpsIntegrationInput {

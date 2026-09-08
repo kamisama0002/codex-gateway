@@ -44,6 +44,12 @@ describe("DataOpsIntegrationRepository", () => {
     await store.stage(candidate("pairing-1", 1));
     await store.confirm("pairing-1", 1, "2026-09-08T00:10:00.000Z");
     await store.stage(candidate("pairing-2", 2));
+
+    await expect(Promise.all([store.active(), store.pending("pairing-2")])).resolves.toEqual([
+      expect.objectContaining({ pairingId: "pairing-1", status: "active", revision: 1 }),
+      expect.objectContaining({ pairingId: "pairing-2", status: "pending", revision: 2 }),
+    ]);
+
     await store.confirm("pairing-2", 2, "2026-09-08T00:20:00.000Z");
 
     await expect(store.acceptedForAuthentication("2026-09-08T00:15:00.000Z")).resolves.toEqual(
@@ -65,6 +71,20 @@ describe("DataOpsIntegrationRepository", () => {
       "integration_revision_conflict",
     );
     await expect(store.active()).resolves.toBeNull();
+  });
+
+  it("rejects a stale new pairing revision after a newer revision is active", async () => {
+    await store.stage(candidate("pairing-2", 2));
+    await store.confirm("pairing-2", 2, "2026-09-08T00:10:00.000Z");
+
+    await expect(store.stage(candidate("pairing-1", 1))).rejects.toThrow(
+      "integration_revision_conflict",
+    );
+    await expect(store.active()).resolves.toMatchObject({
+      pairingId: "pairing-2",
+      revision: 2,
+      status: "active",
+    });
   });
 });
 
