@@ -59,6 +59,16 @@ describe("CapabilityAdministrationService", () => {
     expect(fixture.syncSecrets).toHaveBeenNthCalledWith(2, 7, 10, 1);
     expect(fixture.syncSecrets).toHaveBeenNthCalledWith(3, 7, 10, 1);
   });
+
+  it("rejects generic mutations for the protected Dinky MCP capability", async () => {
+    const fixture = administrationFixture();
+    await expect(fixture.service.updateCapability("org__dinky_mcp", {}, 1)).rejects.toMatchObject({
+      message: "system_capability_read_only",
+    });
+    await expect(fixture.service.deleteCapability("org__dinky_mcp", 1)).rejects.toMatchObject({
+      message: "system_capability_read_only",
+    });
+  });
 });
 
 function administrationFixture() {

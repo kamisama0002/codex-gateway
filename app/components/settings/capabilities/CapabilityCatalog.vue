@@ -57,6 +57,10 @@ function deploymentStatus(item: CatalogItem): CapabilityDeploymentStatus {
   }
   return "unknown";
 }
+
+function isSystemCapability(item: CatalogItem) {
+  return item.id === "org__dinky_mcp";
+}
 </script>
 
 <template>
@@ -88,7 +92,7 @@ function deploymentStatus(item: CatalogItem): CapabilityDeploymentStatus {
             </span>
           </div>
         </div>
-        <div v-if="admin" class="flex shrink-0 items-center gap-1">
+        <div v-if="admin && !isSystemCapability(item)" class="flex shrink-0 items-center gap-1">
           <Switch
             :model-value="item.enabled"
             :disabled="busyId !== null"

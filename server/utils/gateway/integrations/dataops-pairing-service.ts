@@ -3,6 +3,8 @@ import { z } from "zod";
 import { createDataOpsIntegrationRepository } from "./dataops-integration-repository";
 import { normalizeDataOpsBaseUrl, positiveSafeRevision } from "./dataops-types";
 import { createPairingCodeRepository } from "./pairing-code-repository";
+import { capabilityStore } from "../capabilities/store";
+import { createDinkyMcpCapabilityService } from "./dataops-mcp-capability";
 
 const PAIRING_CODE_TTL_MS = 10 * 60_000;
 const GRACE_TTL_MS = 5 * 60_000;
@@ -52,6 +54,12 @@ export interface DataOpsPairingServiceOptions {
   fetch?: typeof globalThis.fetch;
   rateLimit?: () => boolean;
   publish?: (payload: { revision: number; pairingId: string }) => Promise<void> | void;
+  ensureMcp?: (binding: {
+    pairingId: string;
+    revision: number;
+    dataOpsBaseUrl: string;
+    sharedSecret: string;
+  }) => Promise<unknown>;
 }
 
 export function createDataOpsPairingService(options: DataOpsPairingServiceOptions = {}) {
@@ -62,6 +70,8 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
   const fetcher = options.fetch ?? globalThis.fetch;
   const rateLimit = options.rateLimit ?? defaultPairRateLimit();
   const publish = options.publish ?? (() => undefined);
+  const ensureService = createDinkyMcpCapabilityService(capabilityStore);
+  const ensureMcp = options.ensureMcp ?? (async (binding) => await ensureService.ensure(binding));
 
   return {
     async status() {
@@ -126,6 +136,7 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
         const graceExpiresAt = new Date(now().getTime() + GRACE_TTL_MS).toISOString();
         const binding = await integrations.confirm(pairingId, revision, graceExpiresAt);
         await publish({ revision: binding.revision, pairingId: binding.pairingId });
+        await ensureDinkyMcp(ensureMcp, binding);
         return publicBinding(binding);
       }
       const active = await integrations.active();
@@ -143,6 +154,7 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
       }
       const binding = await integrations.finalize(pairingId, revision);
       await publish({ revision: binding.revision, pairingId: binding.pairingId });
+      await ensureDinkyMcp(ensureMcp, binding);
       return publicBinding(binding);
     },
 
@@ -184,6 +196,22 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
       return result;
     },
   };
+}
+
+async function ensureDinkyMcp(
+  ensureMcp: (binding: {
+    pairingId: string;
+    revision: number;
+    dataOpsBaseUrl: string;
+    sharedSecret: string;
+  }) => Promise<unknown>,
+  binding: { pairingId: string; revision: number; dataOpsBaseUrl: string; sharedSecret: string },
+) {
+  try {
+    await ensureMcp(binding);
+  } catch {
+    throw new DataOpsPairingError("dinky_mcp_sync_failed", 502);
+  }
 }
 
 let defaultService: ReturnType<typeof createDataOpsPairingService> | null = null;

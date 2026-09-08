@@ -19,6 +19,7 @@ import { runtimeService } from "../runtime-manager/runtime-service";
 import { reconcileUserRuntime } from "./reconciler";
 import { capabilityStore } from "./store";
 import { capabilitySyncStore } from "./sync-store";
+import { DINKY_MCP_CAPABILITY_ID } from "../integrations/dataops-mcp-capability";
 
 interface CapabilityStorePort {
   create(input: CapabilityCreateInput): Promise<CapabilityDefinition>;
@@ -139,6 +140,7 @@ export class CapabilityAdministrationService {
   }
 
   async updateCapability(id: string, input: CapabilityUpdateInput, actorUserId: number) {
+    this.assertMutable(id);
     const assignments = await this.options.capabilities.listAssignments(id);
     const capability = await this.options.capabilities.update(id, input);
     await this.options.audit.record({
@@ -151,6 +153,7 @@ export class CapabilityAdministrationService {
   }
 
   async deleteCapability(id: string, actorUserId: number) {
+    this.assertMutable(id);
     const assignments = await this.options.capabilities.listAssignments(id);
     if (!(await this.options.capabilities.delete(id))) {
       throw new CapabilityAdministrationError("Capability not found", 404);
@@ -236,6 +239,12 @@ export class CapabilityAdministrationService {
         async (assignment) => await this.tryReconcile(assignment.userId, assignment.projectId),
       ),
     );
+  }
+
+  private assertMutable(id: string) {
+    if (id === DINKY_MCP_CAPABILITY_ID) {
+      throw new CapabilityAdministrationError("system_capability_read_only", 403);
+    }
   }
 
   private async tryReconcile(userId: number, projectId: number | null) {
