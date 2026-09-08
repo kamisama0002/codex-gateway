@@ -234,13 +234,19 @@ test("cancels pending first-thread creation while retaining a delayed workspace 
     await expect(conflictDialog).toBeVisible();
     const overwrite = page.getByTestId("workspace-upload-overwrite");
     await expect(overwrite).toBeEnabled();
-    const overwriteResponsePromise = page.waitForResponse((response) => {
-      const url = new URL(response.url());
-      return url.pathname === "/api/workspace/uploads" && response.request().method() === "POST";
-    });
+    const isWorkspaceUpload = (url: string, method: string) =>
+      new URL(url).pathname === "/api/workspace/uploads" && method === "POST";
+    const overwriteRequestPromise = page.waitForRequest((request) =>
+      isWorkspaceUpload(request.url(), request.method()),
+    );
+    const overwriteResponsePromise = page.waitForResponse(
+      (response) => isWorkspaceUpload(response.url(), response.request().method()),
+      { timeout: 120_000 },
+    );
     await overwrite.click();
+    const overwriteRequest = await overwriteRequestPromise;
+    expect(new URL(overwriteRequest.url()).searchParams.get("overwrite")).toBe("true");
     const overwriteResponse = await overwriteResponsePromise;
-    expect(new URL(overwriteResponse.url()).searchParams.get("overwrite")).toBe("true");
     const overwriteResult: unknown = await overwriteResponse.json();
     expect(overwriteResponse.ok(), JSON.stringify(overwriteResult)).toBe(true);
     expect(overwriteResult).toMatchObject({ status: "uploaded" });

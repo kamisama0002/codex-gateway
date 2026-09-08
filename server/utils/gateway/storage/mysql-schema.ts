@@ -1,5 +1,8 @@
 import { MANAGED_RUNTIME_HOST_ID } from "../../../../shared/runtime/managed-runtime.ts";
-import { DEFAULT_WEB_SEARCH_CAPABILITY_ID } from "../../../../shared/types/capabilities.ts";
+import {
+  DEFAULT_BROWSER_CAPABILITY_ID,
+  DEFAULT_WEB_SEARCH_CAPABILITY_ID,
+} from "../../../../shared/types/capabilities.ts";
 
 export interface MysqlSchemaMigration {
   version: number;
@@ -452,6 +455,52 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
         )
         SELECT
           '${DEFAULT_WEB_SEARCH_CAPABILITY_ID}',
+          id,
+          NULL,
+          DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')
+        FROM users
+      `,
+    ],
+  },
+  {
+    version: 13,
+    statements: [
+      `
+        INSERT IGNORE INTO capability_definitions (
+          id, kind, display_name, description, version, source_json, config_json,
+          sensitive_fields_json, enabled, created_by_user_id, created_at, updated_at
+        ) VALUES (
+          '${DEFAULT_BROWSER_CAPABILITY_ID}',
+          'mcp',
+          'Browser automation',
+          'Navigate, inspect, interact with, capture and download web content through Playwright MCP.',
+          '1.0.0',
+          JSON_OBJECT('type', 'builtin', 'locator', 'playwright-mcp'),
+          JSON_OBJECT(
+            'transport', 'stdio',
+            'command', 'playwright-mcp',
+            'args', JSON_ARRAY(
+              '--headless',
+              '--no-sandbox',
+              '--executable-path', '/usr/bin/chromium',
+              '--output-dir', '/workspace/.agent/browser',
+              '--user-data-dir', '/codex-home/browser-profile',
+              '--caps', 'vision,pdf'
+            )
+          ),
+          JSON_ARRAY(),
+          1,
+          NULL,
+          DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ'),
+          DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')
+        )
+      `,
+      `
+        INSERT IGNORE INTO capability_assignments (
+          capability_id, user_id, project_id, created_at
+        )
+        SELECT
+          '${DEFAULT_BROWSER_CAPABILITY_ID}',
           id,
           NULL,
           DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')

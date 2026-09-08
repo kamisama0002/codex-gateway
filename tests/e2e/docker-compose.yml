@@ -122,6 +122,87 @@ services:
       timeout: 3s
       retries: 30
 
+  searxng:
+    image: searxng/searxng@sha256:55e1fa15a63ff04e79e213e6aa2837549877b0c6d60757cdb633ae9111cb5fea
+    environment:
+      SEARXNG_SECRET: codex-gateway-e2e-search-secret
+    expose:
+      - "8080"
+    volumes:
+      - ../../docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - agent-egress
+      - search-backend
+
+  search-mcp:
+    image: codex-search-mcp-e2e:0.153.4
+    build:
+      context: ../..
+      dockerfile: docker/search-mcp.Dockerfile
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8788"
+      SEARXNG_URL: http://searxng:8080
+    expose:
+      - "8788"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m
+    depends_on:
+      searxng:
+        condition: service_started
+    networks:
+      - agent-runtime
+      - agent-egress
+      - search-backend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8788,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+  test-business-mcp:
+    image: codex-test-business-mcp-e2e:0.153.4
+    build:
+      context: ../..
+      dockerfile: docker/test-business-mcp.Dockerfile
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      BUSINESS_MCP_STATE_DIR: /tmp/test-business-mcp
+      HOST: 0.0.0.0
+      PORT: "8789"
+    expose:
+      - "8789"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10003,gid=10003,mode=0700
+    networks:
+      - agent-runtime
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8789,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
   ssh-target:
     build:
       context: ./docker
@@ -180,6 +261,8 @@ services:
         condition: service_started
       model-target:
         condition: service_healthy
+      search-mcp:
+        condition: service_healthy
       dataops-target:
         condition: service_healthy
       mysql:
@@ -190,6 +273,8 @@ services:
         condition: service_started
       ssh-target-legacy-codex:
         condition: service_started
+      test-business-mcp:
+        condition: service_healthy
     environment:
       HOST: 0.0.0.0
       PORT: "3100"
@@ -202,6 +287,7 @@ services:
       RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
       RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS: stable
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
+      RUNTIME_PROVIDER_PROXY_BASE_URL: http://gateway-under-test:3100/api/internal/providers
       # Preview origins enter through the nginx sidecar below. This mirrors production so remote
       # /_nuxt/* assets cannot be intercepted as Gateway public assets before reaching the proxy.
       BROWSER_PREVIEW_PUBLIC_PORT: "3200"
@@ -279,6 +365,7 @@ services:
       E2E_BARK_REQUEST_LOG: /bark-requests/requests.jsonl
       E2E_MANAGED_LABEL_VALUE: ${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}
       E2E_MANAGED_RUNTIME_ENABLED: "1"
+      E2E_RUNTIME_SECRET_FIXTURE: ${E2E_RUNTIME_SECRET_FIXTURE:-full-e2e-runtime-secret-fixture}
       PLAYWRIGHT_BASE_URL: http://codex.127.0.0.1.nip.io:3100
       RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
@@ -307,3 +394,5 @@ networks:
     internal: true
   agent-egress:
     name: ${E2E_AGENT_EGRESS_NETWORK_NAME:-codex-gateway-e2e-agent-egress}
+  search-backend:
+    internal: true

@@ -36,4 +36,14 @@ describe("MySQL capability schema", () => {
     expect(sql).toContain("http://search-mcp:8788/mcp");
     expect(sql).toContain("INSERT IGNORE INTO capability_assignments");
   });
+
+  it("seeds the default browser automation capability in migration 13", () => {
+    const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 13);
+    const sql = migration?.statements.join("\n") ?? "";
+    expect(sql).toContain("org__browser");
+    expect(sql).toContain("playwright-mcp");
+    expect(sql).toContain("/usr/bin/chromium");
+    expect(sql).toContain("/codex-home/browser-profile");
+    expect(sql).toContain("INSERT IGNORE INTO capability_assignments");
+  });
 });

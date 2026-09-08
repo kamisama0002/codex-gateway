@@ -113,8 +113,11 @@ Browser
         ├─ direct SSH PTY terminal sessions
         ├─ HTTP/WebSocket preview proxy over SSH
         ├─ MySQL-backed tmux monitor scheduler
+        ├─ 每用户 Docker Agent runtime 编排
+        ├─ 能力、分配和加密凭据协调
         ├─ thread/event cache
-        └─ remote official codex app-server
+        ├─ remote official codex app-server
+        └─ isolated local codex app-server containers
 ```
 
 核心规则：
@@ -130,6 +133,10 @@ Browser
 - **服务端账号与配置**：手动创建用户，Bearer token 登录，host/project/thread 配置加密存储在 MySQL。
 - **远端主机**：支持 SSH password、private key、ssh-agent，以及可选 SSH proxy。
 - **Codex runtime 管理**：检测远端 Codex 版本，升级旧版本，重启 stale app-server，并自动重连。
+- **每用户托管 Agent**：可选为每个用户运行一个长期 Codex 0.153.4 容器，分别持久化 `/workspace` 和 `/codex-home`；完整规格为 8 GiB、4 CPU、1024 PID、只读根文件系统、删除 Linux capabilities，并使用私有运行网络和受控外网网络。
+- **完整 Agent 工具链**：包含 Git/GitHub/SSH、Node/pnpm/Bun、Python/uv 与数据分析库、C/C++/Go/Rust/Java 构建工具、SQL/Redis 客户端、Chromium/Playwright、PDF/Office/OCR/图片/音视频工具和公网 HTTP 访问。
+- **平台能力管理**：管理员统一配置和分配 Skills、Plugins、Apps、MCP 与 Search；期望状态会协调到每个用户运行时，并在容器替换后恢复。
+- **范围化凭据**：模型、MCP、Git、SSH、OAuth 和外部签发凭据可按用户/项目加密保存，以临时环境变量或 `0600` tmpfs 文件注入，不进入浏览器 DTO、Docker inspect 输出或日志。
 - **会话发现与恢复**：从远端状态发现 Codex 会话，打开 thread 时优先加载较小的缓存 turn 窗口。
 - **实时 turn**：通过 WebSocket 发起新 turn、steer 运行中的 turn、中断 active turn，并响应 app-server 动态请求。
 - **Plan 和 Goal 模式**：查看并执行结构化计划；设置、编辑、暂停、恢复、停止或清除 app-server goal，并在输入框和详情弹窗中查看 token/耗时进度。
@@ -144,7 +151,7 @@ Browser
 - **状态修复**：SSH/app-server 重连后，Gateway 会刷新 running thread 状态；Nitro 定时任务也会扫描 stale running thread。
 - **可操作通知**：主 turn 或 tmux 任务完成时显示浏览器 Sonner 通知，并可选发送服务端 Bark 推送。点击 thread 通知可进入对应对话，点击 tmux 通知可打开对应监控和 pane 输出；通知按用户和完成事件去重。
 - **移动端布局**：响应式侧边栏、输入框、长按菜单和子代理面板。
-- **真实 E2E 覆盖**：Playwright 测试使用真实 Nuxt server、真实 SSH Docker target 和真实 Codex app-server。
+- **真实 E2E 覆盖**：Playwright 测试使用真实 Nuxt server、真实 SSH Docker target 和真实 Codex app-server；完整运行时验收还会创建两个隔离用户，执行真实模型 Turn，调用 Search/业务 MCP，安装真实本地 Plugin，并验证重启持久化和 Secret 脱敏。
 
 ## 项目结构
 
@@ -219,6 +226,14 @@ pnpm test:e2e
 | `BROWSER_PREVIEW_SECRET` | 否 | 为 user/Host/target 生成稳定预览 origin 的 HMAC secret。默认复用 `CODEX_GATEWAY_CONFIG_SECRET`。 |
 | `BROWSER_PREVIEW_SCHEME` | 否 | 公开预览协议，默认 `https`。仅本地 E2E/开发使用 `http`。 |
 | `BROWSER_PREVIEW_PUBLIC_PORT` | 否 | 本地开发时写入预览 origin 的可选公开端口。 |
+| `RUNTIME_MANAGER_SHARED_SECRET` | 托管 Agent | 只在 Gateway 与 Runtime Manager 之间共享的 HMAC/认证 Secret。 |
+| `RUNTIME_MANAGER_IMAGE_ALIASES` | 托管 Agent | 允许使用的不可变 Agent 镜像 JSON 映射；Codex 版本和镜像标签必须一起固定。 |
+| `RUNTIME_PROVIDER_PROXY_BASE_URL` | 托管模型访问 | Agent 容器可访问的 Gateway 内部模型代理地址，默认 `http://codex-gateway:3000/api/internal/providers`。 |
+| `RUNTIME_AGENT_MEMORY` | 否 | 每用户 Agent 内存限制；完整规格默认 `8g`。 |
+| `RUNTIME_AGENT_CPUS` | 否 | 每用户 Agent CPU 限制；完整规格默认 `4`。 |
+| `RUNTIME_AGENT_PIDS` | 否 | 每用户 Agent PID 限制；完整规格默认 `1024`。 |
+| `SEARXNG_IMAGE` | Search | 共享 Search MCP 使用的固定 SearXNG 镜像。 |
+| `SEARXNG_SECRET` | Search | 独立的 SearXNG Secret，不应复用应用或数据库 Secret。 |
 
 创建管理员用户：
 
@@ -294,6 +309,13 @@ docker compose \
 - Docker 提供真实 SSH target。
 - Gateway 通过 SSH 连接 target，并启动或恢复真实 Codex app-server。
 - Playwright 以浏览器行为验证登录、配置、thread 恢复、实时同步、移动端布局、diff 渲染、动态请求、通知、子代理 UI、远程文件、浏览器预览和真实 tmux 监控。
+
+完整托管 Agent 验收还会验证不可变工具镜像、双用户容器/卷/Secret 隔离、外网、Chromium、文档转换、OCR、Python 分析、Search 与业务 MCP 查询/写入、组织 Skill、Plugin 安装、Apps 协议、真实模型 Turn 和重启持久化：
+
+```bash
+E2E_SKIP_AGENT_IMAGE_BUILD=1 E2E_EXPECT_MANAGED_RUNTIME=1 \
+  tests/e2e/run-in-containers.sh -- tests/e2e/full-agent-runtime.spec.ts
+```
 
 运行：
 

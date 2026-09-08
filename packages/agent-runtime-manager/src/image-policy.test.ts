@@ -14,6 +14,9 @@ const policyPath = fileURLToPath(
 const agentDockerfilePath = fileURLToPath(
   new URL("../../../docker/agent-runtime.Dockerfile", import.meta.url),
 );
+const agentOverlayDockerfilePath = fileURLToPath(
+  new URL("../../../docker/agent-runtime-overlay.Dockerfile", import.meta.url),
+);
 const toolManifestPath = fileURLToPath(
   new URL("../../../docker/agent-runtime-tool-manifest.json", import.meta.url),
 );
@@ -49,6 +52,21 @@ const isolatedContractsTsconfigPath = fileURLToPath(
 );
 
 describe("Agent runtime image policy", () => {
+  it("can overlay runtime helpers without rebuilding the immutable tool layer", () => {
+    const dockerfile = readFileSync(agentOverlayDockerfilePath, "utf8");
+    expect(dockerfile).toContain("ARG AGENT_RUNTIME_BASE_IMAGE");
+    expect(dockerfile).toContain("COPY docker/agent-runtime-secret-writer.mjs");
+    expect(dockerfile).toContain("COPY docker/agent-runtime-oauth-callback.mjs");
+    expect(dockerfile).toContain('npm install --global "pnpm@$pnpm_version"');
+    expect(dockerfile).toContain("node /usr/local/lib/smoke-agent-runtime.mjs");
+  });
+
+  it("materializes pnpm in the image instead of downloading it on first use", () => {
+    const dockerfile = readFileSync(agentDockerfilePath, "utf8");
+    expect(dockerfile).toContain('npm install --global "pnpm@$pnpm_version"');
+    expect(dockerfile).not.toContain('corepack prepare "pnpm@$pnpm_version" --activate');
+  });
+
   it("keeps the Agent image isolated and pinned", () => {
     const policy: unknown = JSON.parse(readFileSync(policyPath, "utf8"));
 
@@ -349,6 +367,7 @@ describe("Agent runtime image policy", () => {
     try {
       const shell = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
       const shellFixtureDirectory = shellPath(fixtureDirectory);
+      writeFileSync(join(fixtureDirectory, ".ready"), "", { mode: 0o600 });
       const result = spawnSync(shell, [shellPath(agentEntrypointPath)], {
         encoding: "utf8",
         env: {
@@ -360,6 +379,7 @@ describe("Agent runtime image policy", () => {
           ),
           CODEX_RUNTIME_CONFIG_DRY_RUN: "1",
           PATH: `${shellFixtureDirectory}:/usr/bin:/bin`,
+          CODEX_RUNTIME_SECRET_DIR: shellFixtureDirectory,
         },
       });
       expect(result.status, result.stderr).toBe(0);

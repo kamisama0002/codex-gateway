@@ -131,7 +131,14 @@ process.stdin.on("end", () => {
   if (JSON.stringify(nonceVolumeOwners) !== JSON.stringify(["agent-runtime-manager"])) {
     throw new Error(`Only Runtime Manager may mount its nonce volume; found ${nonceVolumeOwners.join(",")}`);
   }
-  for (const name of ["agent-runtime-manager", "gateway-under-test", "test-runner"]) {
+  for (const name of [
+    "agent-runtime-manager",
+    "gateway-under-test",
+    "search-mcp",
+    "searxng",
+    "test-business-mcp",
+    "test-runner",
+  ]) {
     if ((services[name]?.ports ?? []).length !== 0) throw new Error(`${name} publishes a host port`);
   }
   for (const name of ["runtime-manager", "agent-runtime"]) {
@@ -139,6 +146,9 @@ process.stdin.on("end", () => {
   }
   if (config.networks?.["agent-egress"]?.internal === true) {
     throw new Error("agent-egress must provide outbound connectivity");
+  }
+  if (config.networks?.["search-backend"]?.internal !== true) {
+    throw new Error("search-backend must be internal");
   }
 });
 '
@@ -329,6 +339,15 @@ verify_managed_runtime_docker_state() {
       "$(docker inspect --format '{{index .Config.Labels "com.codex-gateway.image-version"}}' "$container_id")"
     assert_equal "managed Agent named volume mount markers" "11" \
       "$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}1{{end}}{{end}}' "$container_id")"
+    secret_fixture="${E2E_RUNTIME_SECRET_FIXTURE:-full-e2e-runtime-secret-fixture}"
+    if docker inspect "$container_id" | grep -Fq "$secret_fixture"; then
+      printf 'E2E assertion failed: managed Agent inspect leaked the secret fixture\n' >&2
+      return 1
+    fi
+    if docker logs "$container_id" 2>&1 | grep -Fq "$secret_fixture"; then
+      printf 'E2E assertion failed: managed Agent logs leaked the secret fixture\n' >&2
+      return 1
+    fi
   done
   assert_equal "managed Agent isolated user count" "$expected_runtime_count" "${#user_hashes[@]}"
 
@@ -342,7 +361,8 @@ cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
     docker compose -p "$project_name" -f "$compose_file" logs --no-color \
-      mysql agent-runtime-manager gateway-under-test model-target ssh-target >&2 || true
+      mysql agent-runtime-manager gateway-under-test model-target search-mcp searxng \
+      test-business-mcp ssh-target >&2 || true
   fi
   cleanup_managed_resources
   docker compose -p "$project_name" -f "$compose_file" down --volumes --remove-orphans >/dev/null 2>&1 || true
@@ -364,15 +384,17 @@ fi
 build_services=(
   agent-runtime-manager
   build-runner
+  search-mcp
   ssh-target
   ssh-target-legacy-node
   ssh-target-legacy-codex
+  test-business-mcp
 )
 if [ "${E2E_SKIP_AGENT_IMAGE_BUILD:-0}" != "1" ]; then
   build_services+=(agent-runtime-image)
 fi
 docker compose -p "$project_name" -f "$compose_file" build "${build_services[@]}"
-if [ "${E2E_SKIP_AGENT_IMAGE_BUILD:-0}" != "1" ]; then
+if [ "${E2E_SKIP_AGENT_IMAGE_VERIFY:-0}" != "1" ]; then
   verify_agent_image
 fi
 # Build, application server, and browser runner use separate 2 GiB cgroups. Sharing only the

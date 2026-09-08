@@ -139,7 +139,7 @@ test("config JSON editor shows current config by default and scrolls", async ({ 
   await openApp(page);
   await page.getByTestId("settings-toggle").click();
   const settingsPanel = page.getByTestId("settings-panel");
-  await expect(settingsPanel.getByRole("tab")).toHaveCount(7);
+  await expect(settingsPanel.getByRole("tab")).toHaveCount(8);
   await settingsPanel.getByRole("tab", { name: "配置 JSON" }).click();
   const editor = page.getByTestId("config-json-editor");
   await expect(editor).toContainText('"version"');

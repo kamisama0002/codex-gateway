@@ -1,6 +1,7 @@
 export type CapabilityKind = "skill" | "plugin" | "app" | "mcp" | "search";
 
 export const DEFAULT_WEB_SEARCH_CAPABILITY_ID = "org__web_search";
+export const DEFAULT_BROWSER_CAPABILITY_ID = "org__browser";
 
 export interface CapabilitySource {
   type: "builtin" | "git" | "internal" | "upload";

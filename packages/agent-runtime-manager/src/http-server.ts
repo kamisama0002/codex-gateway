@@ -139,6 +139,11 @@ async function handleRequest(
       const status = error.code === "runtime_not_found" ? 404 : 409;
       return sendJson(response, status, { error: error.code });
     }
+    console.error("[runtime-manager] request failed", {
+      method: request.method ?? "",
+      path: request.url?.split("?", 1)[0] ?? "",
+      error: error instanceof Error ? { name: error.name, message: error.message } : String(error),
+    });
     return sendJson(response, 500, { error: "internal_error" });
   }
 }

@@ -96,11 +96,11 @@ ARG PYPI_INDEX_URL=https://pypi.org/simple
 RUN yarn_version="$(node -p 'require("/tmp/agent-runtime-node-tools.json").packages.yarn')" \
     && test "$(yarn --version)" = "$yarn_version" \
     && pnpm_version="$(node -p 'require("/tmp/agent-runtime-node-tools.json").packages.pnpm')" \
-    && corepack enable pnpm \
-    && corepack prepare "pnpm@$pnpm_version" --activate \
+    && corepack disable pnpm \
+    && npm config set registry "$NPM_REGISTRY" \
+    && npm install --global "pnpm@$pnpm_version" \
     && node -e 'const {packages}=require("/tmp/agent-runtime-node-tools.json"); process.stdout.write(Object.entries(packages).filter(([name]) => name !== "pnpm" && name !== "yarn").map(([name, version]) => `${name}@${version}`).join("\n"))' \
       > /tmp/agent-runtime-node-tools.txt \
-    && npm config set registry "$NPM_REGISTRY" \
     && npm install --global $(cat /tmp/agent-runtime-node-tools.txt) \
     && npm cache clean --force \
     && python3 -m venv /opt/agent-python \

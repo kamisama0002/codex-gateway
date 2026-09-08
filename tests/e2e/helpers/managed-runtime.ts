@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 
 import { parseThreadListPage, parseThreadStartResult } from "../../../shared/runtime/app-server";
+import type { RpcEnvelope } from "../../../shared/types";
 import { createManagedRuntimeHost } from "../../../server/utils/gateway/infra/rpc/managed-rpc-transport";
 import { CodexRpcClient } from "../../../server/utils/gateway/infra/rpc/rpc";
 import { RuntimeManagerClient } from "../../../server/utils/gateway/runtime-manager/client";
@@ -137,6 +138,25 @@ export class ManagedRuntimeRpcSession {
     return await listManagedRuntimeThreads(this.client);
   }
 
+  request(method: string, params: unknown = {}, timeoutMs = 120_000) {
+    return this.client.request(method, params, timeoutMs);
+  }
+
+  waitForNotification(method: string, timeoutMs = 120_000): Promise<RpcEnvelope> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        off();
+        reject(new Error(`Timed out waiting for ${method}`));
+      }, timeoutMs);
+      const off = this.client.on("notification", (message) => {
+        if (message.method !== method) return;
+        clearTimeout(timeout);
+        off();
+        resolve(message);
+      });
+    });
+  }
+
   close() {
     this.client.close();
   }
@@ -249,19 +269,15 @@ export async function restartManagedRuntimeAsAdmin(
   // Docker restart returns when the process is running, before App Server necessarily accepts its
   // first WebSocket. A failed compatibility probe leaves the one real restart in degraded state;
   // the user's idempotent start endpoint completes readiness once that same Agent is listening.
-  await request.post(
-    managedRuntimeGatewayUrl(`/api/admin/runtimes/${target.user.id}/restart`),
-    { headers: bearerHeaders(admin) },
-  );
+  await request.post(managedRuntimeGatewayUrl(`/api/admin/runtimes/${target.user.id}/restart`), {
+    headers: bearerHeaders(admin),
+  });
   return await startManagedRuntime(request, target);
 }
 
 export async function inspectManagedRuntime(session: GatewaySession) {
   const secret = requiredEnvironment("RUNTIME_MANAGER_SHARED_SECRET");
-  const runtimeId = `codex_${createHmac("sha256", secret)
-    .update(`codex-runtime-user:${session.user.id}`)
-    .digest("hex")
-    .slice(0, 32)}`;
+  const runtimeId = runtimeIdForUser(session.user.id, secret);
   const client = new RuntimeManagerClient({
     baseUrl: requiredEnvironment("RUNTIME_MANAGER_BASE_URL"),
     secret,
@@ -272,6 +288,23 @@ export async function inspectManagedRuntime(session: GatewaySession) {
     throw new Error("Managed Runtime Manager returned a non-running E2E runtime");
   }
   return { ...runtime, containerId, endpoint };
+}
+
+export async function execManagedRuntime(
+  session: GatewaySession,
+  command: string,
+  options: { timeoutMs?: number; maxOutputBytes?: number } = {},
+) {
+  const secret = requiredEnvironment("RUNTIME_MANAGER_SHARED_SECRET");
+  return await new RuntimeManagerClient({
+    baseUrl: requiredEnvironment("RUNTIME_MANAGER_BASE_URL"),
+    secret,
+  }).exec({
+    runtimeId: runtimeIdForUser(session.user.id, secret),
+    command,
+    timeoutMs: options.timeoutMs ?? 60_000,
+    maxOutputBytes: options.maxOutputBytes ?? 2 * 1024 * 1024,
+  });
 }
 
 export async function isManagedRuntimeTokenRejected(
@@ -293,10 +326,7 @@ export async function isManagedRuntimeTokenRejected(
   }
 }
 
-export async function restartGateway(
-  request: ManagedGatewayRequestContext,
-  admin: GatewaySession,
-) {
+export async function restartGateway(request: ManagedGatewayRequestContext, admin: GatewaySession) {
   const before = gatewayProcessSchema.parse(
     await successfulJson(
       await request.get(managedRuntimeGatewayUrl("/api/e2e/gateway-process"), {
@@ -337,10 +367,7 @@ function bearerHeaders(session: GatewaySession) {
   return { authorization: `Bearer ${session.token}` };
 }
 
-async function successfulJson(
-  response: ManagedGatewayApiResponse,
-  operation: string,
-) {
+async function successfulJson(response: ManagedGatewayApiResponse, operation: string) {
   if (!response.ok()) throw new Error(`${operation} returned ${response.status()}`);
   return await response.json();
 }
@@ -363,6 +390,13 @@ class RetryableE2eError extends Error {}
 
 function managedRuntimeGatewayUrl(path: string) {
   return new URL(path, MANAGED_RUNTIME_GATEWAY_ORIGIN).toString();
+}
+
+function runtimeIdForUser(userId: number, secret: string) {
+  return `codex_${createHmac("sha256", secret)
+    .update(`codex-runtime-user:${userId}`)
+    .digest("hex")
+    .slice(0, 32)}`;
 }
 
 function requiredEnvironment(name: string) {

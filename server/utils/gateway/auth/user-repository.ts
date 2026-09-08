@@ -1,5 +1,8 @@
 import type { DbRow, GatewayDb } from "../storage/contracts";
-import { DEFAULT_WEB_SEARCH_CAPABILITY_ID } from "../../../../shared/types/capabilities.ts";
+import {
+  DEFAULT_BROWSER_CAPABILITY_ID,
+  DEFAULT_WEB_SEARCH_CAPABILITY_ID,
+} from "../../../../shared/types/capabilities.ts";
 
 export type UserRole = "admin" | "user";
 
@@ -73,8 +76,13 @@ export class UserRepository {
        )
        SELECT id, ?, NULL, ?
        FROM capability_definitions
-       WHERE id = ?`,
-      [result.insertId, input.now, DEFAULT_WEB_SEARCH_CAPABILITY_ID],
+       WHERE id IN (?, ?)`,
+      [
+        result.insertId,
+        input.now,
+        DEFAULT_BROWSER_CAPABILITY_ID,
+        DEFAULT_WEB_SEARCH_CAPABILITY_ID,
+      ],
     );
     const user = await this.findById(result.insertId);
     if (user === null) throw new Error("Created user could not be loaded");

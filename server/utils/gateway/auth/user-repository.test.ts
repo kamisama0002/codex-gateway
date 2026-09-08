@@ -74,7 +74,7 @@ describe("UserRepository", () => {
     await expect(store.login("login-user", "correct-password")).resolves.toBeNull();
   });
 
-  it("assigns the default web search capability to every new user", async () => {
+  it("assigns the default web search and browser capabilities to every new user", async () => {
     const repository = new UserRepository(db);
     await db.execute("UPDATE capability_definitions SET enabled = 0 WHERE id = ?", [
       "org__web_search",
@@ -86,10 +86,13 @@ describe("UserRepository", () => {
     });
 
     await expect(
-      db.one(
-        "SELECT capability_id FROM capability_assignments WHERE user_id = ? AND project_id IS NULL",
+      db.many<{ capability_id: string }>(
+        "SELECT capability_id FROM capability_assignments WHERE user_id = ? AND project_id IS NULL ORDER BY capability_id",
         [user.id],
       ),
-    ).resolves.toEqual({ capability_id: "org__web_search" });
+    ).resolves.toEqual([
+      { capability_id: "org__browser" },
+      { capability_id: "org__web_search" },
+    ]);
   });
 });

@@ -20,7 +20,6 @@ describe("CapabilityStore", () => {
 
   it("combines user and project grants without leaking another user or project", async () => {
     await store.create(skillDefinition("org__revenue", "Revenue analysis"));
-    await store.create(searchDefinition("org__web_search"));
     await store.create(httpMcpDefinition("org__project_sales", "https://mcp.example.com/sales"));
     await store.create(skillDefinition("org__other_user", "Other user skill"));
     await store.assign({ capabilityId: "org__revenue", userId: 7, projectId: null });
@@ -121,18 +120,6 @@ function skillDefinition(id: string, displayName: string) {
     version: "1.0.0",
     source: { type: "upload" as const, locator: `artifact:${id}:1.0.0` },
     config: { entryPath: "SKILL.md" },
-  };
-}
-
-function searchDefinition(id: string) {
-  return {
-    id,
-    kind: "search" as const,
-    displayName: "Web search",
-    description: "Search public web",
-    version: "1.0.0",
-    source: { type: "internal" as const, locator: "search-mcp" },
-    config: { transport: "streamable_http" as const, url: "http://search-mcp:8788/mcp" },
   };
 }
 

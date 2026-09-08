@@ -37,13 +37,8 @@ export class RemoteFileService {
 
   async uploadFile(host: HostWithSecret, localPath: string, remotePath: string) {
     const directory = remotePath.split("/").slice(0, -1).join("/") || ".";
-    const mkdir = await this.ssh.exec(
-      host,
-      remoteLoginShellCommand(`mkdir -p ${shellQuote(directory)}`),
-    );
-    if (mkdir.code !== 0) {
-      throw new Error(mkdir.stderr || `Failed to create remote upload directory: ${directory}`);
-    }
+    const sftp = await this.ssh.sftp(host);
+    await ensureRemoteDirectory(sftp, directory);
     return this.ssh.uploadFile(host, localPath, remotePath);
   }
 
@@ -252,6 +247,51 @@ function remotePathExists(sftp: Awaited<ReturnType<SshConnectionPool["sftp"]>>, 
         return;
       }
       resolve(true);
+    });
+  });
+}
+
+async function ensureRemoteDirectory(
+  sftp: Awaited<ReturnType<SshConnectionPool["sftp"]>>,
+  path: string,
+): Promise<void> {
+  const normalized = posix.normalize(path);
+  if (normalized === "." || normalized === "/") return;
+
+  const status = await remoteDirectoryStatus(sftp, normalized);
+  if (status === "directory") return;
+  if (status === "other") {
+    throw new Error(`Remote upload parent is not a directory: ${normalized}`);
+  }
+
+  await ensureRemoteDirectory(sftp, posix.dirname(normalized));
+  await new Promise<void>((resolve, reject) => {
+    sftp.mkdir(normalized, { mode: 0o755 }, (error) => {
+      if (!error) {
+        resolve();
+        return;
+      }
+      // Concurrent uploads may create the same parent after the initial stat.
+      sftp.stat(normalized, (statError, stats) => {
+        if (!statError && stats.isDirectory()) resolve();
+        else reject(error);
+      });
+    });
+  });
+}
+
+function remoteDirectoryStatus(
+  sftp: Awaited<ReturnType<SshConnectionPool["sftp"]>>,
+  path: string,
+) {
+  return new Promise<"directory" | "missing" | "other">((resolve, reject) => {
+    sftp.stat(path, (error, stats) => {
+      if (!error) {
+        resolve(stats.isDirectory() ? "directory" : "other");
+        return;
+      }
+      if (isMissingSftpPath(error)) resolve("missing");
+      else reject(error);
     });
   });
 }

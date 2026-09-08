@@ -1,0 +1,18 @@
+{
+  "name": "org-e2e-runtime",
+  "version": "0.1.0",
+  "description": "Org E2e Runtime plugin",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Org E2e Runtime",
+    "shortDescription": "Use Org E2e Runtime in Codex.",
+    "longDescription": "Org E2e Runtime adds a local Codex plugin scaffold.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Help me use Org E2e Runtime."
+  }
+}

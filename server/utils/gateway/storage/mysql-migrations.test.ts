@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { freshMysqlTestDatabase } from "../../../../tests/mysql/helpers";
+import { createCapabilityStore } from "../capabilities/store";
 import { migrateMysqlGatewayDatabase } from "./mysql-migrations";
 
 describe("MySQL gateway migrations", () => {
@@ -36,7 +37,7 @@ describe("MySQL gateway migrations", () => {
     );
     expect(
       await db.one("SELECT version, checksum FROM schema_migrations ORDER BY version DESC"),
-    ).toEqual(expect.objectContaining({ version: 12 }));
+    ).toEqual(expect.objectContaining({ version: 13 }));
   });
 
   it("rejects a changed checksum for an applied migration", async () => {
@@ -265,6 +266,7 @@ describe("MySQL gateway migrations", () => {
       { version: 10, count: 1 },
       { version: 11, count: 1 },
       { version: 12, count: 1 },
+      { version: 13, count: 1 },
     ]);
   });
 
@@ -292,5 +294,52 @@ describe("MySQL gateway migrations", () => {
         ["existing-user"],
       ),
     ).resolves.toEqual({ capability_id: "org__web_search" });
+  });
+
+  it("assigns the default browser capability to users that predate migration 13", async () => {
+    const db = await freshMysqlTestDatabase();
+    await migrateMysqlGatewayDatabase(db);
+    await db.execute("DELETE FROM schema_migrations WHERE version = ?", [13]);
+    await db.execute("DELETE FROM capability_assignments WHERE capability_id = ?", [
+      "org__browser",
+    ]);
+    await db.execute("DELETE FROM capability_definitions WHERE id = ?", ["org__browser"]);
+    await db.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", [
+      "browser-user",
+      "password-hash",
+    ]);
+
+    await migrateMysqlGatewayDatabase(db);
+
+    await expect(createCapabilityStore(db).get("org__browser")).resolves.toMatchObject({
+      kind: "mcp",
+      source: { type: "builtin", locator: "playwright-mcp" },
+      config: {
+        transport: "stdio",
+        command: "playwright-mcp",
+        args: [
+          "--headless",
+          "--no-sandbox",
+          "--executable-path",
+          "/usr/bin/chromium",
+          "--output-dir",
+          "/workspace/.agent/browser",
+          "--user-data-dir",
+          "/codex-home/browser-profile",
+          "--caps",
+          "vision,pdf",
+        ],
+      },
+    });
+
+    await expect(
+      db.one(
+        `SELECT a.capability_id
+         FROM capability_assignments a
+         JOIN users u ON u.id = a.user_id
+         WHERE u.username = ? AND a.capability_id = ?`,
+        ["browser-user", "org__browser"],
+      ),
+    ).resolves.toEqual({ capability_id: "org__browser" });
   });
 });

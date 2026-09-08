@@ -115,8 +115,11 @@ Browser
         ├─ direct SSH PTY terminal sessions
         ├─ HTTP/WebSocket preview proxy over SSH
         ├─ MySQL-backed tmux monitor scheduler
+        ├─ per-user Docker Agent runtime orchestration
+        ├─ capability, assignment, and encrypted credential reconciliation
         ├─ thread/event cache
-        └─ remote official codex app-server
+        ├─ remote official codex app-server
+        └─ isolated local codex app-server containers
 ```
 
 Core rules:
@@ -132,6 +135,10 @@ Core rules:
 - **Server-side accounts and config**: manually created users, Bearer token login, encrypted host/project/thread config in MySQL.
 - **Remote hosts**: SSH password, private key, ssh-agent, and optional SSH proxy support.
 - **Codex runtime management**: detects remote Codex versions, upgrades old installs, restarts stale app-server processes, and reconnects automatically.
+- **Per-user managed Agents**: optionally runs one long-lived Codex 0.153.4 container per user with separate `/workspace` and `/codex-home` volumes, 8 GiB/4 CPU/1024 PID limits, read-only rootfs, dropped capabilities, and private runtime plus controlled-egress networks.
+- **Full Agent toolchain**: Git/GitHub/SSH, Node/pnpm/Bun, Python/uv and data libraries, C/C++/Go/Rust/Java build tools, SQL/Redis clients, Chromium/Playwright, PDF/Office/OCR/image/audio utilities, and public HTTP access.
+- **Managed capabilities**: administrators can catalog and assign Skills, Plugins, Apps, MCP servers, and Search. Desired state is reconciled into each user runtime and survives container replacement.
+- **Scoped credentials**: model, MCP, Git, SSH, OAuth, and external-issued credentials can be encrypted per user/project and injected as ephemeral environment or `0600` tmpfs files without entering browser DTOs, Docker inspect output, or logs.
 - **Thread discovery and restore**: discovers Codex sessions from remote state and opens threads with a small cached turn window first.
 - **Realtime turns**: start new turns, steer running turns, interrupt active turns, and answer app-server dynamic requests over WebSocket.
 - **Plan and goal modes**: review and execute structured plans; set, edit, pause, resume, stop, or clear app-server goals with token/time progress in the composer and details dialog.
@@ -146,7 +153,7 @@ Core rules:
 - **State repair**: after SSH/app-server reconnect, Gateway refreshes running thread state; a Nitro scheduled task also checks stale running threads.
 - **Actionable notifications**: in-browser Sonner notifications and optional server-side Bark push for completed main turns and tmux jobs. Thread notifications navigate to the conversation; tmux notifications open the matching monitor and pane output. Delivery is de-duplicated per user and completion.
 - **Mobile layout**: responsive sidebar, composer, long-press context actions, and sub-agent panels.
-- **Real E2E coverage**: Playwright tests run against a real Nuxt server, real SSH Docker target, and real Codex app-server.
+- **Real E2E coverage**: Playwright tests run against a real Nuxt server, real SSH Docker target, and real Codex app-server. The full-runtime acceptance test also provisions two isolated users, executes a real model turn, calls Search/business MCPs, installs a real local Plugin, and verifies restart persistence and secret redaction.
 
 ## Project Structure
 
@@ -222,6 +229,14 @@ Environment variables:
 | `BROWSER_PREVIEW_SECRET` | No | HMAC secret for stable per-user/Host/target preview origins. Defaults to `CODEX_GATEWAY_CONFIG_SECRET`. |
 | `BROWSER_PREVIEW_SCHEME` | No | Public preview scheme, `https` by default. Use `http` only for local E2E/development. |
 | `BROWSER_PREVIEW_PUBLIC_PORT` | No | Optional public port included in preview origins for local development. |
+| `RUNTIME_MANAGER_SHARED_SECRET` | Managed Agents | HMAC/authentication secret shared only by Gateway and Runtime Manager. |
+| `RUNTIME_MANAGER_IMAGE_ALIASES` | Managed Agents | JSON map of approved immutable Agent images. Keep the active Codex version and image tag pinned together. |
+| `RUNTIME_PROVIDER_PROXY_BASE_URL` | Managed model access | Internal Gateway provider-proxy base URL reachable from Agent containers. Defaults to `http://codex-gateway:3000/api/internal/providers`. |
+| `RUNTIME_AGENT_MEMORY` | No | Per-user Agent memory limit; the full profile defaults to `8g`. |
+| `RUNTIME_AGENT_CPUS` | No | Per-user Agent CPU limit; the full profile defaults to `4`. |
+| `RUNTIME_AGENT_PIDS` | No | Per-user Agent PID limit; the full profile defaults to `1024`. |
+| `SEARXNG_IMAGE` | Search | Pinned SearXNG image used by the shared Search MCP. |
+| `SEARXNG_SECRET` | Search | Independent SearXNG secret; do not reuse application or database secrets. |
 
 Create an admin user:
 
@@ -297,6 +312,13 @@ E2E tests do not mock Codex app-server:
 - Docker provides a real SSH target.
 - Gateway connects to the target over SSH and starts or resumes a real Codex app-server.
 - Playwright verifies login, config, thread restore, realtime sync, mobile layout, diff rendering, dynamic requests, notifications, sub-agent UI, remote files, browser preview, and real tmux monitoring.
+
+The full managed-Agent acceptance test additionally validates the immutable tool image, two-user container/volume/secret isolation, egress, Chromium, document conversion, OCR, Python analysis, Search and business MCP query/write, organization Skills, Plugin installation, Apps protocol availability, a real model turn, and restart persistence:
+
+```bash
+E2E_SKIP_AGENT_IMAGE_BUILD=1 E2E_EXPECT_MANAGED_RUNTIME=1 \
+  tests/e2e/run-in-containers.sh -- tests/e2e/full-agent-runtime.spec.ts
+```
 
 Run:
 

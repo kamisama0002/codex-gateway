@@ -256,6 +256,8 @@ export const appServerThreadSchema = z
     sectionEnteredAt: z.number().nullable(),
     projectId: z.string().nullable(),
     historyMode: z.enum(["legacy", "paginated"]),
+    model: z.string().min(1).nullable().optional(),
+    reasoningEffort: z.string().min(1).nullable().optional(),
     modelProvider: z.string(),
     createdAt: z.number(),
     updatedAt: z.number(),
