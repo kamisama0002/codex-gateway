@@ -523,7 +523,7 @@ verify_runner_image
 # preview tests without coupling process memory.
 docker compose -p "$project_name" -f "$compose_file" up -d --wait mysql
 docker compose -p "$project_name" -f "$compose_file" run --rm --no-deps build-runner \
-  bash -lc 'rm -rf .output .nuxt /e2e-output/* && pnpm exec nuxt build --extends ./tests/e2e/nuxt-layer && cp -a .output/. /e2e-output/ && node scripts/database/migrate.mjs && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD" --role admin && node scripts/create-user.mjs runtime-a managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-b managed-runtime-e2e-password --role user && node tests/e2e/seed-dataops-integration.mjs'
+  bash -lc 'rm -rf .output .nuxt /e2e-output/* && pnpm exec nuxt build --extends ./tests/e2e/nuxt-layer && cp -a .output/. /e2e-output/ && node scripts/database/migrate.mjs && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD" --role admin && node scripts/create-user.mjs runtime-a managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-b managed-runtime-e2e-password --role user && pnpm exec tsx tests/e2e/seed-dataops-integration.mjs'
 docker compose -p "$project_name" -f "$compose_file" up -d --wait \
   agent-runtime-manager gateway-under-test browser-preview-ingress
 docker compose -p "$project_name" -f "$compose_file" run --rm test-runner \
