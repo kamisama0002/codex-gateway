@@ -59,6 +59,7 @@ if [ -z "${E2E_CODEX_PROVIDER_KEY_FILE:-}" ]; then
   fi
 fi
 export E2E_AGENT_NETWORK_NAME="${E2E_AGENT_NETWORK_NAME:-$project_name-agent-runtime}"
+export E2E_AGENT_B_NETWORK_NAME="${E2E_AGENT_B_NETWORK_NAME:-$project_name-agent-runtime-b}"
 export E2E_AGENT_EGRESS_NETWORK_NAME="${E2E_AGENT_EGRESS_NETWORK_NAME:-$project_name-agent-egress}"
 export E2E_AGENT_IMAGE="$agent_image"
 export E2E_RUNTIME_MANAGER_NETWORK_NAME="${E2E_RUNTIME_MANAGER_NETWORK_NAME:-$project_name-runtime-manager}"
@@ -67,6 +68,8 @@ export E2E_RUNNER_IMAGE="$runner_image"
 export E2E_MANAGED_RUNTIME_RESOURCE_EXPECTATIONS_FILE="$container_resource_expectations_file"
 export E2E_MANAGED_LABEL_VALUE="$project_name"
 export RUNTIME_MANAGER_SHARED_SECRET="${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret-$project_name}"
+export RUNTIME_IDENTITY_SECRET="${RUNTIME_IDENTITY_SECRET:-$RUNTIME_MANAGER_SHARED_SECRET}"
+export RUNTIME_MANAGER_B_SHARED_SECRET="${RUNTIME_MANAGER_B_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-b-secret-$project_name}"
 if [ "${E2E_PRINT_RESOURCE_EXPECTATIONS_FILE:-0}" = "1" ]; then
   printf '%s\n' "$resource_expectations_file"
 fi
@@ -155,12 +158,14 @@ process.stdin.on("end", () => {
   if (!(mysql.volumes ?? []).some((mount) => mount.target === "/var/lib/mysql")) {
     throw new Error("E2E MySQL persistent data mount is missing");
   }
-  if (services["agent-runtime-manager"]?.image !== process.env.E2E_RUNTIME_MANAGER_IMAGE) {
-    throw new Error("Runtime Manager must use the exact generated E2E tag");
-  }
-  const aliases = JSON.parse(services["agent-runtime-manager"]?.environment?.RUNTIME_MANAGER_IMAGE_ALIASES ?? "{}");
-  if (aliases.stable?.image !== process.env.E2E_AGENT_IMAGE) {
-    throw new Error("Runtime Manager must provision the exact generated Agent image tag");
+  for (const name of ["agent-runtime-manager", "agent-runtime-manager-b"]) {
+    if (services[name]?.image !== process.env.E2E_RUNTIME_MANAGER_IMAGE) {
+      throw new Error(`${name} must use the exact generated E2E tag`);
+    }
+    const aliases = JSON.parse(services[name]?.environment?.RUNTIME_MANAGER_IMAGE_ALIASES ?? "{}");
+    if (aliases.stable?.image !== process.env.E2E_AGENT_IMAGE) {
+      throw new Error(`${name} must provision the exact generated Agent image tag`);
+    }
   }
   for (const name of ["build-runner", "gateway-under-test", "test-runner"]) {
     if (services[name]?.image !== process.env.E2E_RUNNER_IMAGE) {
@@ -191,21 +196,25 @@ process.stdin.on("end", () => {
       throw new Error(`${name} must receive the isolated Runtime Manager secret`);
     }
   }
+  if (services["agent-runtime-manager-b"]?.environment?.RUNTIME_MANAGER_SHARED_SECRET !== process.env.RUNTIME_MANAGER_B_SHARED_SECRET) {
+    throw new Error("agent-runtime-manager-b must receive the isolated node B secret");
+  }
   const socket = "/var/run/docker.sock";
   const socketOwners = Object.entries(services)
     .filter(([, service]) => (service.volumes ?? []).some((mount) => mount.source === socket || mount.target === socket))
     .map(([name]) => name);
-  if (JSON.stringify(socketOwners) !== JSON.stringify(["agent-runtime-manager"])) {
-    throw new Error(`Only Runtime Manager may mount the Docker socket; found ${socketOwners.join(",")}`);
+  if (JSON.stringify(socketOwners) !== JSON.stringify(["agent-runtime-manager", "agent-runtime-manager-b"])) {
+    throw new Error(`Only Runtime Managers may mount the Docker socket; found ${socketOwners.join(",")}`);
   }
   const nonceVolumeOwners = Object.entries(services)
     .filter(([, service]) => (service.volumes ?? []).some((mount) => mount.target === "/data"))
     .map(([name]) => name);
-  if (JSON.stringify(nonceVolumeOwners) !== JSON.stringify(["agent-runtime-manager"])) {
-    throw new Error(`Only Runtime Manager may mount its nonce volume; found ${nonceVolumeOwners.join(",")}`);
+  if (JSON.stringify(nonceVolumeOwners) !== JSON.stringify(["agent-runtime-manager", "agent-runtime-manager-b"])) {
+    throw new Error(`Only Runtime Managers may mount nonce volumes; found ${nonceVolumeOwners.join(",")}`);
   }
   for (const name of [
     "agent-runtime-manager",
+    "agent-runtime-manager-b",
     "gateway-under-test",
     "search-mcp",
     "searxng",
@@ -214,7 +223,7 @@ process.stdin.on("end", () => {
   ]) {
     if ((services[name]?.ports ?? []).length !== 0) throw new Error(`${name} publishes a host port`);
   }
-  for (const name of ["runtime-manager", "agent-runtime"]) {
+  for (const name of ["runtime-manager", "agent-runtime", "agent-runtime-b"]) {
     if (config.networks?.[name]?.internal !== true) throw new Error(`${name} must be internal`);
   }
   if (config.networks?.["agent-egress"]?.internal === true) {
@@ -348,7 +357,7 @@ verify_runner_image() {
 }
 
 verify_managed_runtime_docker_state() {
-  local manager_id gateway_id user_hash runtime_id expected_runtime_count expected_volume_count
+  local manager_id manager_b_id gateway_id user_hash runtime_id node_id expected_network expected_runtime_count expected_volume_count
   local expected_tuple expected_memory expected_nano_cpus expected_pids_limit
   local expected_resource_lines=""
   local agent_ids=()
@@ -356,11 +365,15 @@ verify_managed_runtime_docker_state() {
   local -A expected_resources=()
   local -A user_hashes=()
   manager_id="$(docker compose -p "$project_name" -f "$compose_file" ps --quiet agent-runtime-manager)"
+  manager_b_id="$(docker compose -p "$project_name" -f "$compose_file" ps --quiet agent-runtime-manager-b)"
   gateway_id="$(docker compose -p "$project_name" -f "$compose_file" ps --quiet gateway-under-test)"
   assert_no_port_bindings "Runtime Manager" "$manager_id"
+  assert_no_port_bindings "Runtime Manager B" "$manager_b_id"
   assert_no_port_bindings "Gateway" "$gateway_id"
   assert_equal "Runtime Manager Docker socket mount count" "1" \
     "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/run/docker.sock"}}1{{end}}{{end}}' "$manager_id")"
+  assert_equal "Runtime Manager B Docker socket mount count" "1" \
+    "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/run/docker.sock"}}1{{end}}{{end}}' "$manager_b_id")"
   assert_equal "Gateway Docker socket mount count" "" \
     "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/run/docker.sock"}}1{{end}}{{end}}' "$gateway_id")"
 
@@ -404,6 +417,7 @@ for (const [runtimeId, resources] of Object.entries(value)) {
   assert_equal "managed Agent container count" "$expected_runtime_count" "${#agent_ids[@]}"
   for container_id in "${agent_ids[@]}"; do
     runtime_id="$(docker inspect --format '{{index .Config.Labels "com.codex-gateway.runtime-id"}}' "$container_id")"
+    node_id="$(docker inspect --format '{{index .Config.Labels "com.codex-gateway.runtime-node-id"}}' "$container_id")"
     if [ -z "$runtime_id" ]; then
       printf 'E2E assertion failed: managed Agent is missing its Runtime identity label\n' >&2
       return 1
@@ -444,10 +458,12 @@ for (const [runtimeId, resources] of Object.entries(value)) {
     assert_equal "managed Agent tmpfs policy" \
       '{"/dev/shm":"rw,nosuid,nodev,noexec,size=1073741824","/run/codex-secrets":"rw,nosuid,nodev,noexec,size=16777216,mode=0700,uid=10001,gid=10001","/tmp":"rw,nosuid,nodev,size=2147483648"}' \
       "$(docker inspect --format '{{json .HostConfig.Tmpfs}}' "$container_id")"
-    assert_equal "managed Agent private network" "$E2E_AGENT_NETWORK_NAME" \
+    expected_network="$E2E_AGENT_NETWORK_NAME"
+    [ "$node_id" = "node__b" ] && expected_network="$E2E_AGENT_B_NETWORK_NAME"
+    assert_equal "managed Agent private network" "$expected_network" \
       "$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$container_id")"
     assert_equal "managed Agent private network attachment" "present" \
-      "$(docker inspect --format "{{if index .NetworkSettings.Networks \"$E2E_AGENT_NETWORK_NAME\"}}present{{end}}" "$container_id")"
+      "$(docker inspect --format "{{if index .NetworkSettings.Networks \"$expected_network\"}}present{{end}}" "$container_id")"
     assert_equal "managed Agent egress network attachment" "present" \
       "$(docker inspect --format "{{if index .NetworkSettings.Networks \"$E2E_AGENT_EGRESS_NETWORK_NAME\"}}present{{end}}" "$container_id")"
     assert_equal "managed Agent image version" "0.153.4" \
@@ -478,6 +494,7 @@ cleanup() {
   if [ "$status" -ne 0 ]; then
     docker compose -p "$project_name" -f "$compose_file" logs --no-color \
       mysql agent-runtime-manager gateway-under-test model-target search-mcp searxng \
+      agent-runtime-manager-b \
       test-business-mcp ssh-target >&2 || true
   fi
   cleanup_managed_resources
@@ -523,9 +540,9 @@ verify_runner_image
 # preview tests without coupling process memory.
 docker compose -p "$project_name" -f "$compose_file" up -d --wait mysql
 docker compose -p "$project_name" -f "$compose_file" run --rm --no-deps build-runner \
-  bash -lc 'rm -rf .output .nuxt /e2e-output/* && pnpm exec nuxt build --extends ./tests/e2e/nuxt-layer && cp -a .output/. /e2e-output/ && node scripts/database/migrate.mjs && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD" --role admin && node scripts/create-user.mjs runtime-a managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-b managed-runtime-e2e-password --role user'
+  bash -lc 'rm -rf .output .nuxt /e2e-output/* && pnpm exec nuxt build --extends ./tests/e2e/nuxt-layer && cp -a .output/. /e2e-output/ && node scripts/database/migrate.mjs && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD" --role admin && node scripts/create-user.mjs runtime-a managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-b managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-c managed-runtime-e2e-password --role user && node scripts/create-user.mjs runtime-d managed-runtime-e2e-password --role user'
 docker compose -p "$project_name" -f "$compose_file" up -d --wait \
-  agent-runtime-manager gateway-under-test browser-preview-ingress
+  agent-runtime-manager agent-runtime-manager-b gateway-under-test browser-preview-ingress
 docker compose -p "$project_name" -f "$compose_file" run --rm test-runner \
   bash -lc 'if [ -e /var/run/docker.sock ]; then echo "test-runner must not receive the Docker socket" >&2; exit 1; fi; exec pnpm exec playwright test "$@"' \
   e2e "$@"

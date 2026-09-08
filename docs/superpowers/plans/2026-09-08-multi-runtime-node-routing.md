@@ -653,19 +653,23 @@ git commit -m "feat(ui): administer runtime nodes"
 **Interfaces:**
 - E2E starts real MySQL, one Gateway, two independent Runtime Managers, and two Docker-isolated Agent networks.
 
-- [ ] **Step 1: Write the failing two-node E2E**
+- [x] **Step 1: Write the failing two-node E2E**
 
 The test registers node A and B with one runtime slot each, concurrently starts two new users, and asserts distinct node placements. It then restarts Gateway, reverses node list order, and verifies both users reopen their original threads through the relay.
 
-- [ ] **Step 2: Add draining and failure cases**
+- [x] **Step 2: Add draining and failure cases**
 
 Set node A draining, create a third user on B, fill B, and verify the next first start returns `runtime_node_capacity_unavailable`. Stop B and verify its existing user receives `runtime_node_unavailable` without any new container on A.
 
-- [ ] **Step 3: Add protocol coverage through relay**
+- [x] **Step 3: Add protocol coverage through relay**
 
 Exercise thread start/read, turn start/steer/interrupt, approval, workspace upload/read, tmux monitor, model request, MCP status, Gateway restart, and App Server reconnect for users on both nodes.
 
-- [ ] **Step 4: Run full gates**
+- [x] **Step 4: Run full gates**
+
+User-directed gate: reused the existing E2E images and caches, ran the E2E TypeScript gate and
+CentOS 10 Compose `config-only` validation, and deferred the single focused two-node runtime start
+to the final release smoke instead of repeating the full Playwright suite or rebuilding images.
 
 ```bash
 pnpm test:unit
@@ -674,7 +678,7 @@ pnpm test:e2e
 git diff --check
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/e2e

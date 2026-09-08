@@ -48,6 +48,12 @@ services:
     environment:
       NODE_ENV: test
       RUNTIME_MANAGER_E2E_INSPECTION: "1"
+      RUNTIME_NODE_ID: node__a
+      RUNTIME_MANAGER_VERSION: "0.153.4"
+      RUNTIME_NODE_DATA_ROOT: /data
+      RUNTIME_NODE_CAPACITY_CPU_MILLIS: "8000"
+      RUNTIME_NODE_CAPACITY_MEMORY_BYTES: "17179869184"
+      RUNTIME_NODE_MAX_RUNTIMES: "1"
       RUNTIME_MANAGER_AGENT_NETWORK: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
       RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: ${E2E_AGENT_EGRESS_NETWORK_NAME:-codex-gateway-e2e-agent-egress}
       RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"${E2E_AGENT_IMAGE:-codex-agent-runtime:0.153.4}","imageVersion":"0.153.4"}}'
@@ -61,6 +67,44 @@ services:
       - runtime-manager-data:/data
     networks:
       - runtime-manager
+      - agent-runtime
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(8787,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+  agent-runtime-manager-b:
+    image: ${E2E_RUNTIME_MANAGER_IMAGE:-codex-runtime-manager-e2e:0.153.4}
+    environment:
+      NODE_ENV: test
+      RUNTIME_MANAGER_E2E_INSPECTION: "1"
+      RUNTIME_NODE_ID: node__b
+      RUNTIME_MANAGER_VERSION: "0.153.4"
+      RUNTIME_NODE_DATA_ROOT: /data
+      RUNTIME_NODE_CAPACITY_CPU_MILLIS: "8000"
+      RUNTIME_NODE_CAPACITY_MEMORY_BYTES: "17179869184"
+      RUNTIME_NODE_MAX_RUNTIMES: "2"
+      RUNTIME_MANAGER_AGENT_NETWORK: ${E2E_AGENT_B_NETWORK_NAME:-codex-gateway-e2e-agent-runtime-b}
+      RUNTIME_MANAGER_AGENT_EGRESS_NETWORK: ${E2E_AGENT_EGRESS_NETWORK_NAME:-codex-gateway-e2e-agent-egress}
+      RUNTIME_MANAGER_IMAGE_ALIASES: '{"stable":{"image":"${E2E_AGENT_IMAGE:-codex-agent-runtime:0.153.4}","imageVersion":"0.153.4"}}'
+      RUNTIME_MANAGER_PORT: "8787"
+      RUNTIME_MANAGER_RESOURCE_LABELS: '{"com.codex-gateway.e2e-managed":"${E2E_MANAGED_LABEL_VALUE:-codex-gateway-e2e}"}'
+      RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_B_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-b-secret}
+    expose:
+      - "8787"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runtime-manager-data-b:/data
+    networks:
+      - runtime-manager
+      - agent-runtime-b
     healthcheck:
       test:
         [
@@ -158,6 +202,7 @@ services:
         condition: service_started
     networks:
       - agent-runtime
+      - agent-runtime-b
       - agent-egress
       - search-backend
     healthcheck:
@@ -192,6 +237,7 @@ services:
       - /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10003,gid=10003,mode=0700
     networks:
       - agent-runtime
+      - agent-runtime-b
     healthcheck:
       test:
         [
@@ -258,6 +304,8 @@ services:
     depends_on:
       agent-runtime-manager:
         condition: service_healthy
+      agent-runtime-manager-b:
+        condition: service_healthy
       bark-target:
         condition: service_started
       model-target:
@@ -286,6 +334,14 @@ services:
       DATAOPS_ALLOWED_ORIGINS: http://dataops.127.0.0.1.nip.io:3100
       NUXT_IGNORE_LOCK: "1"
       RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
+      RUNTIME_IDENTITY_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
+      RUNTIME_MANAGER_DEFAULT_NODE_ID: node__a
+      RUNTIME_NODE_CAPACITY_CPU_MILLIS: "8000"
+      RUNTIME_NODE_CAPACITY_MEMORY_BYTES: "17179869184"
+      RUNTIME_NODE_MAX_RUNTIMES: "1"
+      RUNTIME_NODE_MINIMUM_FREE_DISK_BYTES: "0"
+      RUNTIME_NODE_HEALTH_FRESHNESS_MS: "30000"
+      RUNTIME_NODE_ALLOW_INSECURE_HTTP: "1"
       RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS: stable
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
       RUNTIME_PROVIDER_PROXY_BASE_URL: http://gateway-under-test:3100/api/internal/providers
@@ -309,7 +365,6 @@ services:
     networks:
       - default
       - runtime-manager
-      - agent-runtime
     healthcheck:
       test:
         [
@@ -373,6 +428,10 @@ services:
       PLAYWRIGHT_BASE_URL: http://codex.127.0.0.1.nip.io:3100
       RUNTIME_MANAGER_BASE_URL: http://agent-runtime-manager:8787
       RUNTIME_MANAGER_SHARED_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
+      RUNTIME_MANAGER_B_BASE_URL: http://agent-runtime-manager-b:8787
+      RUNTIME_MANAGER_B_SHARED_SECRET: ${RUNTIME_MANAGER_B_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-b-secret}
+      RUNTIME_IDENTITY_SECRET: ${RUNTIME_MANAGER_SHARED_SECRET:-codex-gateway-e2e-runtime-manager-secret}
+      RUNTIME_MANAGER_DEFAULT_NODE_ID: node__a
       HOME: /home/pwuser
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     volumes:
@@ -387,6 +446,7 @@ volumes:
   build-output:
   mysql-data:
   runtime-manager-data:
+  runtime-manager-data-b:
   runner-home:
 
 networks:
@@ -395,6 +455,9 @@ networks:
     internal: true
   agent-runtime:
     name: ${E2E_AGENT_NETWORK_NAME:-codex-gateway-e2e-agent-runtime}
+    internal: true
+  agent-runtime-b:
+    name: ${E2E_AGENT_B_NETWORK_NAME:-codex-gateway-e2e-agent-runtime-b}
     internal: true
   agent-egress:
     name: ${E2E_AGENT_EGRESS_NETWORK_NAME:-codex-gateway-e2e-agent-egress}

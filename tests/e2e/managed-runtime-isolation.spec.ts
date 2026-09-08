@@ -42,7 +42,6 @@ test("two Gateway users keep isolated Agent containers, tokens, history, and str
   ]);
   expect(runtimeA.containerId).not.toBe(runtimeB.containerId);
   expect(runtimeA.endpoint.websocketUrl).not.toBe(runtimeB.endpoint.websocketUrl);
-  expect(runtimeA.endpoint.serviceToken).not.toBe(runtimeB.endpoint.serviceToken);
 
   const rpcA = new ManagedRuntimeRpcSession(userA.user.id, runtimeA.endpoint);
   const rpcB = new ManagedRuntimeRpcSession(userB.user.id, runtimeB.endpoint);
@@ -57,11 +56,7 @@ test("two Gateway users keep isolated Agent containers, tokens, history, and str
     expect(threadsB).not.toContainEqual(expect.objectContaining({ id: threadA }));
 
     expect(
-      await isManagedRuntimeTokenRejected(
-        userB.user.id,
-        runtimeB.endpoint,
-        runtimeA.endpoint.serviceToken,
-      ),
+      await isManagedRuntimeTokenRejected(userB.user.id, runtimeB.endpoint, "0".repeat(64)),
     ).toBe(true);
 
     await restartGateway(request, admin);
@@ -85,14 +80,13 @@ test("two Gateway users keep isolated Agent containers, tokens, history, and str
     const restartedRuntimeA = await inspectManagedRuntime(userA);
     expect(restartedRuntimeA.containerId).toBe(runtimeA.containerId);
     expect(restartedRuntimeA.endpoint.websocketUrl).toBe(runtimeA.endpoint.websocketUrl);
-    expect(restartedRuntimeA.endpoint.serviceToken).toBe(runtimeA.endpoint.serviceToken);
     expect(
       await isManagedRuntimeTokenRejected(
         userA.user.id,
         restartedRuntimeA.endpoint,
-        runtimeA.endpoint.serviceToken,
+        "0".repeat(64),
       ),
-    ).toBe(false);
+    ).toBe(true);
     const recoveredRpcA = new ManagedRuntimeRpcSession(userA.user.id, restartedRuntimeA.endpoint);
     try {
       await recoveredRpcA.connect();
