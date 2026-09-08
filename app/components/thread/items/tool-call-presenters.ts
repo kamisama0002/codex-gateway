@@ -46,18 +46,32 @@ export interface ToolCallPresentation {
   title: string;
   icon: ToolCallIcon;
   details: ToolCallDetailSection[];
+  retryable: boolean;
 }
 
 type Translate = (key: string) => string;
-type ToolCallPresenter = (item: ToolCallItem, t: Translate) => ToolCallPresentation;
+type ToolCallPresenter = (
+  item: ToolCallItem,
+  t: Translate,
+) => Omit<ToolCallPresentation, "retryable"> & { retryable?: boolean };
 
 const emptyDetails: ToolCallDetailSection[] = [];
 
 const toolCallPresenters: Record<string, ToolCallPresenter> = {
   mcpToolCall: (item, t) => {
     const errorMessage = trimmedOrNull(item.error?.message);
+    const managedBusinessMcp = isManagedBusinessMcp(item.server);
+    const failed = toolCallFailed(item, errorMessage);
+    if (managedBusinessMcp && failed) {
+      return {
+        title: t("app.businessDataUnavailable"),
+        icon: "tool",
+        details: emptyDetails,
+        retryable: true,
+      };
+    }
     return {
-      title: `${trimmedOrFallback(item.server, "MCP")} · ${trimmedOrFallback(item.tool, "tool")}`,
+      title: `${managedBusinessMcp ? t("app.businessDataService") : trimmedOrFallback(item.server, "MCP")} · ${trimmedOrFallback(item.tool, "tool")}`,
       icon: "tool",
       details: compactDetails([
         { label: t("app.arguments"), kind: "json", value: item.arguments },
@@ -107,7 +121,8 @@ export function presentToolCall(item: ToolCallItem, t: Translate): ToolCallPrese
     typeof item.type === "string"
       ? (toolCallPresenters[item.type] ?? defaultToolCallPresenter)
       : defaultToolCallPresenter;
-  return presenter(item, t);
+  const presentation = presenter(item, t);
+  return { ...presentation, retryable: presentation.retryable ?? false };
 }
 
 function defaultToolCallPresenter(item: ToolCallItem): ToolCallPresentation {
@@ -115,6 +130,7 @@ function defaultToolCallPresenter(item: ToolCallItem): ToolCallPresentation {
     title: trimmedOrFallback(item.type, "Tool call"),
     icon: "tool",
     details: emptyDetails,
+    retryable: false,
   };
 }
 
@@ -140,6 +156,7 @@ function webSearchPresentation(item: ToolCallItem, t: Translate): ToolCallPresen
         : null,
       links.length > 0 ? { label: t("app.result"), kind: "links", links } : null,
     ]),
+    retryable: false,
   };
 }
 
@@ -175,4 +192,18 @@ function isHttpUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+function isManagedBusinessMcp(value: unknown) {
+  return value === "org__infinity" || value === "org__dinky_mcp";
+}
+
+function toolCallFailed(item: ToolCallItem, errorMessage: string | null) {
+  const status = typeof item.status === "string" ? item.status : item.status?.type;
+  return (
+    errorMessage !== null ||
+    item.success === false ||
+    status === "failed" ||
+    status === "interrupted"
+  );
 }

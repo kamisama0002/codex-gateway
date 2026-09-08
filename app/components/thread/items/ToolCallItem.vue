@@ -1,14 +1,23 @@
 <script setup lang="ts">
 import type { ThreadHistoryItem } from "~~/shared/types";
-import { ChevronDownIcon, ChevronRightIcon, ImageIcon, SearchIcon, WrenchIcon } from "@lucide/vue";
-import { computed } from "vue";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ImageIcon,
+  RefreshCwIcon,
+  SearchIcon,
+  WrenchIcon,
+} from "@lucide/vue";
+import { computed, ref } from "vue";
 import { Source, Sources } from "@codex-gateway/ai-elements/sources";
+import { Button } from "@codex-gateway/ui/button";
 import { Collapsible, CollapsibleTrigger } from "@codex-gateway/ui/collapsible";
 import { ScrollArea } from "@codex-gateway/ui/scroll-area";
 import DeferredCollapsibleContent from "@/components/common/DeferredCollapsibleContent.vue";
 import StateDot from "@/components/common/StateDot.vue";
 import MarkdownContent from "@/components/common/MarkdownContent.vue";
 import StaticJsonCodeBlock from "@/components/common/StaticJsonCodeBlock.vue";
+import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { isItemInProgress } from "@/utils/thread-items";
 import { presentToolCall } from "./tool-call-presenters";
 
@@ -16,6 +25,8 @@ const props = defineProps<{
   item: ThreadHistoryItem;
 }>();
 const { t } = useI18n();
+const threadTurns = useGatewayThreadTurnsStore();
+const retrying = ref(false);
 const presentation = computed(() => presentToolCall(props.item, t));
 const title = computed(() => presentation.value.title);
 const iconType = computed(() => presentation.value.icon);
@@ -31,39 +42,64 @@ const visualStatus = computed<"running" | "completed" | "failed" | null>(() => {
   if (props.item.success === true || status.value === "completed") return "completed";
   return null;
 });
+
+async function retryBusinessRequest() {
+  if (retrying.value) return;
+  retrying.value = true;
+  try {
+    await threadTurns.retryLastTurn();
+  } finally {
+    retrying.value = false;
+  }
+}
 </script>
 
 <template>
   <Collapsible v-slot="{ open }" class="max-w-4xl text-ink-muted">
-    <CollapsibleTrigger
-      class="timeline-process-row flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-sm enabled:hover:bg-canvas-soft disabled:cursor-default"
-      :data-state="visualStatus === 'running' ? 'running' : undefined"
-      :disabled="detailSections.length === 0"
-      :title="detailSections.length > 0 ? t('app.toolDetails') : undefined"
-      data-testid="tool-call-toggle"
-    >
-      <SearchIcon v-if="iconType === 'search'" class="size-4" />
-      <ImageIcon v-else-if="iconType === 'image'" class="size-4" />
-      <WrenchIcon v-else class="size-4" />
-      <span class="min-w-0 flex-1 truncate">{{ title }}</span>
-      <span v-if="visualStatus === 'running'" role="img" :aria-label="t('app.running')">
-        <StateDot state="ongoing" />
-      </span>
-      <span v-else-if="visualStatus === 'completed'" role="img" :aria-label="t('app.completed')">
-        <StateDot state="done" />
-      </span>
-      <span v-else-if="visualStatus === 'failed'" role="img" :aria-label="t('app.failed')">
-        <StateDot state="error" />
-      </span>
-      <ChevronDownIcon
-        v-if="detailSections.length > 0 && open"
-        class="size-4 shrink-0 text-ink-faint"
-      />
-      <ChevronRightIcon
-        v-else-if="detailSections.length > 0"
-        class="size-4 shrink-0 text-ink-faint"
-      />
-    </CollapsibleTrigger>
+    <div class="flex items-center gap-1">
+      <CollapsibleTrigger
+        class="timeline-process-row flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left text-sm enabled:hover:bg-canvas-soft disabled:cursor-default"
+        :data-state="visualStatus === 'running' ? 'running' : undefined"
+        :disabled="detailSections.length === 0"
+        :title="detailSections.length > 0 ? t('app.toolDetails') : undefined"
+        data-testid="tool-call-toggle"
+      >
+        <SearchIcon v-if="iconType === 'search'" class="size-4" />
+        <ImageIcon v-else-if="iconType === 'image'" class="size-4" />
+        <WrenchIcon v-else class="size-4" />
+        <span class="min-w-0 flex-1 truncate">{{ title }}</span>
+        <span v-if="visualStatus === 'running'" role="img" :aria-label="t('app.running')">
+          <StateDot state="ongoing" />
+        </span>
+        <span v-else-if="visualStatus === 'completed'" role="img" :aria-label="t('app.completed')">
+          <StateDot state="done" />
+        </span>
+        <span v-else-if="visualStatus === 'failed'" role="img" :aria-label="t('app.failed')">
+          <StateDot state="error" />
+        </span>
+        <ChevronDownIcon
+          v-if="detailSections.length > 0 && open"
+          class="size-4 shrink-0 text-ink-faint"
+        />
+        <ChevronRightIcon
+          v-else-if="detailSections.length > 0"
+          class="size-4 shrink-0 text-ink-faint"
+        />
+      </CollapsibleTrigger>
+      <Button
+        v-if="presentation.retryable"
+        type="button"
+        variant="ghost"
+        size="sm"
+        class="h-7 shrink-0 gap-1 px-2 text-xs"
+        :disabled="retrying"
+        data-testid="retry-business-mcp-call"
+        @click="retryBusinessRequest"
+      >
+        <RefreshCwIcon class="size-3.5" :class="{ 'animate-spin': retrying }" />
+        {{ t("app.retry") }}
+      </Button>
+    </div>
     <DeferredCollapsibleContent :open="open">
       <div class="ml-6 mt-1 space-y-3 border-l border-hairline py-2 pl-3">
         <div v-for="section in detailSections" :key="section.label" class="space-y-1">

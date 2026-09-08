@@ -480,6 +480,8 @@
     "misalignmentRecoveryTitle": "Codex 需要确认后继续",
     "misalignmentRecoveryConfirm": "发送修正内容",
     "mcpConnections": "MCP 连接",
+    "businessDataService": "业务数据服务",
+    "businessDataUnavailable": "业务数据服务暂时不可用",
     "collabTool": {
       "spawnAgent": "启动子代理",
       "sendInput": "发送输入",
