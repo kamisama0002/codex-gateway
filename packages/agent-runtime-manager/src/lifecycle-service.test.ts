@@ -14,7 +14,11 @@ import type {
   DockerEngine,
   EngineContainerState,
 } from "./docker-engine.js";
-import { createRuntimeManagerRequestHandler, loadRuntimeManagerPolicy } from "./http-server.js";
+import {
+  createRuntimeManagerRequestHandler,
+  loadRuntimeManagerPolicy,
+  loadRuntimeNodeStatusConfig,
+} from "./http-server.js";
 import {
   RuntimeLifecycleError,
   RuntimeLifecycleService,
@@ -104,6 +108,15 @@ class RecordingDockerEngine implements DockerEngine {
     timeoutMs: number;
     maxOutputBytes: number;
   }> = [];
+  nodeInspection = {
+    dockerAvailable: true,
+    dataRootWritable: true,
+    availableDiskBytes: 100 * 1024 * 1024 * 1024,
+    totalDiskBytes: 200 * 1024 * 1024 * 1024,
+    managedRuntimeCount: 2,
+    runningRuntimeCount: 1,
+  };
+  inspectedDataRoot: string | null = null;
 
   constructor(options: { existingContainerId?: string; existingRunning?: boolean } = {}) {
     if (options.existingContainerId !== undefined) {
@@ -144,6 +157,11 @@ class RecordingDockerEngine implements DockerEngine {
     };
     this.containers.set(spec.runtimeId, state);
     return state;
+  }
+
+  async inspectNode(dataRoot: string) {
+    this.inspectedDataRoot = dataRoot;
+    return this.nodeInspection;
   }
 
   async findManagedContainer(runtimeId: string): Promise<EngineContainerState | null> {
@@ -764,6 +782,27 @@ describe("RuntimeLifecycleService", () => {
     );
   });
 
+  it("requires a stable runtime node id and loads node health capacity", () => {
+    expect(() => loadRuntimeNodeStatusConfig({})).toThrow(/RUNTIME_NODE_ID is required/);
+    expect(
+      loadRuntimeNodeStatusConfig({
+        RUNTIME_NODE_ID: "node__a",
+        RUNTIME_MANAGER_VERSION: "0.153.4",
+        RUNTIME_NODE_DATA_ROOT: "/runtime-data",
+        RUNTIME_NODE_CAPACITY_CPU_MILLIS: "24000",
+        RUNTIME_NODE_CAPACITY_MEMORY_BYTES: String(96 * 1024 * 1024 * 1024),
+        RUNTIME_NODE_MAX_RUNTIMES: "40",
+      }),
+    ).toEqual({
+      nodeId: "node__a",
+      managerVersion: "0.153.4",
+      dataRoot: "/runtime-data",
+      capacityCpuMillis: 24_000,
+      capacityMemoryBytes: 96 * 1024 * 1024 * 1024,
+      maxRuntimes: 40,
+    });
+  });
+
   it("rejects duplicate and Docker-reserved Agent networks", () => {
     const environment = {
       RUNTIME_MANAGER_AGENT_NETWORK: "agent-runtime",
@@ -1059,6 +1098,62 @@ describe("Runtime Manager HTTP API", () => {
     }
     return `http://127.0.0.1:${address.port}`;
   }
+
+  it("returns authenticated node identity, capacity, Docker state, and disk state", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy, {
+      now: () => "2026-09-08T00:00:00.000Z",
+      nodeStatus: {
+        nodeId: "node__a",
+        managerVersion: "0.153.4",
+        dataRoot: "/data",
+        capacityCpuMillis: 16_000,
+        capacityMemoryBytes: 64 * 1024 * 1024 * 1024,
+        maxRuntimes: 30,
+      },
+    });
+    const authenticator = new HmacRequestAuthenticator({
+      nonceStore: new MemoryNonceStore(),
+      now: () => now,
+      secret: "shared-secret",
+    });
+    const server = createServer(createRuntimeManagerRequestHandler({ authenticator, service }));
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("missing test server");
+    const path = "/v1/node/status";
+    const body = Buffer.alloc(0);
+    const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
+      headers: createSignedHeaders({
+        body,
+        method: "GET",
+        path,
+        nonce: "node-status",
+        secret: "shared-secret",
+        timestamp: now,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      nodeId: "node__a",
+      protocolVersion: 1,
+      managerVersion: "0.153.4",
+      sampledAt: "2026-09-08T00:00:00.000Z",
+      capacityCpuMillis: 16_000,
+      capacityMemoryBytes: 64 * 1024 * 1024 * 1024,
+      maxRuntimes: 30,
+      dockerAvailable: true,
+      dataRootWritable: true,
+      availableDiskBytes: 100 * 1024 * 1024 * 1024,
+      totalDiskBytes: 200 * 1024 * 1024 * 1024,
+      managedRuntimeCount: 2,
+      runningRuntimeCount: 1,
+      agentImages: { stable: "1.2.3", next: "1.3.0" },
+    });
+    expect(engine.inspectedDataRoot).toBe("/data");
+  });
 
   it("authenticates and serves the fixed provision and inspect routes", async () => {
     const baseUrl = await startTestServer();

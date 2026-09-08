@@ -14,7 +14,11 @@ interface RuntimeNodeStorePort {
 interface RuntimeNodeClientRegistryOptions {
   nodeStore: RuntimeNodeStorePort;
   allowInsecureHttp?: boolean;
-  createClient?: (input: { baseUrl: string; secret: string }) => RuntimeManagerClient;
+  createClient?: (input: {
+    baseUrl: string;
+    nodeId: string;
+    secret: string;
+  }) => RuntimeManagerClient;
 }
 
 export class RuntimeNodeClientRegistryError extends Error {
@@ -34,6 +38,7 @@ export class RuntimeNodeClientRegistry {
   private readonly clients = new Map<string, RuntimeManagerClient>();
   private readonly createClient: (input: {
     baseUrl: string;
+    nodeId: string;
     secret: string;
   }) => RuntimeManagerClient;
 
@@ -64,7 +69,7 @@ export class RuntimeNodeClientRegistry {
         throw new Error("Insecure Runtime Manager URL");
       }
       const { secret } = runtimeNodeSecretSchema.parse(decryptJson(node.encryptedSharedSecret));
-      const client = this.createClient({ baseUrl: url.origin, secret });
+      const client = this.createClient({ baseUrl: url.origin, nodeId: node.id, secret });
       for (const key of this.clients.keys()) {
         if (key.startsWith(`${node.id}:`)) this.clients.delete(key);
       }

@@ -5,6 +5,52 @@ import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import { RuntimeManagerClient, RuntimeManagerClientError } from "./client";
 
 describe("RuntimeManagerClient", () => {
+  it("signs node status requests and rejects a mismatched node identity", async () => {
+    const timestamp = 1_788_131_200_000;
+    const secret = "manager-shared-secret";
+    const health = {
+      nodeId: "node__a",
+      protocolVersion: 1,
+      managerVersion: "0.153.4",
+      sampledAt: "2026-09-08T00:00:00.000Z",
+      capacityCpuMillis: 16_000,
+      capacityMemoryBytes: 64 * 1024 * 1024 * 1024,
+      maxRuntimes: 30,
+      dockerAvailable: true,
+      dataRootWritable: true,
+      availableDiskBytes: 100 * 1024 * 1024 * 1024,
+      totalDiskBytes: 200 * 1024 * 1024 * 1024,
+      managedRuntimeCount: 2,
+      runningRuntimeCount: 1,
+      agentImages: { stable: "0.153.4" },
+    };
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json(health));
+    const client = new RuntimeManagerClient({
+      baseUrl: "https://node-a.runtime.internal",
+      nodeId: "node__a",
+      secret,
+      fetch,
+      now: () => timestamp,
+      nonce: () => "node-status-nonce",
+    });
+
+    await expect(client.status()).resolves.toEqual(health);
+    expect(fetch).toHaveBeenCalledWith(
+      "https://node-a.runtime.internal/v1/node/status",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    const mismatched = new RuntimeManagerClient({
+      baseUrl: "https://node-a.runtime.internal",
+      nodeId: "node__b",
+      secret,
+      fetch,
+    });
+    await expect(mismatched.status()).rejects.toMatchObject({
+      code: "runtime_manager_invalid_response",
+    });
+  });
+
   it("signs requested start resources in the exact request body", async () => {
     const timestamp = 1_788_131_200_000;
     const nonce = "resources-nonce";

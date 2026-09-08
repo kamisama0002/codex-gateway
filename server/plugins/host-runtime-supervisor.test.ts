@@ -22,6 +22,12 @@ const lifecycle = vi.hoisted(() => {
     bootstrapStoredUsers: vi.fn(async () => {
       calls.push("bootstrap stored users");
     }),
+    startNodeHealthMonitor: vi.fn(() => {
+      calls.push("start node health monitor");
+    }),
+    stopNodeHealthMonitor: vi.fn(() => {
+      calls.push("stop node health monitor");
+    }),
     stop: vi.fn(() => {
       calls.push("stop supervisor");
     }),
@@ -50,6 +56,13 @@ vi.mock("../utils/gateway/runtime/host-runtime-supervisor", () => ({
 
 vi.mock("../utils/gateway/runtime-manager/runtime-node-bootstrap", () => ({
   bootstrapLegacyRuntimeNodeFromEnvironment: lifecycle.bootstrapLegacyRuntimeNode,
+}));
+
+vi.mock("../utils/gateway/runtime-manager/runtime-node-health-monitor", () => ({
+  runtimeNodeHealthMonitor: {
+    start: lifecycle.startNodeHealthMonitor,
+    stop: lifecycle.stopNodeHealthMonitor,
+  },
 }));
 
 beforeEach(() => {
@@ -90,6 +103,7 @@ describe("host runtime supervisor Nitro lifecycle", () => {
       "bootstrap legacy runtime node",
       "start supervisor",
       "bootstrap stored users",
+      "start node health monitor",
     ]);
     expect(lifecycle.bootstrapStoredUsers).toHaveBeenCalledOnce();
   });
@@ -158,6 +172,8 @@ describe("host runtime supervisor Nitro lifecycle", () => {
       "bootstrap legacy runtime node",
       "start supervisor",
       "bootstrap stored users",
+      "start node health monitor",
+      "stop node health monitor",
       "stop supervisor",
       "close database",
     ]);

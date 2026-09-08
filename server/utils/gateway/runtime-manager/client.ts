@@ -23,10 +23,38 @@ const providerIdSchema = z
   .min(1)
   .max(128)
   .regex(/^[a-z0-9][a-z0-9_-]*$/);
+const runtimeNodeIdSchema = z
+  .string()
+  .min(7)
+  .max(128)
+  .regex(/^node__[a-z0-9][a-z0-9_.-]*$/u);
+export const runtimeNodeHealthSchema = z
+  .object({
+    nodeId: runtimeNodeIdSchema,
+    protocolVersion: z.literal(1),
+    managerVersion: z.string().min(1).max(128),
+    sampledAt: z.iso.datetime(),
+    capacityCpuMillis: z.number().int().positive(),
+    capacityMemoryBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    maxRuntimes: z.number().int().positive(),
+    dockerAvailable: z.boolean(),
+    dataRootWritable: z.boolean(),
+    availableDiskBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    totalDiskBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    managedRuntimeCount: z.number().int().nonnegative(),
+    runningRuntimeCount: z.number().int().nonnegative(),
+    agentImages: z.record(imageAliasSchema, z.string().min(1).max(255)),
+  })
+  .strict()
+  .refine((health) => health.runningRuntimeCount <= health.managedRuntimeCount);
 const runtimeActionRequestSchema = z.object({ runtimeId: runtimeIdSchema }).strict();
 export const runtimeResourcePolicySchema = z
   .object({
-    memoryBytes: z.number().int().min(128 * 1024 * 1024).max(16 * 1024 * 1024 * 1024),
+    memoryBytes: z
+      .number()
+      .int()
+      .min(128 * 1024 * 1024)
+      .max(16 * 1024 * 1024 * 1024),
     nanoCpus: z.number().int().min(250_000_000).max(8_000_000_000),
     pidsLimit: z.number().int().min(32).max(4096),
   })
@@ -224,9 +252,11 @@ export interface RuntimeLifecycleResult {
 
 export type AgentRuntimeStatsResult = z.infer<typeof agentRuntimeStatsResultSchema>;
 export type ExecRuntimeResult = z.infer<typeof execRuntimeResultSchema>;
+export type RuntimeNodeHealth = z.infer<typeof runtimeNodeHealthSchema>;
 
 interface RuntimeManagerClientOptions {
   baseUrl: string;
+  nodeId?: string;
   secret: string;
   fetch?: typeof globalThis.fetch;
   now?: () => number;
@@ -249,12 +279,14 @@ export class RuntimeManagerClient {
   private readonly baseUrl: string;
   private readonly fetch: typeof globalThis.fetch;
   private readonly nonce: () => string;
+  private readonly nodeId: string | null;
   private readonly now: () => number;
   private readonly secret: string;
   private readonly timeoutMs: number;
 
   constructor(options: RuntimeManagerClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
+    this.nodeId = options.nodeId === undefined ? null : runtimeNodeIdSchema.parse(options.nodeId);
     if (options.secret.length === 0) throw new Error("Runtime Manager shared secret is required");
     this.secret = options.secret;
     this.fetch = options.fetch ?? globalThis.fetch;
@@ -269,6 +301,19 @@ export class RuntimeManagerClient {
   inspect(runtimeId: string): Promise<RuntimeLifecycleResult> {
     const input = runtimeActionRequestSchema.parse({ runtimeId });
     return this.request("GET", `/v1/runtimes/${encodeURIComponent(input.runtimeId)}`);
+  }
+
+  async status(): Promise<RuntimeNodeHealth> {
+    const health = await this.requestParsed(
+      "GET",
+      "/v1/node/status",
+      undefined,
+      runtimeNodeHealthSchema,
+    );
+    if (this.nodeId !== null && health.nodeId !== this.nodeId) {
+      throw new RuntimeManagerClientError("runtime_manager_invalid_response");
+    }
+    return health;
   }
 
   stats(runtimeId: string): Promise<AgentRuntimeStatsResult> {
@@ -325,10 +370,7 @@ export class RuntimeManagerClient {
     );
   }
 
-  start(
-    runtimeId: string,
-    resources?: RuntimeResourcePolicy,
-  ): Promise<RuntimeLifecycleResult> {
+  start(runtimeId: string, resources?: RuntimeResourcePolicy): Promise<RuntimeLifecycleResult> {
     return this.resourceAction("start", runtimeId, resources);
   }
 
@@ -336,10 +378,7 @@ export class RuntimeManagerClient {
     return this.action("stop", runtimeId);
   }
 
-  restart(
-    runtimeId: string,
-    resources?: RuntimeResourcePolicy,
-  ): Promise<RuntimeLifecycleResult> {
+  restart(runtimeId: string, resources?: RuntimeResourcePolicy): Promise<RuntimeLifecycleResult> {
     return this.resourceAction("restart", runtimeId, resources);
   }
 

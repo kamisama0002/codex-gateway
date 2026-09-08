@@ -37,6 +37,7 @@ describe("runtime node client registry", () => {
     expect(createClient).toHaveBeenCalledTimes(3);
     expect(createClient).toHaveBeenLastCalledWith({
       baseUrl: "https://node-b.runtime.internal",
+      nodeId: "node__b",
       secret: "secret-b-rotated",
     });
   });

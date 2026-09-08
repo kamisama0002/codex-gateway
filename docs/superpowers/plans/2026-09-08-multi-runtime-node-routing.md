@@ -325,7 +325,7 @@ git commit -m "feat(runtime): bootstrap runtime node registry"
 - Runtime Manager serves signed `GET /v1/node/status`.
 - Gateway client exposes `status(): Promise<RuntimeNodeHealth>`.
 
-- [ ] **Step 1: Write failing Manager HTTP tests**
+- [x] **Step 1: Write failing Manager HTTP tests**
 
 ```ts
 it("returns authenticated node identity, capacity, docker state, and disk state", async () => {
@@ -340,28 +340,28 @@ it("returns authenticated node identity, capacity, docker state, and disk state"
 });
 ```
 
-- [ ] **Step 2: Verify health tests RED**
+- [x] **Step 2: Verify health tests RED**
 
 ```bash
 pnpm --filter @codex-gateway/agent-runtime-manager test
 ```
 
-- [ ] **Step 3: Add node status contract and Docker inspection**
+- [x] **Step 3: Add node status contract and Docker inspection**
 
 `RUNTIME_NODE_ID` is required. The engine reports Docker ping, managed container counts, and `statfs` for `RUNTIME_NODE_DATA_ROOT` or `/data` during the routing milestone. Response validation rejects a mismatched node ID.
 
-- [ ] **Step 4: Add Gateway health monitor**
+- [x] **Step 4: Add Gateway health monitor**
 
 The monitor probes every enabled node every 10 seconds, updates `last_seen_at`, `last_error`, and `health_json`, and never changes placements. It stops on Nitro close.
 
-- [ ] **Step 5: Run Manager, client, and monitor tests**
+- [x] **Step 5: Run Manager, client, and monitor tests**
 
 ```bash
 pnpm --filter @codex-gateway/agent-runtime-manager test
 pnpm exec vitest run server/utils/gateway/runtime-manager/client.test.ts server/utils/gateway/runtime-manager/runtime-node-health-monitor.test.ts
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/agent-runtime-manager/src server/utils/gateway/runtime-manager/client.ts server/utils/gateway/runtime-manager/client.test.ts server/utils/gateway/runtime-manager/runtime-node-health-monitor.ts server/utils/gateway/runtime-manager/runtime-node-health-monitor.test.ts

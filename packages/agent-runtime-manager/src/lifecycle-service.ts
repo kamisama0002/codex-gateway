@@ -14,6 +14,7 @@ import {
   forwardOAuthCallbackRequestSchema,
   provisionRuntimeRequestSchema,
   runtimeManagerPolicySchema,
+  runtimeNodeHealthSchema,
   syncRuntimeSecretsRequestSchema,
   type AgentRuntimeStatsResult,
   type ExecRuntimeRequest,
@@ -22,6 +23,7 @@ import {
   type ProvisionRuntimeRequest,
   type RuntimeActionRequest,
   type RuntimeLifecycleResult,
+  type RuntimeNodeHealth,
   type RuntimeResourceActionRequest,
   type RuntimeResourcePolicy,
   type RuntimeSecret,
@@ -43,6 +45,15 @@ export interface RuntimeManagerPolicy {
 
 interface RuntimeLifecycleServiceOptions {
   randomToken?: () => string;
+  now?: () => string;
+  nodeStatus?: {
+    nodeId: string;
+    managerVersion: string;
+    dataRoot: string;
+    capacityCpuMillis: number;
+    capacityMemoryBytes: number;
+    maxRuntimes: number;
+  };
 }
 
 export class RuntimeLifecycleError extends Error {
@@ -74,6 +85,8 @@ const agentIsolation: Omit<DockerSecurityPolicy, "Memory" | "NanoCpus" | "PidsLi
 export class RuntimeLifecycleService {
   private readonly policy: ReturnType<typeof runtimeManagerPolicySchema.parse>;
   private readonly randomToken: () => string;
+  private readonly now: () => string;
+  private readonly nodeStatus: RuntimeLifecycleServiceOptions["nodeStatus"];
   private readonly pendingSecrets = new Map<string, RuntimeSecret[]>();
 
   constructor(
@@ -83,6 +96,27 @@ export class RuntimeLifecycleService {
   ) {
     this.policy = runtimeManagerPolicySchema.parse(policy);
     this.randomToken = options.randomToken ?? (() => randomBytes(32).toString("base64url"));
+    this.now = options.now ?? (() => new Date().toISOString());
+    this.nodeStatus = options.nodeStatus;
+  }
+
+  async status(): Promise<RuntimeNodeHealth> {
+    const status = this.nodeStatus;
+    if (status === undefined) throw new Error("Runtime node status is not configured");
+    const inspected = await this.engine.inspectNode(status.dataRoot);
+    return runtimeNodeHealthSchema.parse({
+      nodeId: status.nodeId,
+      protocolVersion: 1,
+      managerVersion: status.managerVersion,
+      sampledAt: new Date(this.now()).toISOString(),
+      capacityCpuMillis: status.capacityCpuMillis,
+      capacityMemoryBytes: status.capacityMemoryBytes,
+      maxRuntimes: status.maxRuntimes,
+      ...inspected,
+      agentImages: Object.fromEntries(
+        Object.entries(this.policy.images).map(([alias, image]) => [alias, image.imageVersion]),
+      ),
+    });
   }
 
   async provision(request: ProvisionRuntimeRequest): Promise<RuntimeLifecycleResult> {

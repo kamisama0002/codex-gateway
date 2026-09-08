@@ -80,6 +80,9 @@ async function handleRequest(
     if (url.search) return sendJson(response, 404, { error: "not_found" });
 
     if (request.method === "GET") {
+      if (url.pathname === "/v1/node/status") {
+        return sendJson(response, 200, await options.service.status());
+      }
       const e2eInspectMatch = /^\/v1\/e2e\/runtimes\/([^/]+)\/docker$/.exec(url.pathname);
       if (e2eInspectMatch) {
         if (
@@ -248,7 +251,9 @@ export function startRuntimeManager(environment: NodeJS.ProcessEnv = process.env
     secret,
   });
   const engine = new DockerodeEngine();
-  const service = new RuntimeLifecycleService(engine, loadRuntimeManagerPolicy(environment));
+  const service = new RuntimeLifecycleService(engine, loadRuntimeManagerPolicy(environment), {
+    nodeStatus: loadRuntimeNodeStatusConfig(environment),
+  });
   const e2eInspector = e2eInspectionEnabled(environment)
     ? { inspectRuntime: (runtimeId: string) => engine.inspectRuntimeForE2e(runtimeId) }
     : undefined;
@@ -260,6 +265,25 @@ export function startRuntimeManager(environment: NodeJS.ProcessEnv = process.env
     throw new Error("RUNTIME_MANAGER_PORT must be a valid TCP port");
   }
   server.listen(port, environment.RUNTIME_MANAGER_HOST ?? "0.0.0.0");
+}
+
+export function loadRuntimeNodeStatusConfig(environment: NodeJS.ProcessEnv) {
+  return {
+    nodeId: requiredEnvironment(environment, "RUNTIME_NODE_ID"),
+    managerVersion: optionalEnvironment(environment, "RUNTIME_MANAGER_VERSION") ?? "unknown",
+    dataRoot: optionalEnvironment(environment, "RUNTIME_NODE_DATA_ROOT") ?? "/data",
+    capacityCpuMillis: positiveIntegerEnvironment(
+      environment,
+      "RUNTIME_NODE_CAPACITY_CPU_MILLIS",
+      16_000,
+    ),
+    capacityMemoryBytes: positiveIntegerEnvironment(
+      environment,
+      "RUNTIME_NODE_CAPACITY_MEMORY_BYTES",
+      64 * 1024 * 1024 * 1024,
+    ),
+    maxRuntimes: positiveIntegerEnvironment(environment, "RUNTIME_NODE_MAX_RUNTIMES", 30),
+  };
 }
 
 function e2eInspectionEnabled(environment: NodeJS.ProcessEnv): boolean {
@@ -277,6 +301,14 @@ function requiredEnvironment(environment: NodeJS.ProcessEnv, key: string): strin
 function optionalEnvironment(environment: NodeJS.ProcessEnv, key: string) {
   const value = environment[key]?.trim();
   return value === undefined || value === "" ? undefined : value;
+}
+
+function positiveIntegerEnvironment(environment: NodeJS.ProcessEnv, key: string, fallback: number) {
+  const value = environment[key];
+  if (value === undefined || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`${key} must be positive`);
+  return parsed;
 }
 
 function isLifecycleAction(

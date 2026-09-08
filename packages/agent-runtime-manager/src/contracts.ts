@@ -17,6 +17,34 @@ const imageAliasSchema = z
   .min(1)
   .max(64)
   .regex(/^[a-z0-9][a-z0-9._-]*$/);
+const runtimeNodeIdSchema = z
+  .string()
+  .min(7)
+  .max(128)
+  .regex(/^node__[a-z0-9][a-z0-9_.-]*$/u);
+
+export const runtimeNodeHealthSchema = z
+  .object({
+    nodeId: runtimeNodeIdSchema,
+    protocolVersion: z.literal(1),
+    managerVersion: z.string().min(1).max(128),
+    sampledAt: z.iso.datetime(),
+    capacityCpuMillis: z.number().int().positive(),
+    capacityMemoryBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    maxRuntimes: z.number().int().positive(),
+    dockerAvailable: z.boolean(),
+    dataRootWritable: z.boolean(),
+    availableDiskBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    totalDiskBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    managedRuntimeCount: z.number().int().nonnegative(),
+    runningRuntimeCount: z.number().int().nonnegative(),
+    agentImages: z.record(imageAliasSchema, z.string().min(1).max(255)),
+  })
+  .strict()
+  .refine((health) => health.runningRuntimeCount <= health.managedRuntimeCount, {
+    message: "Running runtime count cannot exceed managed runtime count",
+  });
+export type RuntimeNodeHealth = z.infer<typeof runtimeNodeHealthSchema>;
 
 const providerConfigSchema = z
   .object({
@@ -83,7 +111,11 @@ const runtimeSecretsSchema = z
 
 export const runtimeResourcePolicySchema = z
   .object({
-    memoryBytes: z.number().int().min(128 * 1024 * 1024).max(16 * 1024 * 1024 * 1024),
+    memoryBytes: z
+      .number()
+      .int()
+      .min(128 * 1024 * 1024)
+      .max(16 * 1024 * 1024 * 1024),
     nanoCpus: z.number().int().min(250_000_000).max(8_000_000_000),
     pidsLimit: z.number().int().min(32).max(4096),
   })

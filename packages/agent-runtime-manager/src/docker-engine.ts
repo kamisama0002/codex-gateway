@@ -1,6 +1,8 @@
 import type { RuntimeType } from "@codex-gateway/agent-runtime-contracts";
 import type { RuntimeProviderConfig, RuntimeSecret } from "./contracts.js";
 import { runtimeTypeSchema } from "@codex-gateway/agent-runtime-contracts";
+import { constants as fsConstants } from "node:fs";
+import { access, statfs } from "node:fs/promises";
 import { PassThrough } from "node:stream";
 import Docker from "dockerode";
 
@@ -73,7 +75,17 @@ export interface E2eDockerInspection {
   workspaceVolume: string;
 }
 
+export interface DockerNodeInspection {
+  dockerAvailable: boolean;
+  dataRootWritable: boolean;
+  availableDiskBytes: number;
+  totalDiskBytes: number;
+  managedRuntimeCount: number;
+  runningRuntimeCount: number;
+}
+
 export interface DockerEngine {
+  inspectNode(dataRoot: string): Promise<DockerNodeInspection>;
   findManagedContainer(runtimeId: string): Promise<EngineContainerState | null>;
   createManagedContainer(spec: DockerContainerCreateSpec): Promise<EngineContainerState>;
   startContainer(containerId: string): Promise<void>;
@@ -96,6 +108,43 @@ export interface DockerEngine {
 
 export class DockerodeEngine implements DockerEngine {
   constructor(private readonly docker: Docker = new Docker()) {}
+
+  async inspectNode(dataRoot: string): Promise<DockerNodeInspection> {
+    let dockerAvailable = true;
+    let managedRuntimeCount = 0;
+    let runningRuntimeCount = 0;
+    try {
+      await this.docker.ping();
+      const containers = await this.docker.listContainers({
+        all: true,
+        filters: { label: [`${runtimeResourceLabels.managed}=true`] },
+      });
+      managedRuntimeCount = containers.length;
+      runningRuntimeCount = containers.filter((container) => container.State === "running").length;
+    } catch {
+      dockerAvailable = false;
+    }
+
+    let dataRootWritable = true;
+    let availableDiskBytes = 0;
+    let totalDiskBytes = 0;
+    try {
+      await access(dataRoot, fsConstants.W_OK);
+      const filesystem = await statfs(dataRoot, { bigint: true });
+      availableDiskBytes = safeFilesystemBytes(filesystem.bavail, filesystem.bsize);
+      totalDiskBytes = safeFilesystemBytes(filesystem.blocks, filesystem.bsize);
+    } catch {
+      dataRootWritable = false;
+    }
+    return {
+      dockerAvailable,
+      dataRootWritable,
+      availableDiskBytes,
+      totalDiskBytes,
+      managedRuntimeCount,
+      runningRuntimeCount,
+    };
+  }
 
   async findManagedContainer(runtimeId: string): Promise<EngineContainerState | null> {
     const matches = await this.docker.listContainers({
@@ -405,7 +454,8 @@ async function collectExecOutput(
 }
 
 function destroyStream(stream: NodeJS.ReadableStream) {
-  if ("destroy" in stream && typeof stream.destroy === "function") stream.destroy();
+  const destroyable = stream as NodeJS.ReadableStream & { destroy?: () => void };
+  destroyable.destroy?.();
 }
 
 function finished(stream: NodeJS.ReadableStream) {
@@ -443,4 +493,9 @@ function required(value: string | undefined): string {
     throw new Error("managed container metadata is missing");
   }
   return value;
+}
+
+function safeFilesystemBytes(blocks: bigint, blockSize: bigint) {
+  const bytes = blocks * blockSize;
+  return Number(bytes > BigInt(Number.MAX_SAFE_INTEGER) ? BigInt(Number.MAX_SAFE_INTEGER) : bytes);
 }
