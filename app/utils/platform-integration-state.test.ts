@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clearExpiredPairingCode,
   clearPairingCode,
+  platformIntegrationView,
   platformIntegrationAccess,
   remainingPairingCodeSeconds,
 } from "./platform-integration-state";
@@ -27,5 +28,31 @@ describe("platform integration state", () => {
     expect(platformIntegrationAccess({ role: "admin" })).toBe("manage");
     expect(platformIntegrationAccess({ role: "admin", dataOps: {} })).toBe("read");
     expect(platformIntegrationAccess({ role: "user" })).toBe("hidden");
+  });
+
+  it("maps the exact integration status API shapes without inventing a status field", () => {
+    expect(
+      platformIntegrationView({ pairingCode: null, active: null }, null, Date.now()).status,
+    ).toBe("unpaired");
+    expect(
+      platformIntegrationView(
+        { pairingCode: { expiresAt: "2026-09-08T00:00:10.000Z" }, active: null },
+        null,
+        Date.parse("2026-09-08T00:00:00.000Z"),
+      ).status,
+    ).toBe("pending");
+    expect(
+      platformIntegrationView(
+        {
+          pairingCode: null,
+          active: { pairingId: "pairing-fixed", revision: 1, status: "active" },
+        },
+        null,
+        Date.now(),
+      ).status,
+    ).toBe("active");
+    expect(platformIntegrationView(null, "dataops_unavailable", Date.now()).status).toBe(
+      "degraded",
+    );
   });
 });

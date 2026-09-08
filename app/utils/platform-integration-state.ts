@@ -6,6 +6,36 @@ export interface PlatformIntegrationView {
   expiresAt: string | null;
 }
 
+export interface PlatformIntegrationApiResponse {
+  pairingCode: { expiresAt: string; createdAt?: string } | null;
+  active: { pairingId: string; revision: number; status: string } | null;
+}
+
+export function platformIntegrationView(
+  response: PlatformIntegrationApiResponse | null,
+  backendError: string | null,
+  now: number,
+): PlatformIntegrationView & { active: PlatformIntegrationApiResponse["active"] } {
+  if (backendError !== null)
+    return { status: "degraded", pairingCode: null, expiresAt: null, active: null };
+  const expiresAt = response?.pairingCode?.expiresAt ?? null;
+  const local = clearExpiredPairingCode({ status: "unpaired", pairingCode: null, expiresAt }, now);
+  if (response?.active !== null && response?.active !== undefined) {
+    return {
+      status: "active",
+      pairingCode: local.pairingCode,
+      expiresAt: local.expiresAt,
+      active: response.active,
+    };
+  }
+  return {
+    status: local.expiresAt === null ? "unpaired" : "pending",
+    pairingCode: local.pairingCode,
+    expiresAt: local.expiresAt,
+    active: null,
+  };
+}
+
 export function platformIntegrationAccess(
   user: { role: "admin" | "user"; dataOps?: unknown } | null,
 ) {

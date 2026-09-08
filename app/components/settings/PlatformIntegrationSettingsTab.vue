@@ -14,16 +14,15 @@ import {
 import { gatewayApi } from "@/utils/gateway-api";
 import {
   platformIntegrationAccess,
+  platformIntegrationView,
   remainingPairingCodeSeconds,
+  type PlatformIntegrationApiResponse,
 } from "@/utils/platform-integration-state";
 import type { AuthenticatedUser } from "~~/server/utils/gateway/auth/users";
 
 const { t } = useI18n();
-const status = ref<{
-  status: string;
-  active: { pairingId: string; revision: number } | null;
-  pairingCode: { expiresAt: string } | null;
-}>({ status: "unpaired", active: null, pairingCode: null });
+const response = ref<PlatformIntegrationApiResponse | null>(null);
+const backendError = ref<string | null>(null);
 const pairingCode = ref<string | null>(null);
 const expiresAt = ref<string | null>(null);
 const dialogOpen = ref(false);
@@ -31,7 +30,10 @@ const loading = ref(false);
 const seconds = ref(0);
 const user = ref<AuthenticatedUser | null>(null);
 let timer: ReturnType<typeof setInterval> | null = null;
-const activeStatus = computed(() => (pairingCode.value === null ? status.value.status : "pending"));
+const view = computed(() =>
+  platformIntegrationView(response.value, backendError.value, Date.now()),
+);
+const activeStatus = computed(() => (pairingCode.value === null ? view.value.status : "pending"));
 const access = computed(() => platformIntegrationAccess(user.value));
 const canManage = computed(() => access.value === "manage");
 
@@ -46,7 +48,14 @@ function tick() {
   if (seconds.value === 0) clearCode();
 }
 async function refresh() {
-  status.value = await gatewayApi("/api/admin/integrations/dataops");
+  try {
+    response.value = await gatewayApi<PlatformIntegrationApiResponse>(
+      "/api/admin/integrations/dataops",
+    );
+    backendError.value = null;
+  } catch (caught: unknown) {
+    backendError.value = caught instanceof Error ? caught.message : "dataops_unavailable";
+  }
 }
 async function generate() {
   loading.value = true;
@@ -93,9 +102,9 @@ onBeforeUnmount(() => {
         ><Badge>{{ activeStatus }}</Badge></AlertDescription
       ></Alert
     >
-    <div v-if="status.active" class="grid gap-2 text-sm sm:grid-cols-2">
-      <span>{{ status.active.pairingId }}</span
-      ><span>v{{ status.active.revision }}</span>
+    <div v-if="view.active" class="grid gap-2 text-sm sm:grid-cols-2">
+      <span>{{ view.active.pairingId }}</span
+      ><span>v{{ view.active.revision }}</span>
     </div>
     <p v-if="access === 'read'" class="text-sm text-ink-muted">
       {{ t("app.platformIntegrationReadOnly") }}
