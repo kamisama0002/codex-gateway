@@ -187,7 +187,9 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
 }
 
 let defaultService: ReturnType<typeof createDataOpsPairingService> | null = null;
-let defaultPublish: ((payload: { revision: number; pairingId: string }) => Promise<void> | void) | undefined;
+let defaultPublish:
+  | ((payload: { revision: number; pairingId: string }) => Promise<void> | void)
+  | undefined;
 
 function productionService() {
   defaultService ??= createDataOpsPairingService({ publish: defaultPublish });

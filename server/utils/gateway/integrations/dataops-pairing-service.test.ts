@@ -137,7 +137,7 @@ describe("DataOpsPairingService", () => {
 
   it("publishes after a successful confirmation without exposing a secret", async () => {
     const fixture = createFixture();
-    fixture.integrations.pending.mockResolvedValue(binding({ status: "pending" }));
+    fixture.integrations.pending.mockResolvedValue(binding({ status: "pending", revision: 3 }));
     fixture.integrations.confirm.mockResolvedValue(binding({ status: "active", revision: 3 }));
 
     await fixture.service.confirm("pairing-fixed", 3, "fixture-shared-secret-with-at-least-32-bytes");

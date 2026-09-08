@@ -29,8 +29,8 @@ export function createDataOpsIntegrationInvalidation(options: {
       options.subscriber.on("message", (channel, payload) => {
         if (channel !== DATAOPS_INTEGRATION_REDIS_CHANNEL) return;
         try {
-          const parsed = JSON.parse(payload) as { revision?: unknown; pairingId?: unknown };
-          if (typeof parsed.revision === "number" && Number.isSafeInteger(parsed.revision) && parsed.revision > 0 && typeof parsed.pairingId === "string") {
+          const parsed: unknown = JSON.parse(payload);
+          if (isPayload(parsed)) {
             options.provider.invalidate(parsed.revision);
           }
         } catch {
@@ -47,4 +47,17 @@ export function createDataOpsIntegrationInvalidation(options: {
       await options.subscriber.quit().catch(() => undefined);
     },
   };
+}
+
+function isPayload(value: unknown): value is { revision: number; pairingId: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "revision" in value &&
+    "pairingId" in value &&
+    typeof value.revision === "number" &&
+    Number.isSafeInteger(value.revision) &&
+    value.revision > 0 &&
+    typeof value.pairingId === "string"
+  );
 }

@@ -32,13 +32,21 @@ export async function loginWithCurrentDataOpsForEvent(
 ) {
   const integration = await provider.current();
   if (integration === null) {
-    throw createError({ statusCode: 503, statusMessage: "dataops_not_configured", message: "dataops_not_configured" });
+    throw createError({
+      statusCode: 503,
+      statusMessage: "dataops_not_configured",
+      message: "dataops_not_configured",
+    });
   }
   return await loginWithDataOpsForEvent(event, integration.client, identities);
 }
 
 export default defineEventHandler(async (event) => {
-  return await loginWithCurrentDataOpsForEvent(event, dataOpsIntegrationProvider, externalIdentityStore);
+  return await loginWithCurrentDataOpsForEvent(
+    event,
+    dataOpsIntegrationProvider,
+    externalIdentityStore,
+  );
 });
 
 function dataOpsErrorStatus(code: string): number {

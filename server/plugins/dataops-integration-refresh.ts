@@ -1,11 +1,16 @@
 import Redis from "ioredis";
-import { createDataOpsIntegrationInvalidation, createDataOpsIntegrationPublisher } from "../utils/gateway/integrations/dataops-invalidation";
+import type { NitroApp } from "nitropack";
+import {
+  createDataOpsIntegrationInvalidation,
+  createDataOpsIntegrationPublisher,
+} from "../utils/gateway/integrations/dataops-invalidation";
 import { configureDataOpsPairingPublisher } from "../utils/gateway/integrations/dataops-pairing-service";
 import { dataOpsIntegrationProvider } from "../utils/gateway/integrations/dataops-integration-provider";
 
-export default defineNitroPlugin((nitroApp) => {
+// oxlint-disable-next-line typescript/no-unsafe-call
+export default defineNitroPlugin((nitroApp: NitroApp) => {
   const redisUrl = process.env.REDIS_URL;
-  if (!redisUrl) return;
+  if (redisUrl === undefined || redisUrl === "") return;
   const subscriber = new Redis(redisUrl);
   const invalidation = createDataOpsIntegrationInvalidation({
     provider: dataOpsIntegrationProvider,
