@@ -117,18 +117,47 @@ describe("DataOpsPairingService", () => {
     ).rejects.toThrow("integration_secret_rejected");
   });
 
-  it("accepts a grace binding and finalizes only the active binding", async () => {
+  it("finalizes the active binding while a grace binding exists", async () => {
     const fixture = createFixture();
     fixture.integrations.acceptedForAuthentication.mockResolvedValue([
       binding({ status: "grace", pairingId: "pairing-grace", revision: 1 }),
       binding({ status: "active", pairingId: "pairing-fixed", revision: 2 }),
     ]);
+    fixture.integrations.active.mockResolvedValue(
+      binding({ status: "active", pairingId: "pairing-fixed", revision: 2 }),
+    );
     fixture.integrations.finalize.mockResolvedValue(binding({ status: "active", revision: 2 }));
 
     await expect(
       fixture.service.finalize("pairing-fixed", 2, "fixture-shared-secret-with-at-least-32-bytes"),
     ).resolves.toEqual({ pairingId: "pairing-fixed", revision: 2, status: "active" });
     expect(fixture.integrations.finalize).toHaveBeenCalledWith("pairing-fixed", 2);
+  });
+
+  it("rejects an unexpired grace secret during finalization", async () => {
+    const fixture = createFixture();
+    fixture.integrations.acceptedForAuthentication.mockResolvedValue([
+      binding({
+        pairingId: "pairing-previous",
+        revision: 1,
+        status: "grace",
+        sharedSecret: "previous-shared-secret-with-at-least-32-bytes",
+      }),
+      binding({ pairingId: "pairing-fixed", revision: 2, status: "active" }),
+    ]);
+    fixture.integrations.active.mockResolvedValue(
+      binding({ pairingId: "pairing-fixed", revision: 2, status: "active" }),
+    );
+    fixture.integrations.finalize.mockResolvedValue(binding({ status: "active" }));
+
+    await expect(
+      fixture.service.finalize(
+        "pairing-previous",
+        1,
+        "previous-shared-secret-with-at-least-32-bytes",
+      ),
+    ).rejects.toThrow("integration_secret_rejected");
+    expect(fixture.integrations.finalize).not.toHaveBeenCalled();
   });
 
   it("returns a rate-limit error without revealing submitted secrets", async () => {

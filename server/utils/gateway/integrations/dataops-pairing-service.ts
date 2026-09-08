@@ -132,7 +132,11 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
     },
 
     async finalize(pairingId: string, revision: number, bearerSecret: string) {
-      await acceptedBinding(integrations, now, pairingId, revision, bearerSecret);
+      validateIdentity(pairingId, revision);
+      const active = await integrations.active();
+      if (active === null || !matchesBinding(active, pairingId, revision, bearerSecret)) {
+        throw new DataOpsPairingError("integration_secret_rejected", 401);
+      }
       return publicBinding(await integrations.finalize(pairingId, revision));
     },
 
