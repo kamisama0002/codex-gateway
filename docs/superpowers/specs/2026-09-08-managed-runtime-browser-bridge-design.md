@@ -2,7 +2,7 @@
 
 > 日期：2026-09-08
 >
-> 状态：已确认设计方向，等待书面规格复核
+> 状态：已确认，进入实施
 
 ## 1. 背景
 
@@ -32,6 +32,17 @@
 - 不移除 Search MCP、SearXNG 或现有 MCP 能力管理。
 - 不把浏览器 Profile 暴露到 Gateway 文件管理器。
 - 不为浏览器增加独立数据库、独立用户卷或新的长期凭据格式。
+
+## 3.1 容器拓扑
+
+浏览器组件全部进入现有每用户 `agent-runtime`，不新增 Chromium、noVNC、Playwright 或 browser proxy Sidecar 镜像。生产拓扑保持：
+
+```text
+shared: codex-gateway + runtime-manager + search-mcp + searxng
+per user: agent-runtime (Codex + Playwright MCP + Chromium + noVNC + browser proxy)
+```
+
+Gateway 与 Runtime Manager 继续分离，因为只有 Runtime Manager 可以挂载 Docker Socket。Search MCP 与 SearXNG 本期也保持独立，避免把 Node 与 Python 双进程维护耦合到一个搜索镜像。
 
 ## 4. 方案选择
 
