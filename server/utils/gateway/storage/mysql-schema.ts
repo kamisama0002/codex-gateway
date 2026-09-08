@@ -572,4 +572,66 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
       `,
     ],
   },
+  {
+    version: 16,
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS runtime_nodes (
+          id VARCHAR(128) NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          base_url VARCHAR(2048) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+          encrypted_shared_secret LONGTEXT NOT NULL,
+          config_revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
+          scheduling_state VARCHAR(16) NOT NULL,
+          capacity_cpu_millis INT UNSIGNED NOT NULL,
+          capacity_memory_bytes BIGINT UNSIGNED NOT NULL,
+          max_runtimes INT UNSIGNED NOT NULL,
+          minimum_free_disk_bytes BIGINT UNSIGNED NOT NULL,
+          last_seen_at VARCHAR(32) NULL,
+          last_error VARCHAR(255) NULL,
+          health_json LONGTEXT NULL,
+          created_at VARCHAR(32) NOT NULL,
+          updated_at VARCHAR(32) NOT NULL,
+          PRIMARY KEY (id),
+          UNIQUE KEY uq_runtime_nodes_name (name),
+          UNIQUE KEY uq_runtime_nodes_base_url (base_url),
+          CONSTRAINT chk_runtime_nodes_id CHECK (id LIKE 'node\\_\\_%'),
+          CONSTRAINT chk_runtime_nodes_revision CHECK (config_revision > 0),
+          CONSTRAINT chk_runtime_nodes_state
+            CHECK (scheduling_state IN ('active', 'draining', 'disabled')),
+          CONSTRAINT chk_runtime_nodes_cpu CHECK (capacity_cpu_millis > 0),
+          CONSTRAINT chk_runtime_nodes_memory CHECK (capacity_memory_bytes > 0),
+          CONSTRAINT chk_runtime_nodes_slots CHECK (max_runtimes > 0)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin
+      `,
+      `
+        ALTER TABLE user_agent_runtimes
+          ADD COLUMN runtime_id VARCHAR(128) NULL,
+          ADD COLUMN runtime_node_id VARCHAR(128) NULL,
+          ADD COLUMN placement_generation INT UNSIGNED NULL,
+          ADD COLUMN workspace_key VARCHAR(128) NULL,
+          ADD COLUMN reserved_cpu_millis INT UNSIGNED NULL,
+          ADD COLUMN reserved_memory_bytes BIGINT UNSIGNED NULL,
+          ADD COLUMN reserved_pids INT UNSIGNED NULL,
+          ADD UNIQUE KEY uq_user_agent_runtimes_runtime_id (runtime_id),
+          ADD UNIQUE KEY uq_user_agent_runtimes_workspace_key (workspace_key),
+          ADD KEY idx_user_agent_runtimes_node (runtime_node_id, user_id),
+          ADD CONSTRAINT chk_user_agent_runtimes_placement CHECK (
+            (
+              runtime_id IS NULL AND runtime_node_id IS NULL
+              AND placement_generation IS NULL AND workspace_key IS NULL
+              AND reserved_cpu_millis IS NULL AND reserved_memory_bytes IS NULL
+              AND reserved_pids IS NULL
+            ) OR (
+              runtime_id IS NOT NULL AND runtime_node_id IS NOT NULL
+              AND placement_generation > 0 AND workspace_key IS NOT NULL
+              AND reserved_cpu_millis > 0 AND reserved_memory_bytes > 0
+              AND reserved_pids > 0
+            )
+          ),
+          ADD CONSTRAINT fk_user_agent_runtimes_runtime_node
+            FOREIGN KEY (runtime_node_id) REFERENCES runtime_nodes(id)
+      `,
+    ],
+  },
 ];

@@ -39,7 +39,7 @@
 - Produces `RuntimeNodeRecord`, `RuntimeNodeSchedulingState`, `RuntimePlacementRecord`, and their Zod parsers.
 - Adds MySQL migration 16 with `runtime_nodes` and nullable rolling-deployment placement columns on `user_agent_runtimes`.
 
-- [ ] **Step 1: Write the failing schema tests**
+- [x] **Step 1: Write the failing schema tests**
 
 ```ts
 it("adds runtime nodes and placement columns in migration 16", () => {
@@ -64,7 +64,7 @@ it("rejects a runtime node URL containing credentials", () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run:
 
@@ -74,7 +74,7 @@ pnpm exec vitest run server/utils/gateway/storage/mysql-schema.test.ts server/ut
 
 Expected: migration 16 and `runtimeNodeRecordSchema` are missing.
 
-- [ ] **Step 3: Add migration 16 and internal schemas**
+- [x] **Step 3: Add migration 16 and internal schemas**
 
 Migration 16 creates this table:
 
@@ -120,7 +120,7 @@ ALTER TABLE user_agent_runtimes
     FOREIGN KEY (runtime_node_id) REFERENCES runtime_nodes(id)
 ```
 
-- [ ] **Step 4: Run schema and real MySQL migration tests**
+- [x] **Step 4: Run schema and real MySQL migration tests**
 
 ```bash
 pnpm exec vitest run server/utils/gateway/storage/mysql-schema.test.ts server/utils/gateway/storage/mysql-migrations.test.ts server/utils/gateway/runtime-manager/runtime-node-types.test.ts
@@ -128,7 +128,7 @@ pnpm exec vitest run server/utils/gateway/storage/mysql-schema.test.ts server/ut
 
 Expected: migration version 16, 20 tables, and placement columns with the specified types.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/utils/gateway/storage/mysql-schema.ts server/utils/gateway/storage/mysql-schema.test.ts server/utils/gateway/storage/mysql-migrations.test.ts server/utils/gateway/runtime-manager/runtime-node-types.ts server/utils/gateway/runtime-manager/runtime-node-types.test.ts

@@ -56,4 +56,15 @@ describe("MySQL capability schema", () => {
     expect(sql).toContain("INFINITY_MCP_TOKEN");
     expect(sql).toContain("INSERT IGNORE INTO capability_assignments");
   });
+
+  it("adds runtime nodes and rolling placement columns in migration 16", () => {
+    const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 16);
+    const sql = migration?.statements.join("\n") ?? "";
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS runtime_nodes");
+    expect(sql).toContain("base_url VARCHAR(2048) CHARACTER SET ascii COLLATE ascii_bin NOT NULL");
+    expect(sql).toContain("runtime_node_id VARCHAR(128) NULL");
+    expect(sql).toContain("placement_generation INT UNSIGNED NULL");
+    expect(sql).toContain("workspace_key VARCHAR(128) NULL");
+    expect(sql).toContain("fk_user_agent_runtimes_runtime_node");
+  });
 });
