@@ -28,6 +28,13 @@ const runtimeNodeIdSchema = z
   .min(7)
   .max(128)
   .regex(/^node__[a-z0-9][a-z0-9_.-]*$/u);
+const runtimePlacementIdentitySchema = z
+  .object({
+    runtimeId: runtimeIdSchema,
+    nodeId: runtimeNodeIdSchema,
+    placementGeneration: z.number().int().positive(),
+  })
+  .strict();
 export const runtimeNodeHealthSchema = z
   .object({
     nodeId: runtimeNodeIdSchema,
@@ -47,7 +54,7 @@ export const runtimeNodeHealthSchema = z
   })
   .strict()
   .refine((health) => health.runningRuntimeCount <= health.managedRuntimeCount);
-const runtimeActionRequestSchema = z.object({ runtimeId: runtimeIdSchema }).strict();
+const runtimeActionRequestSchema = runtimePlacementIdentitySchema;
 export const runtimeResourcePolicySchema = z
   .object({
     memoryBytes: z
@@ -61,11 +68,18 @@ export const runtimeResourcePolicySchema = z
   .strict();
 export type RuntimeResourcePolicy = z.infer<typeof runtimeResourcePolicySchema>;
 const runtimeResourceActionRequestSchema = z
-  .object({ runtimeId: runtimeIdSchema, resources: runtimeResourcePolicySchema.optional() })
+  .object({
+    ...runtimePlacementIdentitySchema.shape,
+    resources: runtimeResourcePolicySchema.optional(),
+  })
   .strict();
 const provisionRuntimeRequestSchema = z
   .object({
-    runtimeId: runtimeIdSchema,
+    ...runtimePlacementIdentitySchema.shape,
+    workspaceKey: z
+      .string()
+      .length(36)
+      .regex(/^ws__[a-f0-9]{32}$/u),
     userHash: z.string().regex(/^[a-f0-9]{64}$/),
     runtimeType: runtimeTypeSchema,
     imageAlias: imageAliasSchema,
@@ -116,14 +130,14 @@ const provisionRuntimeRequestSchema = z
   .strict();
 const upgradeRuntimeRequestSchema = z
   .object({
-    runtimeId: runtimeIdSchema,
+    ...runtimePlacementIdentitySchema.shape,
     imageAlias: imageAliasSchema,
     resources: runtimeResourcePolicySchema.optional(),
   })
   .strict();
 const forwardOAuthCallbackRequestSchema = z
   .object({
-    runtimeId: runtimeIdSchema,
+    ...runtimePlacementIdentitySchema.shape,
     pathAndQuery: z
       .string()
       .min(1)
@@ -191,7 +205,7 @@ const agentRuntimeStatsResultSchema = z
   .strict();
 const execRuntimeRequestSchema = z
   .object({
-    runtimeId: runtimeIdSchema,
+    ...runtimePlacementIdentitySchema.shape,
     command: z
       .string()
       .min(1)
@@ -214,7 +228,14 @@ const execRuntimeResultSchema = z
 const managerErrorSchema = z.object({ error: z.string().min(1) }).strict();
 const DEFAULT_RUNTIME_MANAGER_TIMEOUT_MS = 30_000;
 
-export interface ProvisionRuntimeRequest {
+export interface RuntimePlacementIdentity {
+  runtimeId: string;
+  nodeId: string;
+  placementGeneration: number;
+}
+
+export interface ProvisionRuntimeRequest extends RuntimePlacementIdentity {
+  workspaceKey: string;
   runtimeId: string;
   userHash: string;
   runtimeType: RuntimeType;
@@ -230,13 +251,11 @@ export interface ProvisionRuntimeRequest {
   resources?: RuntimeResourcePolicy;
 }
 
-export interface SyncRuntimeSecretsRequest {
-  runtimeId: string;
+export interface SyncRuntimeSecretsRequest extends RuntimePlacementIdentity {
   runtimeSecrets: ResolvedRuntimeSecret[];
 }
 
-export interface ForwardOAuthCallbackRequest {
-  runtimeId: string;
+export interface ForwardOAuthCallbackRequest extends RuntimePlacementIdentity {
   pathAndQuery: string;
 }
 
@@ -298,9 +317,12 @@ export class RuntimeManagerClient {
     }
   }
 
-  inspect(runtimeId: string): Promise<RuntimeLifecycleResult> {
-    const input = runtimeActionRequestSchema.parse({ runtimeId });
-    return this.request("GET", `/v1/runtimes/${encodeURIComponent(input.runtimeId)}`);
+  inspect(input: RuntimePlacementIdentity): Promise<RuntimeLifecycleResult> {
+    const placement = this.placement(input);
+    return this.request(
+      "GET",
+      `/v1/runtimes/${encodeURIComponent(placement.runtimeId)}/generations/${placement.placementGeneration}`,
+    );
   }
 
   async status(): Promise<RuntimeNodeHealth> {
@@ -316,11 +338,11 @@ export class RuntimeManagerClient {
     return health;
   }
 
-  stats(runtimeId: string): Promise<AgentRuntimeStatsResult> {
-    const input = runtimeActionRequestSchema.parse({ runtimeId });
+  stats(input: RuntimePlacementIdentity): Promise<AgentRuntimeStatsResult> {
+    const placement = this.placement(input);
     return this.requestParsed(
       "GET",
-      `/v1/runtimes/${encodeURIComponent(input.runtimeId)}/stats`,
+      `/v1/runtimes/${encodeURIComponent(placement.runtimeId)}/generations/${placement.placementGeneration}/stats`,
       undefined,
       agentRuntimeStatsResultSchema,
     );
@@ -328,11 +350,13 @@ export class RuntimeManagerClient {
 
   exec(input: {
     runtimeId: string;
+    nodeId: string;
+    placementGeneration: number;
     command: string;
     timeoutMs: number;
     maxOutputBytes: number;
   }): Promise<ExecRuntimeResult> {
-    const parsed = execRuntimeRequestSchema.parse(input);
+    const parsed = execRuntimeRequestSchema.parse({ ...input, ...this.placement(input) });
     return this.requestParsed(
       "POST",
       "/v1/runtimes/exec",
@@ -346,7 +370,7 @@ export class RuntimeManagerClient {
     return this.request(
       "POST",
       "/v1/runtimes/provision",
-      provisionRuntimeRequestSchema.parse(input),
+      provisionRuntimeRequestSchema.parse({ ...input, ...this.placement(input) }),
     );
   }
 
@@ -355,9 +379,14 @@ export class RuntimeManagerClient {
       "POST",
       "/v1/runtimes/secrets",
       provisionRuntimeRequestSchema
-        .pick({ runtimeId: true, runtimeSecrets: true })
+        .pick({
+          runtimeId: true,
+          nodeId: true,
+          placementGeneration: true,
+          runtimeSecrets: true,
+        })
         .required({ runtimeSecrets: true })
-        .parse(input),
+        .parse({ ...input, ...this.placement(input) }),
     );
   }
 
@@ -365,57 +394,78 @@ export class RuntimeManagerClient {
     await this.requestParsed(
       "POST",
       "/v1/runtimes/oauth-callback",
-      forwardOAuthCallbackRequestSchema.parse(input),
+      forwardOAuthCallbackRequestSchema.parse({ ...input, ...this.placement(input) }),
       okResponseSchema,
     );
   }
 
-  start(runtimeId: string, resources?: RuntimeResourcePolicy): Promise<RuntimeLifecycleResult> {
-    return this.resourceAction("start", runtimeId, resources);
+  start(
+    placement: RuntimePlacementIdentity,
+    resources?: RuntimeResourcePolicy,
+  ): Promise<RuntimeLifecycleResult> {
+    return this.resourceAction("start", placement, resources);
   }
 
-  stop(runtimeId: string): Promise<RuntimeLifecycleResult> {
-    return this.action("stop", runtimeId);
+  stop(placement: RuntimePlacementIdentity): Promise<RuntimeLifecycleResult> {
+    return this.action("stop", placement);
   }
 
-  restart(runtimeId: string, resources?: RuntimeResourcePolicy): Promise<RuntimeLifecycleResult> {
-    return this.resourceAction("restart", runtimeId, resources);
+  restart(
+    placement: RuntimePlacementIdentity,
+    resources?: RuntimeResourcePolicy,
+  ): Promise<RuntimeLifecycleResult> {
+    return this.resourceAction("restart", placement, resources);
   }
 
-  remove(runtimeId: string): Promise<RuntimeLifecycleResult> {
-    return this.action("remove", runtimeId);
+  remove(placement: RuntimePlacementIdentity): Promise<RuntimeLifecycleResult> {
+    return this.action("remove", placement);
   }
 
   upgrade(
-    runtimeId: string,
+    placement: RuntimePlacementIdentity,
     imageAlias: string,
     resources?: RuntimeResourcePolicy,
   ): Promise<RuntimeLifecycleResult> {
     return this.request(
       "POST",
       "/v1/runtimes/upgrade",
-      upgradeRuntimeRequestSchema.parse({ runtimeId, imageAlias, resources }),
+      upgradeRuntimeRequestSchema.parse({ ...this.placement(placement), imageAlias, resources }),
     );
   }
 
-  private action(action: "start" | "stop" | "restart" | "remove", runtimeId: string) {
+  private action(
+    action: "start" | "stop" | "restart" | "remove",
+    placement: RuntimePlacementIdentity,
+  ) {
     return this.request(
       "POST",
       `/v1/runtimes/${action}`,
-      runtimeActionRequestSchema.parse({ runtimeId }),
+      runtimeActionRequestSchema.parse(this.placement(placement)),
     );
   }
 
   private resourceAction(
     action: "start" | "restart",
-    runtimeId: string,
+    placement: RuntimePlacementIdentity,
     resources?: RuntimeResourcePolicy,
   ) {
     return this.request(
       "POST",
       `/v1/runtimes/${action}`,
-      runtimeResourceActionRequestSchema.parse({ runtimeId, resources }),
+      runtimeResourceActionRequestSchema.parse({ ...this.placement(placement), resources }),
     );
+  }
+
+  private placement(input: RuntimePlacementIdentity) {
+    const placement = runtimePlacementIdentitySchema.parse({
+      runtimeId: input.runtimeId,
+      nodeId: input.nodeId,
+      placementGeneration: input.placementGeneration,
+    });
+    if (this.nodeId !== null && placement.nodeId !== this.nodeId) {
+      throw new RuntimeManagerClientError("runtime_manager_invalid_response");
+    }
+    return placement;
   }
 
   private async request(

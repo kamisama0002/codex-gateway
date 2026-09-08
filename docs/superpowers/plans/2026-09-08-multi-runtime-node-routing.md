@@ -384,7 +384,7 @@ git commit -m "feat(runtime): monitor runtime node health"
 - Lifecycle requests include `nodeId`, `placementGeneration`, and `workspaceKey` for provision.
 - Runtime Manager labels every container and volume with node ID and generation and rejects stale or conflicting identities.
 
-- [ ] **Step 1: Write stale-generation tests**
+- [x] **Step 1: Write stale-generation tests**
 
 ```ts
 it("rejects a lifecycle request older than the managed container generation", async () => {
@@ -395,13 +395,13 @@ it("rejects a lifecycle request older than the managed container generation", as
 });
 ```
 
-- [ ] **Step 2: Verify generation RED**
+- [x] **Step 2: Verify generation RED**
 
 ```bash
 pnpm --filter @codex-gateway/agent-runtime-manager test
 ```
 
-- [ ] **Step 3: Add request fields and Docker labels**
+- [x] **Step 3: Add request fields and Docker labels**
 
 Add labels:
 
@@ -413,18 +413,18 @@ workspaceKey: "com.codex-gateway.workspace-key",
 
 Every inspect and mutation verifies exact runtime ID, user hash, node ID, runtime type, and generation. Multiple matching containers return `runtime_identity_conflict`.
 
-- [ ] **Step 4: Pass placement identity from Gateway**
+- [x] **Step 4: Pass placement identity from Gateway**
 
 `ManagedRuntimeService.provisionRequest` receives the durable placement rather than deriving physical placement from environment. Runtime ID remains identity-secret-derived for existing rows and stored thereafter.
 
-- [ ] **Step 5: Run package and Gateway runtime tests**
+- [x] **Step 5: Run package and Gateway runtime tests**
 
 ```bash
 pnpm --filter @codex-gateway/agent-runtime-manager test
 pnpm exec vitest run server/utils/gateway/runtime-manager/runtime-service.test.ts server/utils/gateway/runtime-manager/client.test.ts
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/agent-runtime-manager/src server/utils/gateway/runtime-manager/client.ts server/utils/gateway/runtime-manager/runtime-service.ts server/utils/gateway/runtime-manager/runtime-service.test.ts

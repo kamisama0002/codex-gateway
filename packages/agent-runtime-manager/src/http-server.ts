@@ -18,6 +18,7 @@ import {
 import {
   provisionRuntimeRequestSchema,
   runtimeActionRequestSchema,
+  runtimeLookupRequestSchema,
   runtimeResourceActionRequestSchema,
   execRuntimeRequestSchema,
   forwardOAuthCallbackRequestSchema,
@@ -91,7 +92,7 @@ async function handleRequest(
         ) {
           return sendJson(response, 404, { error: "not_found" });
         }
-        const requestData = runtimeActionRequestSchema.parse({
+        const requestData = runtimeLookupRequestSchema.pick({ runtimeId: true }).parse({
           runtimeId: decodeURIComponent(e2eInspectMatch[1] ?? ""),
         });
         const result = e2eDockerInspectionSchema.parse(
@@ -99,19 +100,23 @@ async function handleRequest(
         );
         return sendJson(response, 200, result);
       }
-      const statsMatch = /^\/v1\/runtimes\/([^/]+)\/stats$/.exec(url.pathname);
+      const statsMatch = /^\/v1\/runtimes\/([^/]+)\/generations\/(\d+)\/stats$/.exec(url.pathname);
       if (statsMatch) {
         const result = await options.service.stats(
-          runtimeActionRequestSchema.parse({
+          runtimeLookupRequestSchema.parse({
             runtimeId: decodeURIComponent(statsMatch[1] ?? ""),
+            placementGeneration: Number(statsMatch[2]),
           }),
         );
         return sendJson(response, 200, result);
       }
-      const match = /^\/v1\/runtimes\/([^/]+)$/.exec(url.pathname);
+      const match = /^\/v1\/runtimes\/([^/]+)\/generations\/(\d+)$/.exec(url.pathname);
       if (!match) return sendJson(response, 404, { error: "not_found" });
       const result = await options.service.inspect(
-        runtimeActionRequestSchema.parse({ runtimeId: decodeURIComponent(match[1] ?? "") }),
+        runtimeLookupRequestSchema.parse({
+          runtimeId: decodeURIComponent(match[1] ?? ""),
+          placementGeneration: Number(match[2]),
+        }),
       );
       return sendJson(response, 200, result);
     }

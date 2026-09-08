@@ -54,7 +54,26 @@ function requestFor(runtimeId: string) {
     runtimeId,
     runtimeType: "codex-app-server" as const,
     userHash,
+    nodeId: "node__default",
+    placementGeneration: 1,
+    workspaceKey: "ws__1234567890abcdef1234567890abcdef",
   };
+}
+
+function actionFor(runtimeId: string, placementGeneration = 1) {
+  return { runtimeId, nodeId: "node__default", placementGeneration };
+}
+
+function lookupFor(runtimeId: string, placementGeneration = 1) {
+  return { runtimeId, placementGeneration };
+}
+
+function resourceActionFor(
+  runtimeId: string,
+  resources: typeof requestedResources,
+  placementGeneration = 1,
+) {
+  return { ...actionFor(runtimeId, placementGeneration), resources };
 }
 
 class MemoryNonceStore implements NonceStore {
@@ -131,6 +150,9 @@ class RecordingDockerEngine implements DockerEngine {
         runtimeType: "codex-app-server",
         serviceToken: "existing-service-token",
         userHash,
+        nodeId: "node__default",
+        placementGeneration: 1,
+        workspaceKey: "ws__1234567890abcdef1234567890abcdef",
         memoryBytes: 2 * 1024 * 1024 * 1024,
         nanoCpus: 0,
         pidsLimit: 256,
@@ -151,6 +173,9 @@ class RecordingDockerEngine implements DockerEngine {
       runtimeType: spec.runtimeType,
       serviceToken: spec.serviceToken,
       userHash: spec.userHash,
+      nodeId: spec.nodeId,
+      placementGeneration: spec.placementGeneration,
+      workspaceKey: spec.workspaceKey,
       memoryBytes: spec.security.Memory,
       nanoCpus: spec.security.NanoCpus,
       pidsLimit: spec.security.PidsLimit,
@@ -269,7 +294,7 @@ describe("RuntimeLifecycleService", () => {
     const service = new RuntimeLifecycleService(engine, testPolicy);
 
     await expect(
-      service.start({ runtimeId: "runtime-a", resources: requestedResources }),
+      service.start(resourceActionFor("runtime-a", requestedResources)),
     ).resolves.toMatchObject({ status: "running", actualResources: requestedResources });
 
     expect(engine.operationCalls).toEqual(["stop", "update", "start"]);
@@ -283,7 +308,7 @@ describe("RuntimeLifecycleService", () => {
     const service = new RuntimeLifecycleService(engine, testPolicy);
 
     await expect(
-      service.start({ runtimeId: "runtime-a", resources: requestedResources }),
+      service.start(resourceActionFor("runtime-a", requestedResources)),
     ).resolves.toMatchObject({ status: "running", actualResources: requestedResources });
 
     expect(engine.operationCalls).toEqual(["update", "start"]);
@@ -297,7 +322,7 @@ describe("RuntimeLifecycleService", () => {
     const service = new RuntimeLifecycleService(engine, testPolicy);
 
     await expect(
-      service.restart({ runtimeId: "runtime-a", resources: requestedResources }),
+      service.restart(resourceActionFor("runtime-a", requestedResources)),
     ).resolves.toMatchObject({
       containerId: "container-a",
       status: "running",
@@ -318,13 +343,13 @@ describe("RuntimeLifecycleService", () => {
     engine.updateError = new Error("resource update failed");
     const service = new RuntimeLifecycleService(engine, testPolicy);
 
-    await expect(
-      service.start({ runtimeId: "runtime-a", resources: requestedResources }),
-    ).rejects.toThrow("resource update failed");
+    await expect(service.start(resourceActionFor("runtime-a", requestedResources))).rejects.toThrow(
+      "resource update failed",
+    );
 
     expect(engine.operationCalls).toEqual(["stop", "update"]);
     expect(engine.startCalls).toEqual([]);
-    await expect(service.inspect({ runtimeId: "runtime-a" })).resolves.toMatchObject({
+    await expect(service.inspect(lookupFor("runtime-a"))).resolves.toMatchObject({
       status: "stopped",
     });
   });
@@ -335,13 +360,13 @@ describe("RuntimeLifecycleService", () => {
     const service = new RuntimeLifecycleService(engine, testPolicy);
 
     await expect(
-      service.restart({ runtimeId: "runtime-a", resources: requestedResources }),
+      service.restart(resourceActionFor("runtime-a", requestedResources)),
     ).rejects.toThrow("resource update failed");
 
     expect(engine.operationCalls).toEqual(["update"]);
     expect(engine.startCalls).toEqual([]);
     expect(engine.restartCalls).toEqual([]);
-    await expect(service.inspect({ runtimeId: "runtime-a" })).resolves.toMatchObject({
+    await expect(service.inspect(lookupFor("runtime-a"))).resolves.toMatchObject({
       status: "stopped",
     });
   });
@@ -354,10 +379,10 @@ describe("RuntimeLifecycleService", () => {
       service.provision({ ...requestFor("runtime-requested"), resources: requestedResources }),
     ).resolves.toMatchObject({ actualResources: requestedResources });
     await expect(
-      service.start({ runtimeId: "runtime-a", resources: requestedResources }),
+      service.start(resourceActionFor("runtime-a", requestedResources)),
     ).resolves.toMatchObject({ actualResources: requestedResources });
     await expect(
-      service.restart({ runtimeId: "runtime-a", resources: requestedResources }),
+      service.restart(resourceActionFor("runtime-a", requestedResources)),
     ).resolves.toMatchObject({ actualResources: requestedResources });
 
     expect(engine.createCalls[0]?.security).toMatchObject({
@@ -409,10 +434,10 @@ describe("RuntimeLifecycleService", () => {
     };
 
     await expect(
-      service.start({ runtimeId: "runtime-a", resources: overLimitResources }),
+      service.start(resourceActionFor("runtime-a", overLimitResources)),
     ).rejects.toMatchObject({ code: "runtime_policy_exceeds_platform_limit" });
     await expect(
-      service.restart({ runtimeId: "runtime-a", resources: overLimitResources }),
+      service.restart(resourceActionFor("runtime-a", overLimitResources)),
     ).rejects.toMatchObject({ code: "runtime_policy_exceeds_platform_limit" });
     expect(engine.startCalls).toEqual([]);
     expect(engine.restartCalls).toEqual([]);
@@ -442,11 +467,11 @@ describe("RuntimeLifecycleService", () => {
     engine.execResult = { code: 0, stdout: "git version 2.45.0\n", stderr: "" };
     const service = new RuntimeLifecycleService(engine, testPolicy);
     await service.provision(requestFor("runtime-git"));
-    await service.start({ runtimeId: "runtime-git" });
+    await service.start(actionFor("runtime-git"));
 
     await expect(
       service.exec({
-        runtimeId: "runtime-git",
+        ...actionFor("runtime-git"),
         command: "git --version",
         timeoutMs: 1_000,
         maxOutputBytes: 1_024,
@@ -469,7 +494,7 @@ describe("RuntimeLifecycleService", () => {
 
     await expect(
       service.exec({
-        runtimeId: "runtime-git",
+        ...actionFor("runtime-git"),
         command: "git --version",
         timeoutMs: 1_000,
         maxOutputBytes: 1_024,
@@ -537,11 +562,11 @@ describe("RuntimeLifecycleService", () => {
     await engine.startContainer("secret-container");
     const service = new RuntimeLifecycleService(engine, testPolicy);
 
-    const running = await service.stats({ runtimeId: "runtime-a" });
+    const running = await service.stats(lookupFor("runtime-a"));
     const stopped = await service
-      .stop({ runtimeId: "runtime-a" })
-      .then(() => service.stats({ runtimeId: "runtime-a" }));
-    const absent = await service.stats({ runtimeId: "missing" });
+      .stop(actionFor("runtime-a"))
+      .then(() => service.stats(lookupFor("runtime-a")));
+    const absent = await service.stats(lookupFor("missing"));
 
     expect(running).toEqual({
       runtimeId: "runtime-a",
@@ -640,7 +665,7 @@ describe("RuntimeLifecycleService", () => {
     expect(JSON.stringify(engine.createCalls)).not.toContain(exactSecret);
     expect(engine.secretCalls).toEqual([]);
 
-    await service.start({ runtimeId: "runtime-secret" });
+    await service.start(actionFor("runtime-secret"));
 
     expect(engine.startCalls).toEqual(["container-1"]);
     expect(engine.secretCalls).toEqual([
@@ -681,11 +706,11 @@ describe("RuntimeLifecycleService", () => {
     const engine = new RecordingDockerEngine();
     const service = new RuntimeLifecycleService(engine, testPolicy);
     await service.provision(requestFor("runtime-rotation"));
-    await service.start({ runtimeId: "runtime-rotation" });
+    await service.start(actionFor("runtime-rotation"));
     engine.secretCalls.splice(0);
 
     await service.syncSecrets({
-      runtimeId: "runtime-rotation",
+      ...actionFor("runtime-rotation"),
       runtimeSecrets: [
         {
           credentialId: "cred__file",
@@ -700,7 +725,7 @@ describe("RuntimeLifecycleService", () => {
     expect(engine.secretCalls.at(-1)?.secrets[0]?.value).toBe("rotated-file");
 
     await service.syncSecrets({
-      runtimeId: "runtime-rotation",
+      ...actionFor("runtime-rotation"),
       runtimeSecrets: [
         {
           credentialId: "cred__env",
@@ -722,13 +747,13 @@ describe("RuntimeLifecycleService", () => {
 
     await expect(
       service.forwardOAuthCallback({
-        runtimeId: "runtime-oauth",
+        ...actionFor("runtime-oauth"),
         pathAndQuery: "/api/capabilities/mcp/oauth/callback?code=abc&state=state-value",
       }),
     ).rejects.toThrow("not running");
-    await service.start({ runtimeId: "runtime-oauth" });
+    await service.start(actionFor("runtime-oauth"));
     await service.forwardOAuthCallback({
-      runtimeId: "runtime-oauth",
+      ...actionFor("runtime-oauth"),
       pathAndQuery: "/api/capabilities/mcp/oauth/callback?code=abc&state=state-value",
     });
 
@@ -837,6 +862,13 @@ describe("RuntimeLifecycleService", () => {
       "com.codex-gateway.e2e-managed": "isolated-test-run",
       "com.codex-gateway.managed": "true",
     });
+    for (const mount of engine.createCalls[0]?.mounts ?? []) {
+      expect(mount.labels).toMatchObject({
+        "com.codex-gateway.runtime-node-id": "node__default",
+        "com.codex-gateway.placement-generation": "1",
+        "com.codex-gateway.workspace-key": "ws__1234567890abcdef1234567890abcdef",
+      });
+    }
     expect(engine.createCalls[0]?.mounts).toHaveLength(2);
     for (const mount of engine.createCalls[0]?.mounts ?? []) {
       expect(mount.labels).toMatchObject({
@@ -860,13 +892,13 @@ describe("RuntimeLifecycleService", () => {
     const engine = new RecordingDockerEngine({ existingContainerId: "container-a" });
     const service = new RuntimeLifecycleService(engine, testPolicy);
 
-    await service.start({ runtimeId: "runtime-a" });
-    await service.start({ runtimeId: "runtime-a" });
-    await service.restart({ runtimeId: "runtime-a" });
-    await service.stop({ runtimeId: "runtime-a" });
-    await service.stop({ runtimeId: "runtime-a" });
-    const removed = await service.remove({ runtimeId: "runtime-a" });
-    const removedAgain = await service.remove({ runtimeId: "runtime-a" });
+    await service.start(actionFor("runtime-a"));
+    await service.start(actionFor("runtime-a"));
+    await service.restart(actionFor("runtime-a"));
+    await service.stop(actionFor("runtime-a"));
+    await service.stop(actionFor("runtime-a"));
+    const removed = await service.remove(actionFor("runtime-a"));
+    const removedAgain = await service.remove(actionFor("runtime-a"));
 
     expect(engine.startCalls).toEqual(["container-a", "container-a", "container-a"]);
     expect(engine.restartCalls).toEqual([]);
@@ -913,7 +945,7 @@ describe("RuntimeLifecycleService", () => {
       randomToken: () => "replacement-token",
     });
 
-    const upgraded = await service.upgrade({ imageAlias: "next", runtimeId: "runtime-a" });
+    const upgraded = await service.upgrade({ ...actionFor("runtime-a"), imageAlias: "next" });
 
     expect(engine.stopCalls).toEqual([]);
     expect(engine.removeCalls).toEqual(["container-a"]);
@@ -933,7 +965,47 @@ describe("RuntimeLifecycleService", () => {
     ).rejects.toBeInstanceOf(RuntimeLifecycleError);
     expect(engine.createCalls).toHaveLength(0);
   });
+
+  it("labels placement identity and rejects stale or conflicting generations", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy, {
+      nodeStatus: {
+        nodeId: "node__a",
+        managerVersion: "0.153.4",
+        dataRoot: "/data",
+        capacityCpuMillis: 16_000,
+        capacityMemoryBytes: 64 * 1024 * 1024 * 1024,
+        maxRuntimes: 30,
+      },
+    });
+    await service.provision(placedRequest("runtime-generation", 2));
+
+    expect(engine.createCalls[0]?.labels).toMatchObject({
+      "com.codex-gateway.runtime-node-id": "node__a",
+      "com.codex-gateway.placement-generation": "2",
+      "com.codex-gateway.workspace-key": "ws__1234567890abcdef1234567890abcdef",
+    });
+    await expect(service.start(placedAction("runtime-generation", 1))).rejects.toMatchObject({
+      code: "stale_placement_generation",
+    });
+    await expect(service.start(placedAction("runtime-generation", 3))).rejects.toMatchObject({
+      code: "runtime_identity_conflict",
+    });
+  });
 });
+
+function placedRequest(runtimeId: string, placementGeneration: number) {
+  return {
+    ...requestFor(runtimeId),
+    nodeId: "node__a",
+    placementGeneration,
+    workspaceKey: "ws__1234567890abcdef1234567890abcdef",
+  };
+}
+
+function placedAction(runtimeId: string, placementGeneration: number) {
+  return { runtimeId, nodeId: "node__a", placementGeneration };
+}
 
 describe("HmacRequestAuthenticator", () => {
   it("accepts a matching timestamp, nonce, body digest, and signature", () => {
@@ -1174,11 +1246,12 @@ describe("Runtime Manager HTTP API", () => {
       method: "POST",
     });
     const inspectBody = Buffer.alloc(0);
-    const inspectResponse = await fetch(`${baseUrl}/v1/runtimes/runtime-http`, {
+    const inspectPath = "/v1/runtimes/runtime-http/generations/1";
+    const inspectResponse = await fetch(`${baseUrl}${inspectPath}`, {
       headers: createSignedHeaders({
         body: inspectBody,
         method: "GET",
-        path: "/v1/runtimes/runtime-http",
+        path: inspectPath,
         nonce: "http-2",
         secret: "shared-secret",
         timestamp: now,
@@ -1344,7 +1417,7 @@ describe("Runtime Manager HTTP API", () => {
       randomToken: () => "http-service-token",
     });
     await service.provision(requestFor("runtime-stats"));
-    await service.start({ runtimeId: "runtime-stats" });
+    await service.start(actionFor("runtime-stats"));
     const authenticator = new HmacRequestAuthenticator({
       nonceStore: new MemoryNonceStore(),
       now: () => now,
@@ -1359,11 +1432,12 @@ describe("Runtime Manager HTTP API", () => {
     }
     const baseUrl = `http://127.0.0.1:${address.port}`;
     const body = Buffer.alloc(0);
-    const response = await fetch(`${baseUrl}/v1/runtimes/runtime-stats/stats`, {
+    const statsPath = "/v1/runtimes/runtime-stats/generations/1/stats";
+    const response = await fetch(`${baseUrl}${statsPath}`, {
       headers: createSignedHeaders({
         body,
         method: "GET",
-        path: "/v1/runtimes/runtime-stats/stats",
+        path: statsPath,
         nonce: "http-stats",
         secret: "shared-secret",
         timestamp: now,
@@ -1384,7 +1458,7 @@ describe("Runtime Manager HTTP API", () => {
     const engine = new RecordingDockerEngine();
     const service = new RuntimeLifecycleService(engine, testPolicy);
     await service.provision(requestFor("runtime-secret-http"));
-    await service.start({ runtimeId: "runtime-secret-http" });
+    await service.start(actionFor("runtime-secret-http"));
     const authenticator = new HmacRequestAuthenticator({
       nonceStore: new MemoryNonceStore(),
       now: () => now,
@@ -1398,7 +1472,7 @@ describe("Runtime Manager HTTP API", () => {
     const exactSecret = "http-runtime-secret";
     const body = Buffer.from(
       JSON.stringify({
-        runtimeId: "runtime-secret-http",
+        ...actionFor("runtime-secret-http"),
         runtimeSecrets: [
           {
             credentialId: "cred__business",
@@ -1436,7 +1510,7 @@ describe("Runtime Manager HTTP API", () => {
     const engine = new RecordingDockerEngine();
     const service = new RuntimeLifecycleService(engine, testPolicy);
     await service.provision(requestFor("runtime-oauth-http"));
-    await service.start({ runtimeId: "runtime-oauth-http" });
+    await service.start(actionFor("runtime-oauth-http"));
     const authenticator = new HmacRequestAuthenticator({
       nonceStore: new MemoryNonceStore(),
       now: () => now,
@@ -1449,7 +1523,7 @@ describe("Runtime Manager HTTP API", () => {
     if (address === null || typeof address === "string") throw new Error("missing test server");
     const callback = "/api/capabilities/mcp/oauth/callback?code=secret-code&state=secret-state";
     const body = Buffer.from(
-      JSON.stringify({ runtimeId: "runtime-oauth-http", pathAndQuery: callback }),
+      JSON.stringify({ ...actionFor("runtime-oauth-http"), pathAndQuery: callback }),
     );
     const path = "/v1/runtimes/oauth-callback";
     const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
@@ -1477,7 +1551,7 @@ describe("Runtime Manager HTTP API", () => {
 
   it("rejects unauthenticated requests with a safe fixed response", async () => {
     const baseUrl = await startTestServer();
-    const response = await fetch(`${baseUrl}/v1/runtimes/runtime-a`);
+    const response = await fetch(`${baseUrl}/v1/runtimes/runtime-a/generations/1`);
 
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "unauthorized" });
@@ -1486,16 +1560,17 @@ describe("Runtime Manager HTTP API", () => {
   it("rejects a replay with the same safe fixed response", async () => {
     const baseUrl = await startTestServer();
     const body = Buffer.alloc(0);
+    const path = "/v1/runtimes/runtime-a/generations/1";
     const headers = createSignedHeaders({
       body,
       method: "GET",
-      path: "/v1/runtimes/runtime-a",
+      path,
       nonce: "http-replay",
       secret: "shared-secret",
       timestamp: now,
     });
-    const firstResponse = await fetch(`${baseUrl}/v1/runtimes/runtime-a`, { headers });
-    const replayResponse = await fetch(`${baseUrl}/v1/runtimes/runtime-a`, { headers });
+    const firstResponse = await fetch(`${baseUrl}${path}`, { headers });
+    const replayResponse = await fetch(`${baseUrl}${path}`, { headers });
 
     expect(firstResponse.status).toBe(200);
     expect(replayResponse.status).toBe(401);
@@ -1537,11 +1612,12 @@ describe("Runtime Manager HTTP API", () => {
   it("returns a fixed client error for malformed runtime path encoding", async () => {
     const baseUrl = await startTestServer();
     const body = Buffer.alloc(0);
-    const response = await fetch(`${baseUrl}/v1/runtimes/%`, {
+    const path = "/v1/runtimes/%/generations/1";
+    const response = await fetch(`${baseUrl}${path}`, {
       headers: createSignedHeaders({
         body,
         method: "GET",
-        path: "/v1/runtimes/%",
+        path,
         nonce: "http-malformed-path",
         secret: "shared-secret",
         timestamp: now,

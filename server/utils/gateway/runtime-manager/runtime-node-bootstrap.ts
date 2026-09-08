@@ -191,12 +191,16 @@ export async function bootstrapLegacyRuntimeNodeFromEnvironment() {
         DEFAULT_NODE_MINIMUM_FREE_DISK_BYTES,
       ),
     },
-    defaultResources: {
-      cpuMillis: agentCpuMillis(process.env.RUNTIME_AGENT_CPUS),
-      memoryBytes: agentMemoryBytes(process.env.RUNTIME_AGENT_MEMORY),
-      pids: positiveEnvironmentInteger("RUNTIME_AGENT_PIDS", DEFAULT_AGENT_PIDS),
-    },
+    defaultResources: runtimeAgentResourcesFromEnvironment(),
   });
+}
+
+export function runtimeAgentResourcesFromEnvironment(environment: NodeJS.ProcessEnv = process.env) {
+  return {
+    cpuMillis: agentCpuMillis(environment.RUNTIME_AGENT_CPUS),
+    memoryBytes: agentMemoryBytes(environment.RUNTIME_AGENT_MEMORY),
+    pids: positiveEnvironmentIntegerFromValue(environment.RUNTIME_AGENT_PIDS, DEFAULT_AGENT_PIDS),
+  };
 }
 
 function runtimeIdForUser(secret: string, userId: number) {
@@ -226,7 +230,10 @@ function requiredSecret(value: string) {
 }
 
 function positiveEnvironmentInteger(name: string, fallback: number) {
-  const value = process.env[name];
+  return positiveEnvironmentIntegerFromValue(process.env[name], fallback);
+}
+
+function positiveEnvironmentIntegerFromValue(value: string | undefined, fallback: number) {
   if (value === undefined || value.trim() === "") return fallback;
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {

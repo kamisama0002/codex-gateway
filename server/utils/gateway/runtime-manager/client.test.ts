@@ -4,6 +4,10 @@ import { realtimeClientMessageSchema } from "~~/shared/runtime/realtime/client-m
 import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 import { RuntimeManagerClient, RuntimeManagerClientError } from "./client";
 
+function runtimePlacement(runtimeId = "runtime_01") {
+  return { runtimeId, nodeId: "node__a", placementGeneration: 2 };
+}
+
 describe("RuntimeManagerClient", () => {
   it("signs node status requests and rejects a mismatched node identity", async () => {
     const timestamp = 1_788_131_200_000;
@@ -60,7 +64,8 @@ describe("RuntimeManagerClient", () => {
       nanoCpus: 1_500_000_000,
       pidsLimit: 128,
     };
-    const requestBody = JSON.stringify({ runtimeId: "runtime_01", resources });
+    const placement = { runtimeId: "runtime_01", nodeId: "node__a", placementGeneration: 2 };
+    const requestBody = JSON.stringify({ ...placement, resources });
     const bodySha256 = createHash("sha256").update(requestBody).digest("hex");
     const signature = createHmac("sha256", secret)
       .update(`POST\n/v1/runtimes/start\n${timestamp}\n${nonce}\n${bodySha256}`)
@@ -88,7 +93,7 @@ describe("RuntimeManagerClient", () => {
       nonce: () => nonce,
     });
 
-    await expect(client.start("runtime_01", resources)).resolves.toMatchObject({
+    await expect(client.start(placement, resources)).resolves.toMatchObject({
       actualResources: resources,
     });
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({
@@ -100,12 +105,35 @@ describe("RuntimeManagerClient", () => {
     });
   });
 
+  it("rejects a placement for a different node before sending credentials", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const client = new RuntimeManagerClient({
+      baseUrl: "https://node-a.runtime.internal",
+      nodeId: "node__a",
+      secret: "manager-secret",
+      fetch,
+    });
+
+    expect(() =>
+      client.provision({
+        ...runtimePlacement(),
+        nodeId: "node__b",
+        workspaceKey: "ws__1234567890abcdef1234567890abcdef",
+        userHash: "a".repeat(64),
+        runtimeType: "codex-app-server",
+        imageAlias: "stable",
+      }),
+    ).toThrow("runtime_manager_invalid_response");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("signs the exact request body and validates a lifecycle response", async () => {
     const timestamp = 1_788_131_200_000;
     const nonce = "fixed-nonce";
     const secret = "manager-shared-secret";
     const requestBody = JSON.stringify({
-      runtimeId: "runtime_01",
+      ...runtimePlacement(),
+      workspaceKey: "ws__1234567890abcdef1234567890abcdef",
       userHash: "a".repeat(64),
       runtimeType: "codex-app-server",
       imageAlias: "stable",
@@ -142,7 +170,8 @@ describe("RuntimeManagerClient", () => {
     });
 
     const result = await client.provision({
-      runtimeId: "runtime_01",
+      ...runtimePlacement(),
+      workspaceKey: "ws__1234567890abcdef1234567890abcdef",
       userHash: "a".repeat(64),
       runtimeType: "codex-app-server",
       imageAlias: "stable",
@@ -170,7 +199,9 @@ describe("RuntimeManagerClient", () => {
     const secret = "manager-shared-secret";
     const bodySha256 = createHash("sha256").update("").digest("hex");
     const signature = createHmac("sha256", secret)
-      .update(`GET\n/v1/runtimes/runtime_01/stats\n${timestamp}\n${nonce}\n${bodySha256}`)
+      .update(
+        `GET\n/v1/runtimes/runtime_01/generations/2/stats\n${timestamp}\n${nonce}\n${bodySha256}`,
+      )
       .digest("hex");
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
       Response.json({
@@ -202,12 +233,12 @@ describe("RuntimeManagerClient", () => {
       nonce: () => nonce,
     });
 
-    const result = await client.stats("runtime_01");
+    const result = await client.stats(runtimePlacement());
 
     expect(result.stats?.memoryLimitBytes).toBe(256);
     expect(result).not.toHaveProperty("containerId");
     expect(fetch.mock.calls[0]?.[0]).toBe(
-      "http://runtime-manager:8787/v1/runtimes/runtime_01/stats",
+      "http://runtime-manager:8787/v1/runtimes/runtime_01/generations/2/stats",
     );
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({
       method: "GET",
@@ -250,7 +281,7 @@ describe("RuntimeManagerClient", () => {
     });
 
     const result = await client.syncSecrets({
-      runtimeId: "runtime_01",
+      ...runtimePlacement(),
       runtimeSecrets: [
         {
           credentialId: "cred__business",
@@ -278,12 +309,12 @@ describe("RuntimeManagerClient", () => {
     const callback = "/api/capabilities/mcp/oauth/callback?code=secret-code&state=secret-state";
 
     await expect(
-      client.forwardOAuthCallback({ runtimeId: "runtime_01", pathAndQuery: callback }),
+      client.forwardOAuthCallback({ ...runtimePlacement(), pathAndQuery: callback }),
     ).resolves.toBeUndefined();
 
     expect(fetch.mock.calls[0]?.[0]).toBe("http://runtime-manager:8787/v1/runtimes/oauth-callback");
     expect(fetch.mock.calls[0]?.[1]?.body).toBe(
-      JSON.stringify({ runtimeId: "runtime_01", pathAndQuery: callback }),
+      JSON.stringify({ ...runtimePlacement(), pathAndQuery: callback }),
     );
   });
 
@@ -307,7 +338,9 @@ describe("RuntimeManagerClient", () => {
       nonce: () => "fixed-nonce",
     });
 
-    await expect(client.inspect("runtime_01")).rejects.toBeInstanceOf(RuntimeManagerClientError);
+    await expect(client.inspect(runtimePlacement())).rejects.toBeInstanceOf(
+      RuntimeManagerClientError,
+    );
   });
 
   it("rejects a non-WebSocket internal endpoint", async () => {
@@ -330,7 +363,7 @@ describe("RuntimeManagerClient", () => {
       nonce: () => "fixed-nonce",
     });
 
-    await expect(client.inspect("runtime_01")).rejects.toEqual(
+    await expect(client.inspect(runtimePlacement())).rejects.toEqual(
       expect.objectContaining({ code: "runtime_manager_invalid_response" }),
     );
   });
@@ -353,7 +386,9 @@ describe("RuntimeManagerClient", () => {
       nonce: () => "fixed-nonce",
     });
 
-    const error: unknown = await client.inspect("runtime_01").catch((cause: unknown) => cause);
+    const error: unknown = await client
+      .inspect(runtimePlacement())
+      .catch((cause: unknown) => cause);
 
     expect(error).toMatchObject({
       code: "runtime_manager_timeout",
@@ -369,7 +404,7 @@ describe("RuntimeManagerClient", () => {
     const nonce = "exec-nonce";
     const secret = "manager-shared-secret";
     const requestBody = JSON.stringify({
-      runtimeId: "runtime_01",
+      ...runtimePlacement(),
       command: "git --version",
       timeoutMs: 1_000,
       maxOutputBytes: 1_024,
@@ -390,7 +425,7 @@ describe("RuntimeManagerClient", () => {
     });
 
     const result = await client.exec({
-      runtimeId: "runtime_01",
+      ...runtimePlacement(),
       command: "git --version",
       timeoutMs: 1_000,
       maxOutputBytes: 1_024,

@@ -22,6 +22,16 @@ const runtimeNodeIdSchema = z
   .min(7)
   .max(128)
   .regex(/^node__[a-z0-9][a-z0-9_.-]*$/u);
+const placementGenerationSchema = z.number().int().positive();
+const workspaceKeySchema = z
+  .string()
+  .length(36)
+  .regex(/^ws__[a-f0-9]{32}$/u);
+const runtimePlacementIdentityShape = {
+  runtimeId: runtimeIdSchema,
+  nodeId: runtimeNodeIdSchema,
+  placementGeneration: placementGenerationSchema,
+} as const;
 
 export const runtimeNodeHealthSchema = z
   .object({
@@ -124,7 +134,8 @@ export type RuntimeResourcePolicy = z.infer<typeof runtimeResourcePolicySchema>;
 
 export const provisionRuntimeRequestSchema = z
   .object({
-    runtimeId: runtimeIdSchema,
+    ...runtimePlacementIdentityShape,
+    workspaceKey: workspaceKeySchema,
     userHash: userHashSchema,
     runtimeType: runtimeTypeSchema,
     imageAlias: imageAliasSchema,
@@ -135,17 +146,22 @@ export const provisionRuntimeRequestSchema = z
   .strict();
 export type ProvisionRuntimeRequest = z.infer<typeof provisionRuntimeRequestSchema>;
 
-export const runtimeActionRequestSchema = z.object({ runtimeId: runtimeIdSchema }).strict();
+export const runtimeActionRequestSchema = z.object(runtimePlacementIdentityShape).strict();
 export type RuntimeActionRequest = z.infer<typeof runtimeActionRequestSchema>;
 
+export const runtimeLookupRequestSchema = z
+  .object({ runtimeId: runtimeIdSchema, placementGeneration: placementGenerationSchema })
+  .strict();
+export type RuntimeLookupRequest = z.infer<typeof runtimeLookupRequestSchema>;
+
 export const syncRuntimeSecretsRequestSchema = z
-  .object({ runtimeId: runtimeIdSchema, runtimeSecrets: runtimeSecretsSchema })
+  .object({ ...runtimePlacementIdentityShape, runtimeSecrets: runtimeSecretsSchema })
   .strict();
 export type SyncRuntimeSecretsRequest = z.infer<typeof syncRuntimeSecretsRequestSchema>;
 
 export const forwardOAuthCallbackRequestSchema = z
   .object({
-    runtimeId: runtimeIdSchema,
+    ...runtimePlacementIdentityShape,
     pathAndQuery: z
       .string()
       .min(1)
@@ -169,13 +185,13 @@ export const forwardOAuthCallbackRequestSchema = z
 export type ForwardOAuthCallbackRequest = z.infer<typeof forwardOAuthCallbackRequestSchema>;
 
 export const runtimeResourceActionRequestSchema = z
-  .object({ runtimeId: runtimeIdSchema, resources: runtimeResourcePolicySchema.optional() })
+  .object({ ...runtimePlacementIdentityShape, resources: runtimeResourcePolicySchema.optional() })
   .strict();
 export type RuntimeResourceActionRequest = z.infer<typeof runtimeResourceActionRequestSchema>;
 
 export const upgradeRuntimeRequestSchema = z
   .object({
-    runtimeId: runtimeIdSchema,
+    ...runtimePlacementIdentityShape,
     imageAlias: imageAliasSchema,
     resources: runtimeResourcePolicySchema.optional(),
   })
@@ -229,7 +245,7 @@ export type AgentRuntimeStatsResult = z.infer<typeof agentRuntimeStatsResultSche
 
 export const execRuntimeRequestSchema = z
   .object({
-    runtimeId: runtimeIdSchema,
+    ...runtimePlacementIdentityShape,
     command: z
       .string()
       .min(1)

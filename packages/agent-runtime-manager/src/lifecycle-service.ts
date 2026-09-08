@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { ManagedRuntimeEndpoint, RuntimeType } from "@codex-gateway/agent-runtime-contracts";
+import type { ManagedRuntimeEndpoint } from "@codex-gateway/agent-runtime-contracts";
 
 import {
   runtimeResourceLabels,
+  DockerRuntimeIdentityError,
   type DockerContainerCreateSpec,
   type DockerEngine,
   type DockerSecurityPolicy,
@@ -11,11 +12,15 @@ import {
 } from "./docker-engine.js";
 import {
   agentRuntimeStatsResultSchema,
+  execRuntimeRequestSchema,
   forwardOAuthCallbackRequestSchema,
   provisionRuntimeRequestSchema,
+  runtimeActionRequestSchema,
   runtimeManagerPolicySchema,
   runtimeNodeHealthSchema,
+  runtimeResourceActionRequestSchema,
   syncRuntimeSecretsRequestSchema,
+  upgradeRuntimeRequestSchema,
   type AgentRuntimeStatsResult,
   type ExecRuntimeRequest,
   type ExecRuntimeResult,
@@ -23,6 +28,7 @@ import {
   type ProvisionRuntimeRequest,
   type RuntimeActionRequest,
   type RuntimeLifecycleResult,
+  type RuntimeLookupRequest,
   type RuntimeNodeHealth,
   type RuntimeResourceActionRequest,
   type RuntimeResourcePolicy,
@@ -61,6 +67,7 @@ export class RuntimeLifecycleError extends Error {
     readonly code:
       | "runtime_not_found"
       | "runtime_identity_conflict"
+      | "stale_placement_generation"
       | "unknown_image_alias"
       | "runtime_policy_exceeds_platform_limit",
   ) {
@@ -121,24 +128,27 @@ export class RuntimeLifecycleService {
 
   async provision(request: ProvisionRuntimeRequest): Promise<RuntimeLifecycleResult> {
     const normalized = provisionRuntimeRequestSchema.parse(request);
+    this.assertRequestNode(normalized.nodeId);
     this.resolveImage(normalized.imageAlias);
     const resources = this.resources(normalized.resources);
     this.pendingSecrets.set(normalized.runtimeId, normalized.runtimeSecrets ?? []);
-    const existing = await this.engine.findManagedContainer(normalized.runtimeId);
+    const existing = await this.findManagedContainer(normalized.runtimeId);
     if (existing) {
-      this.assertIdentity(existing, normalized.userHash, normalized.runtimeType);
+      this.assertIdentity(existing, normalized);
       return toResult(await this.applyResourceLimits(existing.containerId, resources));
     }
     return toResult(await this.createContainer(normalized, resources));
   }
 
-  async inspect(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
-    const container = await this.engine.findManagedContainer(request.runtimeId);
+  async inspect(request: RuntimeLookupRequest): Promise<RuntimeLifecycleResult> {
+    const container = await this.findManagedContainer(request.runtimeId);
+    if (container) this.assertLookup(container, request);
     return container ? toResult(container) : absentResult(request.runtimeId);
   }
 
-  async stats(request: RuntimeActionRequest): Promise<AgentRuntimeStatsResult> {
-    const container = await this.engine.findManagedContainer(request.runtimeId);
+  async stats(request: RuntimeLookupRequest): Promise<AgentRuntimeStatsResult> {
+    const container = await this.findManagedContainer(request.runtimeId);
+    if (container) this.assertLookup(container, request);
     if (!container) return statsResult(request.runtimeId, "absent", null);
     if (!container.running) return statsResult(request.runtimeId, "stopped", null);
     const parsed = parseDockerContainerStats(
@@ -151,32 +161,35 @@ export class RuntimeLifecycleService {
   }
 
   async exec(request: ExecRuntimeRequest): Promise<ExecRuntimeResult> {
-    const container = await this.engine.findManagedContainer(request.runtimeId);
-    if (!container) throw new RuntimeLifecycleError("runtime_not_found");
+    const normalized = execRuntimeRequestSchema.parse(request);
+    const container = await this.requireContainer(normalized);
     if (!container.running) throw new Error("Agent runtime is not running");
-    return this.engine.execInContainer(container.containerId, request.command, {
-      timeoutMs: request.timeoutMs,
-      maxOutputBytes: request.maxOutputBytes,
+    return this.engine.execInContainer(container.containerId, normalized.command, {
+      timeoutMs: normalized.timeoutMs,
+      maxOutputBytes: normalized.maxOutputBytes,
     });
   }
 
   async start(request: RuntimeResourceActionRequest): Promise<RuntimeLifecycleResult> {
-    const resources = this.resources(request.resources);
-    const container = await this.requireContainer(request.runtimeId);
+    const normalized = runtimeResourceActionRequestSchema.parse(request);
+    const resources = this.resources(normalized.resources);
+    const container = await this.requireContainer(normalized);
     const running = await this.startWithResources(container, resources);
     await this.writePendingSecrets(request.runtimeId, running.containerId);
     return toResult(running);
   }
 
   async stop(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
-    const container = await this.requireContainer(request.runtimeId);
+    const normalized = runtimeActionRequestSchema.parse(request);
+    const container = await this.requireContainer(normalized);
     if (container.running) await this.engine.stopContainer(container.containerId);
     return toResult({ ...container, running: false });
   }
 
   async restart(request: RuntimeResourceActionRequest): Promise<RuntimeLifecycleResult> {
-    const resources = this.resources(request.resources);
-    const container = await this.requireContainer(request.runtimeId);
+    const normalized = runtimeResourceActionRequestSchema.parse(request);
+    const resources = this.resources(normalized.resources);
+    const container = await this.requireContainer(normalized);
     const running = await this.startWithResources(container, resources);
     await this.writePendingSecrets(request.runtimeId, running.containerId);
     return toResult(running);
@@ -184,28 +197,29 @@ export class RuntimeLifecycleService {
 
   async syncSecrets(request: SyncRuntimeSecretsRequest): Promise<RuntimeLifecycleResult> {
     const normalized = syncRuntimeSecretsRequestSchema.parse(request);
-    const container = await this.requireContainer(normalized.runtimeId);
+    const container = await this.requireContainer(normalized);
     if (!container.running) throw new Error("Agent runtime is not running");
     if (normalized.runtimeSecrets.some((secret) => secret.target.type === "env")) {
       await this.engine.restartContainer(container.containerId);
     }
     await this.engine.writeRuntimeSecrets(container.containerId, normalized.runtimeSecrets);
-    return toResult(await this.requireContainer(normalized.runtimeId));
+    return toResult(await this.requireContainer(normalized));
   }
 
   async forwardOAuthCallback(request: ForwardOAuthCallbackRequest): Promise<void> {
     const normalized = forwardOAuthCallbackRequestSchema.parse(request);
-    const container = await this.requireContainer(normalized.runtimeId);
+    const container = await this.requireContainer(normalized);
     if (!container.running) throw new Error("Agent runtime is not running");
     await this.engine.forwardOAuthCallback(container.containerId, normalized.pathAndQuery);
   }
 
   async upgrade(request: UpgradeRuntimeRequest): Promise<RuntimeLifecycleResult> {
-    const image = this.resolveImage(request.imageAlias);
-    const resources = this.resources(request.resources);
-    const existing = await this.requireContainer(request.runtimeId);
+    const normalized = upgradeRuntimeRequestSchema.parse(request);
+    const image = this.resolveImage(normalized.imageAlias);
+    const resources = this.resources(normalized.resources);
+    const existing = await this.requireContainer(normalized);
     if (
-      existing.imageAlias === request.imageAlias &&
+      existing.imageAlias === normalized.imageAlias &&
       existing.imageVersion === image.imageVersion
     ) {
       return toResult(await this.applyResourceLimits(existing.containerId, resources));
@@ -215,10 +229,13 @@ export class RuntimeLifecycleService {
     return toResult(
       await this.createContainer(
         {
-          imageAlias: request.imageAlias,
+          imageAlias: normalized.imageAlias,
           runtimeId: existing.runtimeId,
           runtimeType: existing.runtimeType,
           userHash: existing.userHash,
+          nodeId: existing.nodeId,
+          placementGeneration: existing.placementGeneration,
+          workspaceKey: existing.workspaceKey,
         },
         resources,
       ),
@@ -226,12 +243,14 @@ export class RuntimeLifecycleService {
   }
 
   async remove(request: RuntimeActionRequest): Promise<RuntimeLifecycleResult> {
-    this.pendingSecrets.delete(request.runtimeId);
-    const container = await this.engine.findManagedContainer(request.runtimeId);
-    if (!container) return absentResult(request.runtimeId);
+    const normalized = runtimeActionRequestSchema.parse(request);
+    this.pendingSecrets.delete(normalized.runtimeId);
+    const container = await this.findManagedContainer(normalized.runtimeId);
+    if (!container) return absentResult(normalized.runtimeId);
+    this.assertPlacement(container, normalized);
     if (container.running) await this.engine.stopContainer(container.containerId);
     await this.engine.removeContainer(container.containerId);
-    return absentResult(request.runtimeId);
+    return absentResult(normalized.runtimeId);
   }
 
   private async createContainer(
@@ -248,6 +267,9 @@ export class RuntimeLifecycleService {
       [runtimeResourceLabels.runtimeId]: request.runtimeId,
       [runtimeResourceLabels.runtimeType]: request.runtimeType,
       [runtimeResourceLabels.userHash]: request.userHash,
+      [runtimeResourceLabels.nodeId]: request.nodeId,
+      [runtimeResourceLabels.placementGeneration]: String(request.placementGeneration),
+      [runtimeResourceLabels.workspaceKey]: request.workspaceKey,
     };
     const spec: DockerContainerCreateSpec = {
       containerName: `codex-runtime-${userHashPrefix}-${runtimeHash}`,
@@ -274,6 +296,9 @@ export class RuntimeLifecycleService {
       oauthCallbackUrl: this.policy.oauthCallbackUrl,
       runtimeId: request.runtimeId,
       runtimeType: request.runtimeType,
+      nodeId: request.nodeId,
+      placementGeneration: request.placementGeneration,
+      workspaceKey: request.workspaceKey,
       security: this.agentSecurityPolicy(resources),
       serviceToken: this.randomToken(),
       userHash: request.userHash,
@@ -309,7 +334,11 @@ export class RuntimeLifecycleService {
     if (container.running) await this.engine.stopContainer(container.containerId);
     await this.applyResourceLimits(container.containerId, resources);
     await this.engine.startContainer(container.containerId);
-    const running = await this.requireContainer(container.runtimeId);
+    const running = await this.requireContainer({
+      runtimeId: container.runtimeId,
+      nodeId: container.nodeId,
+      placementGeneration: container.placementGeneration,
+    });
     if (!running.running) throw new Error("Agent runtime did not start");
     return running;
   }
@@ -343,19 +372,67 @@ export class RuntimeLifecycleService {
     return image;
   }
 
-  private async requireContainer(runtimeId: string): Promise<EngineContainerState> {
-    const container = await this.engine.findManagedContainer(runtimeId);
+  private async requireContainer(
+    request: Pick<RuntimeActionRequest, "runtimeId" | "nodeId" | "placementGeneration">,
+  ): Promise<EngineContainerState> {
+    this.assertRequestNode(request.nodeId);
+    const container = await this.findManagedContainer(request.runtimeId);
     if (!container) throw new RuntimeLifecycleError("runtime_not_found");
+    this.assertPlacement(container, request);
     return container;
   }
 
   private assertIdentity(
     container: EngineContainerState,
-    userHash: string,
-    runtimeType: RuntimeType,
+    request: Pick<
+      ProvisionRuntimeRequest,
+      "userHash" | "runtimeType" | "nodeId" | "placementGeneration" | "workspaceKey"
+    >,
   ): void {
-    if (container.userHash !== userHash || container.runtimeType !== runtimeType) {
+    this.assertPlacement(container, request);
+    if (
+      container.userHash !== request.userHash ||
+      container.runtimeType !== request.runtimeType ||
+      container.workspaceKey !== request.workspaceKey
+    ) {
       throw new RuntimeLifecycleError("runtime_identity_conflict");
+    }
+  }
+
+  private assertLookup(container: EngineContainerState, request: RuntimeLookupRequest) {
+    const expectedNodeId = this.nodeStatus?.nodeId ?? container.nodeId;
+    this.assertPlacement(container, { ...request, nodeId: expectedNodeId });
+  }
+
+  private assertPlacement(
+    container: EngineContainerState,
+    request: Pick<RuntimeActionRequest, "nodeId" | "placementGeneration">,
+  ) {
+    if (container.placementGeneration > request.placementGeneration) {
+      throw new RuntimeLifecycleError("stale_placement_generation");
+    }
+    if (
+      container.nodeId !== request.nodeId ||
+      container.placementGeneration !== request.placementGeneration
+    ) {
+      throw new RuntimeLifecycleError("runtime_identity_conflict");
+    }
+  }
+
+  private assertRequestNode(nodeId: string) {
+    if (this.nodeStatus !== undefined && nodeId !== this.nodeStatus.nodeId) {
+      throw new RuntimeLifecycleError("runtime_identity_conflict");
+    }
+  }
+
+  private async findManagedContainer(runtimeId: string) {
+    try {
+      return await this.engine.findManagedContainer(runtimeId);
+    } catch (error) {
+      if (error instanceof DockerRuntimeIdentityError) {
+        throw new RuntimeLifecycleError("runtime_identity_conflict");
+      }
+      throw error;
     }
   }
 }

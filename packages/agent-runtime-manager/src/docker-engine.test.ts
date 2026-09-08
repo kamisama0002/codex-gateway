@@ -1,17 +1,30 @@
 import { describe, expect, it, vi } from "vitest";
+import Docker from "dockerode";
 
 import {
   DockerodeEngine,
+  DockerRuntimeIdentityError,
   runtimeResourceLabels,
   type DockerContainerCreateSpec,
 } from "./docker-engine.js";
 
 describe("DockerodeEngine", () => {
+  it("fails closed when more than one managed container matches a runtime id", async () => {
+    const docker = Object.assign(new Docker(), {
+      listContainers: vi.fn(async () => [{ Id: "container-a" }, { Id: "container-b" }]),
+    });
+    const engine = new DockerodeEngine(docker);
+
+    await expect(engine.findManagedContainer("runtime-a")).rejects.toBeInstanceOf(
+      DockerRuntimeIdentityError,
+    );
+  });
+
   it("connects the egress network after creating the container on its primary network", async () => {
     const createContainer = vi.fn(async (_options: unknown) => ({ id: "container-a" }));
     const connect = vi.fn(async () => undefined);
     const getNetwork = vi.fn(() => ({ connect }));
-    const docker = {
+    const docker = Object.assign(new Docker(), {
       createContainer,
       getNetwork,
       getContainer: vi.fn(() => ({
@@ -30,18 +43,16 @@ describe("DockerodeEngine", () => {
           State: { Running: false },
         })),
       })),
-    };
+    });
 
-    const engine = new DockerodeEngine(docker as never);
+    const engine = new DockerodeEngine(docker);
     await engine.createManagedContainer(containerSpec());
 
     expect(createContainer).toHaveBeenCalledOnce();
-    const createOptions = createContainer.mock.calls[0]![0] as {
-      HostConfig: { NetworkMode: string };
-      NetworkingConfig?: unknown;
-    };
-    expect(createOptions.HostConfig.NetworkMode).toBe("agent-runtime");
-    expect(createOptions.NetworkingConfig).toBeUndefined();
+    expect(createContainer.mock.calls[0]?.[0]).toMatchObject({
+      HostConfig: { NetworkMode: "agent-runtime" },
+    });
+    expect(createContainer.mock.calls[0]?.[0]).not.toHaveProperty("NetworkingConfig");
     expect(getNetwork).toHaveBeenCalledWith("agent-egress");
     expect(connect).toHaveBeenCalledWith({ Container: "container-a" });
   });
@@ -53,6 +64,9 @@ const runtimeLabels = {
   [runtimeResourceLabels.runtimeId]: "runtime-a",
   [runtimeResourceLabels.runtimeType]: "codex-app-server",
   [runtimeResourceLabels.userHash]: "ab".repeat(32),
+  [runtimeResourceLabels.nodeId]: "node__default",
+  [runtimeResourceLabels.placementGeneration]: "1",
+  [runtimeResourceLabels.workspaceKey]: "ws__1234567890abcdef1234567890abcdef",
 };
 
 function containerSpec(): DockerContainerCreateSpec {
@@ -67,6 +81,9 @@ function containerSpec(): DockerContainerCreateSpec {
     networkNames: ["agent-runtime", "agent-egress"],
     runtimeId: "runtime-a",
     runtimeType: "codex-app-server",
+    nodeId: "node__default",
+    placementGeneration: 1,
+    workspaceKey: "ws__1234567890abcdef1234567890abcdef",
     security: {
       User: "10001:10001",
       ReadonlyRootfs: true,

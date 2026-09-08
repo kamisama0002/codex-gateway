@@ -280,7 +280,7 @@ export async function recordManagedRuntimeResourceExpectations(
   }>,
   writer: typeof writeFile = writeFile,
 ) {
-  const secret = requiredEnvironment("RUNTIME_MANAGER_SHARED_SECRET");
+  const secret = runtimeIdentitySecret();
   const artifact = Object.fromEntries(
     expectations.map(({ session, resources }) => [
       runtimeIdForSession(session, secret),
@@ -364,12 +364,13 @@ export async function restartManagedRuntimeAsAdmin(
 
 export async function inspectManagedRuntime(session: GatewaySession) {
   const secret = requiredEnvironment("RUNTIME_MANAGER_SHARED_SECRET");
-  const runtimeId = runtimeIdForSession(session, secret);
+  const placement = defaultPlacement(session);
   const client = new RuntimeManagerClient({
     baseUrl: requiredEnvironment("RUNTIME_MANAGER_BASE_URL"),
+    nodeId: placement.nodeId,
     secret,
   });
-  const runtime = await client.inspect(runtimeId);
+  const runtime = await client.inspect(placement);
   const { containerId, endpoint } = runtime;
   if (runtime.status !== "running" || containerId === null || endpoint === null) {
     throw new Error("Managed Runtime Manager returned a non-running E2E runtime");
@@ -382,7 +383,7 @@ export async function inspectManagedRuntimeDocker(
   fetcher: typeof globalThis.fetch = globalThis.fetch,
 ) {
   const secret = requiredEnvironment("RUNTIME_MANAGER_SHARED_SECRET");
-  const runtimeId = runtimeIdForSession(session, secret);
+  const runtimeId = runtimeIdForSession(session, runtimeIdentitySecret());
   const path = `/v1/e2e/runtimes/${encodeURIComponent(runtimeId)}/docker`;
   const timestamp = Date.now();
   const nonce = randomUUID();
@@ -407,11 +408,13 @@ export async function execManagedRuntime(
   options: { timeoutMs?: number; maxOutputBytes?: number } = {},
 ) {
   const secret = requiredEnvironment("RUNTIME_MANAGER_SHARED_SECRET");
+  const placement = defaultPlacement(session);
   return await new RuntimeManagerClient({
     baseUrl: requiredEnvironment("RUNTIME_MANAGER_BASE_URL"),
+    nodeId: placement.nodeId,
     secret,
   }).exec({
-    runtimeId: runtimeIdForSession(session, secret),
+    ...placement,
     command,
     timeoutMs: options.timeoutMs ?? 60_000,
     maxOutputBytes: options.maxOutputBytes ?? 2 * 1024 * 1024,
@@ -521,6 +524,20 @@ function runtimeIdForUser(userId: number, secret: string) {
 
 function runtimeIdForSession(session: GatewaySession, secret: string) {
   return runtimeIdForUser(session.user.id, secret);
+}
+
+function defaultPlacement(session: GatewaySession) {
+  return {
+    runtimeId: runtimeIdForSession(session, runtimeIdentitySecret()),
+    nodeId: process.env.RUNTIME_MANAGER_DEFAULT_NODE_ID ?? "node__default",
+    placementGeneration: 1,
+  };
+}
+
+function runtimeIdentitySecret() {
+  return (
+    process.env.RUNTIME_IDENTITY_SECRET ?? requiredEnvironment("RUNTIME_MANAGER_SHARED_SECRET")
+  );
 }
 
 function requiredEnvironment(name: string) {

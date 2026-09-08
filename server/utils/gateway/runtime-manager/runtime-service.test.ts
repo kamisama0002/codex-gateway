@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type {
   ManagedRuntimeEndpoint,
@@ -18,6 +19,23 @@ import type { AssignedRuntimePolicy } from "./runtime-policy";
 import { ManagedRuntimeService, ManagedRuntimeServiceError } from "./runtime-service";
 
 describe("ManagedRuntimeService", () => {
+  it("passes one durable placement identity to provision and start", async () => {
+    const fixture = runtimeFixture();
+
+    await fixture.service.start(7);
+
+    expect(fixture.manager.provision.mock.calls[0]?.[0]).toMatchObject({
+      nodeId: "node__a",
+      placementGeneration: 3,
+      workspaceKey: "ws__1234567890abcdef1234567890abcdef",
+    });
+    expect(fixture.manager.start.mock.calls[0]?.[0]).toMatchObject({
+      nodeId: "node__a",
+      placementGeneration: 3,
+    });
+    expect(fixture.placementStore.ensurePlacement).toHaveBeenCalledOnce();
+  });
+
   it("serializes starts per user, persists every readiness transition, and returns a safe DTO", async () => {
     const fixture = runtimeFixture();
 
@@ -63,7 +81,12 @@ describe("ManagedRuntimeService", () => {
     expect(sampled).not.toHaveProperty("containerId");
     expect(JSON.stringify(sampled)).not.toContain("container-01");
     expect(fixture.manager.stats).toHaveBeenCalledOnce();
-    expect(fixture.manager.stats.mock.calls[0]?.[0]).toMatch(/^codex_[a-f0-9]{32}$/);
+    const statsPlacement = fixture.manager.stats.mock.calls[0]?.[0];
+    expect(statsPlacement).toMatchObject({
+      nodeId: "node__a",
+      placementGeneration: 3,
+    });
+    expect(statsPlacement?.runtimeId).toMatch(/^codex_[a-f0-9]{32}$/);
   });
 
   it("executes a command in the user's Agent container by identity", async () => {
@@ -260,14 +283,14 @@ describe("ManagedRuntimeService", () => {
     fixture.manager.provision.mockClear();
     fixture.manager.start.mockClear();
     fixture.manager.restart.mockClear();
-    fixture.manager.restart.mockImplementationOnce(async (runtimeId) => ({
-      runtimeId,
+    fixture.manager.restart.mockImplementationOnce(async (placement) => ({
+      runtimeId: placement.runtimeId,
       containerId: "container-01",
       imageAlias: "stable",
       imageVersion: "0.151.1",
       status: "running" as const,
       endpoint: {
-        runtimeId,
+        runtimeId: placement.runtimeId,
         websocketUrl: "ws://runtime-01:4500",
         serviceToken: "runtime-token",
       },
@@ -283,7 +306,12 @@ describe("ManagedRuntimeService", () => {
     expect(fixture.policyStore.getByUserId).toHaveBeenCalledOnce();
     expect(fixture.manager.restart).toHaveBeenCalledOnce();
     expect(fixture.manager.restart.mock.calls[0]).toHaveLength(1);
-    expect(fixture.manager.restart.mock.calls[0]?.[0]).toMatch(/^codex_[a-f0-9]{32}$/);
+    const restartPlacement = fixture.manager.restart.mock.calls[0]?.[0];
+    expect(restartPlacement).toMatchObject({
+      nodeId: "node__a",
+      placementGeneration: 3,
+    });
+    expect(restartPlacement?.runtimeId).toMatch(/^codex_[a-f0-9]{32}$/);
     expect(fixture.manager.remove).not.toHaveBeenCalled();
     expect(fixture.manager.provision).not.toHaveBeenCalled();
     expect(fixture.manager.start).not.toHaveBeenCalled();
@@ -308,11 +336,14 @@ describe("ManagedRuntimeService", () => {
         },
       }),
     );
-    expect(fixture.manager.start).toHaveBeenCalledWith(expect.any(String), {
-      memoryBytes: 1024 * 1024 * 1024,
-      nanoCpus: 1_500_000_000,
-      pidsLimit: 128,
-    });
+    expect(fixture.manager.start).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "node__a" }),
+      {
+        memoryBytes: 1024 * 1024 * 1024,
+        nanoCpus: 1_500_000_000,
+        pidsLimit: 128,
+      },
+    );
   });
 
   it("keeps standalone users on the default image and omits request resources", async () => {
@@ -324,7 +355,9 @@ describe("ManagedRuntimeService", () => {
       expect.objectContaining({ imageAlias: "stable" }),
     );
     expect(fixture.manager.provision.mock.calls[0]?.[0]).not.toHaveProperty("resources");
-    expect(fixture.manager.start).toHaveBeenCalledWith(expect.any(String));
+    expect(fixture.manager.start).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "node__a", placementGeneration: 3 }),
+    );
   });
 
   it("applies resource drift on restart while leaving assigned image drift pending", async () => {
@@ -348,27 +381,27 @@ describe("ManagedRuntimeService", () => {
       nanoCpus: 2_500_000_000,
       pidsLimit: 256,
     };
-    fixture.manager.restart.mockImplementationOnce(async (runtimeId) => ({
-      runtimeId,
+    fixture.manager.restart.mockImplementationOnce(async (placement) => ({
+      runtimeId: placement.runtimeId,
       containerId: "container-01",
       imageAlias: "tenant-stable",
       imageVersion: "0.151.1",
       status: "running" as const,
       endpoint: {
-        runtimeId,
+        runtimeId: placement.runtimeId,
         websocketUrl: "ws://runtime-01:4500",
         serviceToken: "runtime-token",
       },
       actualResources: resources,
     }));
-    fixture.manager.inspect.mockImplementation(async (runtimeId) => ({
-      runtimeId,
+    fixture.manager.inspect.mockImplementation(async (placement) => ({
+      runtimeId: placement.runtimeId,
       containerId: "container-01",
       imageAlias: "tenant-stable",
       imageVersion: "0.151.1",
       status: "running" as const,
       endpoint: {
-        runtimeId,
+        runtimeId: placement.runtimeId,
         websocketUrl: "ws://runtime-01:4500",
         serviceToken: "runtime-token",
       },
@@ -378,7 +411,10 @@ describe("ManagedRuntimeService", () => {
     await fixture.service.restart(7, 1);
 
     expect(fixture.policyStore.getByUserId).toHaveBeenCalledOnce();
-    expect(fixture.manager.restart).toHaveBeenCalledWith(expect.any(String), resources);
+    expect(fixture.manager.restart).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "node__a", placementGeneration: 3 }),
+      resources,
+    );
     expect(fixture.manager.remove).not.toHaveBeenCalled();
     expect(fixture.manager.provision).not.toHaveBeenCalled();
     expect(fixture.manager.start).not.toHaveBeenCalled();
@@ -434,9 +470,9 @@ describe("ManagedRuntimeService", () => {
     const fixture = runtimeFixture({ assignedPolicy: assignedPolicy() });
     await fixture.service.start(7);
     const matchingResources = assignedResources();
-    fixture.manager.inspect.mockImplementation(async (runtimeId) => ({
+    fixture.manager.inspect.mockImplementation(async (placement) => ({
       ...lifecycleResult({ imageAlias: "tenant-stable", actualResources: matchingResources }),
-      runtimeId,
+      runtimeId: placement.runtimeId,
     }));
 
     const matching: ManagedRuntimeStatusView = await fixture.service.getStatusView(7);
@@ -463,9 +499,9 @@ describe("ManagedRuntimeService", () => {
       { ...matchingResources, nanoCpus: matchingResources.nanoCpus + 10_000_000 },
       { ...matchingResources, pidsLimit: matchingResources.pidsLimit + 1 },
     ]) {
-      fixture.manager.inspect.mockImplementationOnce(async (runtimeId) => ({
+      fixture.manager.inspect.mockImplementationOnce(async (placement) => ({
         ...lifecycleResult({ imageAlias: "tenant-stable", actualResources }),
-        runtimeId,
+        runtimeId: placement.runtimeId,
       }));
       await expect(fixture.service.getStatusView(7)).resolves.toMatchObject({
         requiresRestart: true,
@@ -473,9 +509,9 @@ describe("ManagedRuntimeService", () => {
       });
     }
 
-    fixture.manager.inspect.mockImplementationOnce(async (runtimeId) => ({
+    fixture.manager.inspect.mockImplementationOnce(async (placement) => ({
       ...lifecycleResult({ imageAlias: "tenant-old", actualResources: matchingResources }),
-      runtimeId,
+      runtimeId: placement.runtimeId,
     }));
     await expect(fixture.service.getStatusView(7)).resolves.toMatchObject({
       requiresRestart: false,
@@ -772,6 +808,49 @@ function runtimeFixture(
     }),
     deleteForUser: vi.fn(async (userId: number) => records.delete(userId)),
   };
+  const runtimeUserHash = createHmac("sha256", "identity-secret")
+    .update("codex-runtime-user:7")
+    .digest("hex");
+  let durablePlacement: {
+    userId: number;
+    runtimeId: string;
+    runtimeNodeId: string;
+    placementGeneration: number;
+    workspaceKey: string;
+    reservedCpuMillis: number;
+    reservedMemoryBytes: number;
+    reservedPids: number;
+  } | null = {
+    userId: 7,
+    runtimeId: `codex_${runtimeUserHash.slice(0, 32)}`,
+    runtimeNodeId: "node__a",
+    placementGeneration: 3,
+    workspaceKey: "ws__1234567890abcdef1234567890abcdef",
+    reservedCpuMillis: 4_000,
+    reservedMemoryBytes: 8 * 1024 * 1024 * 1024,
+    reservedPids: 1_024,
+  };
+  const placementStore = {
+    getByUserId: vi.fn(async () => durablePlacement),
+    ensurePlacement: vi.fn(
+      async (input: {
+        userId: number;
+        runtimeId: string;
+        workspaceKey: string;
+        reservedCpuMillis: number;
+        reservedMemoryBytes: number;
+        reservedPids: number;
+      }) => {
+        if (durablePlacement !== null) return durablePlacement;
+        durablePlacement = {
+          ...input,
+          runtimeNodeId: "node__a",
+          placementGeneration: 3,
+        };
+        return durablePlacement;
+      },
+    ),
+  };
   const manager = {
     provision: vi.fn(async (request: ProvisionRuntimeRequest) => ({
       runtimeId: request.runtimeId,
@@ -782,35 +861,35 @@ function runtimeFixture(
       endpoint: { ...endpoint, runtimeId: request.runtimeId },
       actualResources: request.resources ?? defaultResources,
     })),
-    start: vi.fn(async (runtimeId: string, resources?: RuntimeResourcePolicy) => ({
-      runtimeId,
+    start: vi.fn(async (placement: { runtimeId: string }, resources?: RuntimeResourcePolicy) => ({
+      runtimeId: placement.runtimeId,
       containerId: "container-01",
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running" as const,
-      endpoint: { ...endpoint, runtimeId },
+      endpoint: { ...endpoint, runtimeId: placement.runtimeId },
       actualResources: resources ?? defaultResources,
     })),
-    inspect: vi.fn(async (runtimeId: string): Promise<RuntimeLifecycleResult> => ({
-      runtimeId,
+    inspect: vi.fn(async (placement: { runtimeId: string }): Promise<RuntimeLifecycleResult> => ({
+      runtimeId: placement.runtimeId,
       containerId: "container-01",
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running" as const,
-      endpoint: { ...endpoint, runtimeId },
+      endpoint: { ...endpoint, runtimeId: placement.runtimeId },
       actualResources: defaultResources,
     })),
-    stop: vi.fn(async (runtimeId: string) => ({
-      runtimeId,
+    stop: vi.fn(async (placement: { runtimeId: string }) => ({
+      runtimeId: placement.runtimeId,
       containerId: "container-01",
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "stopped" as const,
-      endpoint: { ...endpoint, runtimeId },
+      endpoint: { ...endpoint, runtimeId: placement.runtimeId },
       actualResources: defaultResources,
     })),
-    stats: vi.fn(async (runtimeId: string) => ({
-      runtimeId,
+    stats: vi.fn(async (placement: { runtimeId: string }) => ({
+      runtimeId: placement.runtimeId,
       status: "running" as const,
       stats: {
         sampledAtMs: 1_788_134_400_000,
@@ -837,13 +916,13 @@ function runtimeFixture(
         maxOutputBytes: number;
       }) => ({ code: 0, stdout: "ok\n", stderr: "" }),
     ),
-    restart: vi.fn(async (runtimeId: string, resources?: RuntimeResourcePolicy) => ({
-      runtimeId,
+    restart: vi.fn(async (placement: { runtimeId: string }, resources?: RuntimeResourcePolicy) => ({
+      runtimeId: placement.runtimeId,
       containerId: "container-01",
       imageAlias: "stable",
       imageVersion: "0.151.0",
       status: "running" as const,
-      endpoint: { ...endpoint, runtimeId },
+      endpoint: { ...endpoint, runtimeId: placement.runtimeId },
       actualResources: resources ?? defaultResources,
     })),
     syncSecrets: vi.fn(async (input: SyncRuntimeSecretsRequest) => ({
@@ -856,8 +935,8 @@ function runtimeFixture(
       actualResources: defaultResources,
     })),
     forwardOAuthCallback: vi.fn(async () => undefined),
-    remove: vi.fn(async (runtimeId: string) => ({
-      runtimeId,
+    remove: vi.fn(async (placement: { runtimeId: string }) => ({
+      runtimeId: placement.runtimeId,
       containerId: null,
       imageAlias: null,
       imageVersion: null,
@@ -893,6 +972,7 @@ function runtimeFixture(
   const service = new ManagedRuntimeService({
     manager,
     store,
+    placementStore,
     audit: { record: auditRecord },
     providerStore,
     policyStore,
@@ -902,6 +982,7 @@ function runtimeFixture(
     probe,
     probeRetryOptions: options.probeRetryOptions,
     closeConnections,
+    workspaceKey: () => "ws__1234567890abcdef1234567890abcdef",
     syncCapabilities: options.syncCapabilities,
     runtimeSecretsFor: options.runtimeSecretsFor,
     now: () => new Date(1_788_134_400_000 + tick++).toISOString(),
@@ -911,6 +992,7 @@ function runtimeFixture(
     service,
     manager,
     store,
+    placementStore,
     audit,
     auditRecord,
     providerStore,

@@ -12,7 +12,19 @@ export const runtimeResourceLabels = {
   runtimeId: "com.codex-gateway.runtime-id",
   runtimeType: "com.codex-gateway.runtime-type",
   userHash: "com.codex-gateway.user-hash",
+  nodeId: "com.codex-gateway.runtime-node-id",
+  placementGeneration: "com.codex-gateway.placement-generation",
+  workspaceKey: "com.codex-gateway.workspace-key",
 } as const;
+
+export class DockerRuntimeIdentityError extends Error {
+  readonly code = "runtime_identity_conflict";
+
+  constructor() {
+    super("runtime_identity_conflict");
+    this.name = "DockerRuntimeIdentityError";
+  }
+}
 
 export interface DockerSecurityPolicy {
   User: "10001:10001";
@@ -44,6 +56,9 @@ export interface DockerContainerCreateSpec {
   networkNames: [string, string];
   runtimeId: string;
   runtimeType: RuntimeType;
+  nodeId: string;
+  placementGeneration: number;
+  workspaceKey: string;
   security: DockerSecurityPolicy;
   serviceToken: string;
   userHash: string;
@@ -60,6 +75,9 @@ export interface EngineContainerState {
   running: boolean;
   runtimeId: string;
   runtimeType: RuntimeType;
+  nodeId: string;
+  placementGeneration: number;
+  workspaceKey: string;
   serviceToken: string;
   userHash: string;
   memoryBytes: number;
@@ -157,6 +175,7 @@ export class DockerodeEngine implements DockerEngine {
       },
     });
     const match = matches[0];
+    if (matches.length > 1) throw new DockerRuntimeIdentityError();
     return match === undefined ? null : this.inspectContainer(match.Id);
   }
 
@@ -339,6 +358,9 @@ export class DockerodeEngine implements DockerEngine {
         runtimeResourceLabels.runtimeId,
         runtimeResourceLabels.runtimeType,
         runtimeResourceLabels.userHash,
+        runtimeResourceLabels.nodeId,
+        runtimeResourceLabels.placementGeneration,
+        runtimeResourceLabels.workspaceKey,
       ];
       for (const key of identityLabels) {
         const expectedValue = spec.labels[key];
@@ -380,6 +402,11 @@ export class DockerodeEngine implements DockerEngine {
       running: inspected.State.Running,
       runtimeId,
       runtimeType: runtimeTypeSchema.parse(required(labels[runtimeResourceLabels.runtimeType])),
+      nodeId: required(labels[runtimeResourceLabels.nodeId]),
+      placementGeneration: positiveInteger(
+        required(labels[runtimeResourceLabels.placementGeneration]),
+      ),
+      workspaceKey: required(labels[runtimeResourceLabels.workspaceKey]),
       serviceToken: required(environment.get("CODEX_REMOTE_TOKEN")),
       userHash: required(labels[runtimeResourceLabels.userHash]),
       memoryBytes: Math.max(0, inspected.HostConfig.Memory ?? 0),
@@ -493,6 +520,14 @@ function required(value: string | undefined): string {
     throw new Error("managed container metadata is missing");
   }
   return value;
+}
+
+function positiveInteger(value: string) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new DockerRuntimeIdentityError();
+  }
+  return parsed;
 }
 
 function safeFilesystemBytes(blocks: bigint, blockSize: bigint) {
