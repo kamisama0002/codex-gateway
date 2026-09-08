@@ -18,6 +18,28 @@ import type { AssignedRuntimePolicy } from "./runtime-policy";
 import { ManagedRuntimeService, ManagedRuntimeServiceError } from "./runtime-service";
 
 describe("ManagedRuntimeService", () => {
+  it("routes an existing placement through its runtime node client", async () => {
+    const fixture = runtimeFixture({ runtimeNodeId: "node__b" });
+
+    await fixture.service.start(7);
+
+    expect(fixture.nodeClients.get).toHaveBeenCalledWith("node__b");
+  });
+
+  it("keeps placement and does not provision elsewhere when its node is unavailable", async () => {
+    const fixture = runtimeFixture({
+      nodeClientError: Object.assign(new Error("node unavailable"), {
+        code: "runtime_node_registry_unavailable",
+      }),
+    });
+
+    await expect(fixture.service.start(7)).rejects.toMatchObject({
+      code: "runtime_node_registry_unavailable",
+    });
+    expect(fixture.manager.provision).not.toHaveBeenCalled();
+    expect(fixture.placementStore.ensurePlacement).toHaveBeenCalledOnce();
+  });
+
   it("passes one durable placement identity to provision and start", async () => {
     const fixture = runtimeFixture();
 
@@ -768,6 +790,8 @@ function runtimeFixture(
     syncCapabilities?: ConstructorParameters<typeof ManagedRuntimeService>[0]["syncCapabilities"];
     runtimeSecretsFor?: ConstructorParameters<typeof ManagedRuntimeService>[0]["runtimeSecretsFor"];
     assignedPolicy?: AssignedRuntimePolicy | null;
+    runtimeNodeId?: string;
+    nodeClientError?: Error;
   } = {},
 ) {
   const records = new Map<number, UserAgentRuntimeRecord>();
@@ -805,7 +829,7 @@ function runtimeFixture(
   } | null = {
     userId: 7,
     runtimeId: `codex_${runtimeUserHash.slice(0, 32)}`,
-    runtimeNodeId: "node__a",
+    runtimeNodeId: options.runtimeNodeId ?? "node__a",
     placementGeneration: 3,
     workspaceKey: "ws__1234567890abcdef1234567890abcdef",
     reservedCpuMillis: 4_000,
@@ -932,6 +956,12 @@ function runtimeFixture(
       actualResources: null,
     })),
   };
+  const nodeClients = {
+    get: vi.fn(async () => {
+      if (options.nodeClientError !== undefined) throw options.nodeClientError;
+      return manager;
+    }),
+  };
   const audit: AuditEventInput[] = [];
   const auditRecord = vi.fn(async (event: AuditEventInput) => {
     audit.push(structuredClone(event));
@@ -957,7 +987,7 @@ function runtimeFixture(
   });
   let tick = 0;
   const service = new ManagedRuntimeService({
-    manager,
+    nodeClients,
     store,
     placementStore,
     audit: { record: auditRecord },
@@ -978,6 +1008,7 @@ function runtimeFixture(
   return {
     service,
     manager,
+    nodeClients,
     store,
     placementStore,
     audit,

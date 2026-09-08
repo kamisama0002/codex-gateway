@@ -520,7 +520,7 @@ git commit -m "feat(runtime): relay app server across runtime nodes"
 - Every operation loads the placement, obtains the placement node client, and uses the stored runtime ID/generation.
 - First start creates the runtime record, atomically ensures placement, then provisions only on that node.
 
-- [ ] **Step 1: Write routing tests with two manager clients**
+- [x] **Step 1: Write routing tests with two manager clients**
 
 ```ts
 it("keeps an existing user on node A after node B gains more capacity", async () => {
@@ -540,13 +540,13 @@ it("marks the runtime degraded without provisioning on another node", async () =
 });
 ```
 
-- [ ] **Step 2: Verify routing RED**
+- [x] **Step 2: Verify routing RED**
 
 ```bash
 pnpm exec vitest run server/utils/gateway/runtime-manager/runtime-service.test.ts
 ```
 
-- [ ] **Step 3: Refactor service dependencies**
+- [x] **Step 3: Refactor service dependencies**
 
 Replace the single `manager` option with:
 
@@ -558,17 +558,21 @@ identitySecret: string;
 
 All lifecycle, stats, exec, OAuth forwarding, capability sync, file access, tmux, and host construction use the same placement node.
 
-- [ ] **Step 4: Preserve safe public DTOs**
+- [x] **Step 4: Preserve safe public DTOs**
+
+Implementation note: ordinary user DTOs remain unchanged; the safe admin-only node name and
+health summary is added with the Task 8 administration API instead of extending the shared user
+view.
 
 Admin runtime views add only node display name and node health. Ordinary user views keep their existing shape and never expose node details.
 
-- [ ] **Step 5: Run the complete Gateway runtime unit set**
+- [x] **Step 5: Run the complete Gateway runtime unit set**
 
 ```bash
 pnpm exec vitest run server/utils/gateway/runtime-manager server/utils/gateway/runtime server/utils/gateway/capabilities
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/utils/gateway/runtime-manager server/utils/gateway/runtime server/utils/gateway/host-metrics server/utils/gateway/capabilities
