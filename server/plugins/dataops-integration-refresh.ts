@@ -42,13 +42,22 @@ export function createDataOpsIntegrationRefreshLifecycle(options: {
     subscriber: options.subscriber,
   });
   options.configurePublisher(createDataOpsIntegrationPublisher(options.publisher));
+  let startPromise: Promise<void> | null = null;
+  let stopPromise: Promise<void> | null = null;
   return {
-    start: () => invalidation.start(),
-    async stop() {
-      const results = await Promise.allSettled([invalidation.stop(), options.publisher.quit()]);
-      if (results.some((result) => result.status === "rejected")) {
-        console.warn("[gateway] DataOps integration Redis shutdown unavailable");
-      }
+    start() {
+      startPromise ??= invalidation.start();
+      return startPromise;
+    },
+    stop() {
+      stopPromise ??= Promise.allSettled([invalidation.stop(), options.publisher.quit()]).then(
+        (results) => {
+          if (results.some((result) => result.status === "rejected")) {
+            console.warn("[gateway] DataOps integration Redis shutdown unavailable");
+          }
+        },
+      );
+      return stopPromise;
     },
   };
 }
