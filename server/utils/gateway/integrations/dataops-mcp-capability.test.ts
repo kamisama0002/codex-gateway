@@ -39,7 +39,7 @@ describe("Dinky MCP capability", () => {
         return current;
       }),
       update: vi.fn(async (_id: string, value: Partial<CapabilityDefinition>) => {
-        current = { ...current!, ...value, updatedAt: "later" } as CapabilityDefinition;
+        current = { ...current!, ...value, updatedAt: "later" };
         return current;
       }),
     };
