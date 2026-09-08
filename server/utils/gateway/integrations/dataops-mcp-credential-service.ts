@@ -63,8 +63,8 @@ export function createDataOpsMcpCredentialService(options: ServiceOptions) {
     async bind(value: unknown, bearerSecret: string): Promise<PublicStatus> {
       const input = dataOpsMcpCredentialBindSchema.parse(value);
       const userId = await authenticatedUser(options, input, bearerSecret);
-      await options.capabilities.assign(assignment(userId));
       await options.credentials.upsert(credentialInput(userId, input.tenantId, input.token));
+      await options.capabilities.assign(assignment(userId));
       return await synchronize(options, userId, input);
     },
 

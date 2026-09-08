@@ -124,6 +124,25 @@ describe("DataOpsMcpCredentialService", () => {
     expect(fixture.credentials.upsert).not.toHaveBeenCalled();
   });
 
+  it("does not leave an assignment when encrypted credential persistence fails", async () => {
+    const fixture = createFixture();
+    fixture.credentials.upsert.mockRejectedValue(new Error("database unavailable"));
+
+    await expect(
+      fixture.service.bind(
+        {
+          pairingId: "pairing-fixed",
+          revision: 3,
+          tenantId: 7,
+          dataOpsUserId: 42,
+          token: "long-lived-dinky-token",
+        },
+        "paired-secret",
+      ),
+    ).rejects.toThrow("database unavailable");
+    expect(fixture.capabilities.assign).not.toHaveBeenCalled();
+  });
+
   it("keeps the encrypted binding and reports sync failure for a retry", async () => {
     const fixture = createFixture();
     fixture.runtime.syncSecrets.mockRejectedValue(new Error("manager unavailable"));
