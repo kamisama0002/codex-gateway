@@ -44,7 +44,7 @@ export function createDataOpsIntegrationInvalidation(options: {
       }
     },
     async stop(): Promise<void> {
-      await options.subscriber.quit().catch(() => undefined);
+      await options.subscriber.quit();
     },
   };
 }

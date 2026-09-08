@@ -7,19 +7,48 @@ import {
 import { configureDataOpsPairingPublisher } from "../utils/gateway/integrations/dataops-pairing-service";
 import { dataOpsIntegrationProvider } from "../utils/gateway/integrations/dataops-integration-provider";
 
-// oxlint-disable-next-line typescript/no-unsafe-call
 export default defineNitroPlugin((nitroApp: NitroApp) => {
   const redisUrl = process.env.REDIS_URL;
   if (redisUrl === undefined || redisUrl === "") return;
-  const subscriber = new Redis(redisUrl);
-  const invalidation = createDataOpsIntegrationInvalidation({
+  const lifecycle = createDataOpsIntegrationRefreshLifecycle({
     provider: dataOpsIntegrationProvider,
-    subscriber,
+    subscriber: new Redis(redisUrl),
+    publisher: new Redis(redisUrl),
+    configurePublisher: configureDataOpsPairingPublisher,
   });
-  const publisher = createDataOpsIntegrationPublisher(new Redis(redisUrl));
-  configureDataOpsPairingPublisher(publisher);
-  void invalidation.start();
+  void lifecycle.start();
   nitroApp.hooks.hook("close", async () => {
-    await invalidation.stop();
+    await lifecycle.stop();
   });
 });
+
+export function createDataOpsIntegrationRefreshLifecycle(options: {
+  provider: { invalidate(revision?: number): void };
+  subscriber: {
+    on(event: "message", listener: (channel: string, payload: string) => void): unknown;
+    subscribe(channel: string): Promise<unknown>;
+    quit(): Promise<unknown>;
+  };
+  publisher: {
+    publish(channel: string, payload: string): Promise<unknown>;
+    quit(): Promise<unknown>;
+  };
+  configurePublisher: (
+    publisher: (payload: { revision: number; pairingId: string }) => Promise<void>,
+  ) => void;
+}) {
+  const invalidation = createDataOpsIntegrationInvalidation({
+    provider: options.provider,
+    subscriber: options.subscriber,
+  });
+  options.configurePublisher(createDataOpsIntegrationPublisher(options.publisher));
+  return {
+    start: () => invalidation.start(),
+    async stop() {
+      const results = await Promise.allSettled([invalidation.stop(), options.publisher.quit()]);
+      if (results.some((result) => result.status === "rejected")) {
+        console.warn("[gateway] DataOps integration Redis shutdown unavailable");
+      }
+    },
+  };
+}
