@@ -115,6 +115,7 @@ export class DockerodeEngine implements DockerEngine {
     for (const mount of spec.mounts) await this.ensureManagedVolume(mount);
 
     const exposedPort = `${spec.internalPort}/tcp`;
+    const [primaryNetwork, ...additionalNetworks] = spec.networkNames;
     const container = await this.docker.createContainer({
       name: spec.containerName,
       Image: spec.image,
@@ -147,17 +148,17 @@ export class DockerodeEngine implements DockerEngine {
         CapDrop: spec.security.CapDrop,
         Memory: spec.security.Memory,
         NanoCpus: spec.security.NanoCpus,
-        NetworkMode: spec.networkNames[0],
+        NetworkMode: primaryNetwork,
         PidsLimit: spec.security.PidsLimit,
         Privileged: spec.security.Privileged,
         ReadonlyRootfs: spec.security.ReadonlyRootfs,
         SecurityOpt: spec.security.SecurityOpt,
         Tmpfs: spec.security.Tmpfs,
       },
-      NetworkingConfig: {
-        EndpointsConfig: Object.fromEntries(spec.networkNames.map((name) => [name, {}])),
-      },
     });
+    for (const networkName of additionalNetworks) {
+      await this.docker.getNetwork(networkName).connect({ Container: container.id });
+    }
     return this.inspectContainer(container.id);
   }
 
