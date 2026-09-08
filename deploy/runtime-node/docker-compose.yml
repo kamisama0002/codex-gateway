@@ -2,3 +2,7 @@ services:
   agent-runtime-manager:
     ports:
       - "${RUNTIME_MANAGER_PUBLISH_ADDRESS:-0.0.0.0}:${RUNTIME_MANAGER_PUBLISH_PORT:-8787}:8787"
+    networks:
+      - runtime-manager
+      - agent-runtime
+      - web-common
