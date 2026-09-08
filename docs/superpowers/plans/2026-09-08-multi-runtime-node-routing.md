@@ -701,7 +701,13 @@ git commit -m "test(e2e): verify two runtime nodes"
 
 The runbook records backup, migration 16, default node bootstrap, placement verification, relay smoke, and rollback commands. It explicitly forbids registering node B until every current user has node A placement and relay RPC succeeds.
 
-- [ ] **Step 2: Verify a local production-shaped single-node deployment**
+- [x] **Step 2: Verify a local production-shaped single-node deployment**
+
+User-directed narrow gate: verified legacy generation-one container reuse without create/remove,
+Manager type safety, E2E type safety, and CentOS 10 Compose `config-only`. A focused image start was
+stopped when cached pnpm layers began repeated registry metadata checks (`downloaded 0` throughout);
+the live relay/container/volume checks remain mandatory deployment-time commands in the runbook
+before registering node B.
 
 Use external MySQL and the existing Runtime Manager. Verify current runtime IDs, container IDs, named volumes, thread IDs, workspace files, model access, MCP access, tmux, upload, Gateway restart, and cold Gateway startup remain unchanged.
 
