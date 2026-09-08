@@ -25,16 +25,20 @@ export async function loginWithDataOpsForEvent(
   }
 }
 
-export default defineEventHandler(async (event) => {
-  const integration = await dataOpsIntegrationProvider.current();
+export async function loginWithCurrentDataOpsForEvent(
+  event: H3Event,
+  provider: { current(): Promise<{ client: DataOpsSsoClient } | null> },
+  identities: Pick<ExternalIdentityStore, "loginDataOps">,
+) {
+  const integration = await provider.current();
   if (integration === null) {
-    throw createError({
-      statusCode: 503,
-      statusMessage: "dataops_not_configured",
-      message: "dataops_not_configured",
-    });
+    throw createError({ statusCode: 503, statusMessage: "dataops_not_configured", message: "dataops_not_configured" });
   }
-  return await loginWithDataOpsForEvent(event, integration.client, externalIdentityStore);
+  return await loginWithDataOpsForEvent(event, integration.client, identities);
+}
+
+export default defineEventHandler(async (event) => {
+  return await loginWithCurrentDataOpsForEvent(event, dataOpsIntegrationProvider, externalIdentityStore);
 });
 
 function dataOpsErrorStatus(code: string): number {

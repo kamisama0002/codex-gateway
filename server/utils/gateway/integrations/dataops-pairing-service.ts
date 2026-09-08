@@ -51,6 +51,7 @@ export interface DataOpsPairingServiceOptions {
   randomBytes?: (size: number) => Buffer;
   fetch?: typeof globalThis.fetch;
   rateLimit?: () => boolean;
+  publish?: (payload: { revision: number; pairingId: string }) => Promise<void> | void;
 }
 
 export function createDataOpsPairingService(options: DataOpsPairingServiceOptions = {}) {
@@ -60,6 +61,7 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
   const randomBytes = options.randomBytes ?? nodeRandomBytes;
   const fetcher = options.fetch ?? globalThis.fetch;
   const rateLimit = options.rateLimit ?? defaultPairRateLimit();
+  const publish = options.publish ?? (() => undefined);
 
   return {
     async status() {
@@ -122,7 +124,9 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
       if (pending !== null) {
         requireMatchingBinding(pending, pairingId, revision, bearerSecret);
         const graceExpiresAt = new Date(now().getTime() + GRACE_TTL_MS).toISOString();
-        return publicBinding(await integrations.confirm(pairingId, revision, graceExpiresAt));
+        const binding = await integrations.confirm(pairingId, revision, graceExpiresAt);
+        await publish({ revision: binding.revision, pairingId: binding.pairingId });
+        return publicBinding(binding);
       }
       const active = await integrations.active();
       if (active !== null && matchesBinding(active, pairingId, revision, bearerSecret)) {
@@ -137,7 +141,9 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
       if (active === null || !matchesBinding(active, pairingId, revision, bearerSecret)) {
         throw new DataOpsPairingError("integration_secret_rejected", 401);
       }
-      return publicBinding(await integrations.finalize(pairingId, revision));
+      const binding = await integrations.finalize(pairingId, revision);
+      await publish({ revision: binding.revision, pairingId: binding.pairingId });
+      return publicBinding(binding);
     },
 
     async probe(pairingId: string, revision: number, bearerSecret: string) {
@@ -181,10 +187,18 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
 }
 
 let defaultService: ReturnType<typeof createDataOpsPairingService> | null = null;
+let defaultPublish: ((payload: { revision: number; pairingId: string }) => Promise<void> | void) | undefined;
 
 function productionService() {
-  defaultService ??= createDataOpsPairingService();
+  defaultService ??= createDataOpsPairingService({ publish: defaultPublish });
   return defaultService;
+}
+
+export function configureDataOpsPairingPublisher(
+  publish: (payload: { revision: number; pairingId: string }) => Promise<void> | void,
+) {
+  defaultPublish = publish;
+  defaultService = null;
 }
 
 export const dataOpsPairingService = {

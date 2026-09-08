@@ -6,6 +6,20 @@ interface RedisSubscriber {
   quit(): Promise<unknown>;
 }
 
+interface RedisPublisher {
+  publish(channel: string, payload: string): Promise<unknown>;
+}
+
+export function createDataOpsIntegrationPublisher(publisher: RedisPublisher) {
+  return async (payload: { revision: number; pairingId: string }): Promise<void> => {
+    try {
+      await publisher.publish(DATAOPS_INTEGRATION_REDIS_CHANNEL, JSON.stringify(payload));
+    } catch {
+      console.warn("[gateway] DataOps integration Redis publish unavailable");
+    }
+  };
+}
+
 export function createDataOpsIntegrationInvalidation(options: {
   provider: { invalidate(revision?: number): void };
   subscriber: RedisSubscriber;

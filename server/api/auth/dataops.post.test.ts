@@ -2,7 +2,7 @@ import { createEvent } from "h3";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it } from "vitest";
-import { loginWithDataOpsForEvent } from "./dataops.post";
+import { loginWithCurrentDataOpsForEvent, loginWithDataOpsForEvent } from "./dataops.post";
 import { DataOpsSsoError } from "../../utils/gateway/auth/dataops-client";
 
 describe("POST /api/auth/dataops", () => {
@@ -83,6 +83,16 @@ describe("POST /api/auth/dataops", () => {
 
     expect(error).toMatchObject({ statusCode, statusMessage: code });
     expect(String(error)).not.toContain("pct_private");
+  });
+
+  it("returns 503 dataops_not_configured when only pending bindings exist", async () => {
+    const error = await loginWithCurrentDataOpsForEvent(
+      eventWithJson({ ticket: "pct_once" }),
+      { current: async () => null },
+      { loginDataOps: async () => { throw new Error("must not login"); } },
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ statusCode: 503, statusMessage: "dataops_not_configured" });
   });
 });
 

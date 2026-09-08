@@ -132,6 +132,17 @@ describe("DataOpsPairingService", () => {
       fixture.service.finalize("pairing-fixed", 2, "fixture-shared-secret-with-at-least-32-bytes"),
     ).resolves.toEqual({ pairingId: "pairing-fixed", revision: 2, status: "active" });
     expect(fixture.integrations.finalize).toHaveBeenCalledWith("pairing-fixed", 2);
+    expect(fixture.publish).toHaveBeenCalledWith({ revision: 2, pairingId: "pairing-fixed" });
+  });
+
+  it("publishes after a successful confirmation without exposing a secret", async () => {
+    const fixture = createFixture();
+    fixture.integrations.pending.mockResolvedValue(binding({ status: "pending" }));
+    fixture.integrations.confirm.mockResolvedValue(binding({ status: "active", revision: 3 }));
+
+    await fixture.service.confirm("pairing-fixed", 3, "fixture-shared-secret-with-at-least-32-bytes");
+    expect(fixture.publish).toHaveBeenCalledWith({ revision: 3, pairingId: "pairing-fixed" });
+    expect(JSON.stringify(fixture.publish.mock.calls)).not.toContain("fixture-shared-secret-with-at-least-32-bytes");
   });
 
   it("rejects an unexpired grace secret during finalization", async () => {
@@ -227,9 +238,11 @@ function createFixture(
     revokeActive: vi.fn(),
     activeStatus: vi.fn(),
   };
+  const publish = vi.fn();
   return {
     integrations,
     codes,
+    publish,
     service: createDataOpsPairingService({
       integrations,
       codes,
@@ -237,6 +250,7 @@ function createFixture(
       randomBytes: () => Buffer.alloc(24, 7),
       fetch: options.fetch ?? vi.fn(),
       rateLimit: options.rateLimit,
+      publish,
     }),
   };
 }

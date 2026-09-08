@@ -19,12 +19,12 @@ export function createDataOpsIntegrationProvider(options: {
   const integrations = options.integrations ?? createDataOpsIntegrationRepository();
   const now = options.now ?? (() => new Date());
   const createClient = options.createClient ?? createDataOpsSsoClient;
-  let cached: { snapshot: DataOpsIntegrationSnapshot | null; loadedAt: number } | null = null;
+  let cached: { snapshot: DataOpsIntegrationSnapshot | null; expiresAt: number } | null = null;
 
   return {
     async current(): Promise<DataOpsIntegrationSnapshot | null> {
       const currentNow = now();
-      if (cached !== null && currentNow.getTime() - cached.loadedAt < CACHE_TTL_MS) return cached.snapshot;
+      if (cached !== null && currentNow.getTime() < cached.expiresAt) return cached.snapshot;
       const bindings = await integrations.acceptedForAuthentication(currentNow.toISOString());
       const snapshot = bindings.length === 0 ? null : {
         pairingId: bindings[0].pairingId,
@@ -34,7 +34,12 @@ export function createDataOpsIntegrationProvider(options: {
           sharedSecret: binding.sharedSecret,
         }))),
       };
-      cached = { snapshot, loadedAt: currentNow.getTime() };
+      const graceExpiry = bindings
+        .filter((binding) => binding.status === "grace" && binding.graceExpiresAt !== null)
+        .map((binding) => Date.parse(binding.graceExpiresAt ?? ""))
+        .filter(Number.isFinite)
+        .reduce((earliest, value) => Math.min(earliest, value), currentNow.getTime() + CACHE_TTL_MS);
+      cached = { snapshot, expiresAt: Math.min(currentNow.getTime() + CACHE_TTL_MS, graceExpiry) };
       return snapshot;
     },
     invalidate(revision?: number): void {

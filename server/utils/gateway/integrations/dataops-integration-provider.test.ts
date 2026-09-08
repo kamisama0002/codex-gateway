@@ -51,6 +51,21 @@ describe("DataOpsIntegrationProvider", () => {
     now = new Date("2026-09-08T00:00:05.000Z");
     await expect(provider.current()).resolves.toMatchObject({ revision: 3 });
   });
+
+  it("drops a cached grace secret at its expiry before the five second TTL", async () => {
+    let now = new Date("2026-09-08T00:00:00.000Z");
+    const acceptedForAuthentication = vi.fn()
+      .mockResolvedValueOnce([binding(), binding({ pairingId: "pairing-grace", revision: 1, status: "grace", graceExpiresAt: "2026-09-08T00:00:01.000Z" })])
+      .mockResolvedValueOnce([binding()]);
+    const active = { exchange: vi.fn().mockRejectedValue(new DataOpsSsoError("dataops_ticket_rejected")) };
+    const grace = { exchange: vi.fn().mockResolvedValue({ subject: "grace" }) };
+    const provider = createDataOpsIntegrationProvider({ integrations: { acceptedForAuthentication }, now: () => now, createClient: vi.fn().mockReturnValueOnce(active).mockReturnValueOnce(grace).mockReturnValueOnce(active) });
+
+    await (await provider.current())?.client.exchange("ticket");
+    now = new Date("2026-09-08T00:00:01.000Z");
+    await expect((await provider.current())?.client.exchange("ticket")).rejects.toThrow("dataops_ticket_rejected");
+    expect(acceptedForAuthentication).toHaveBeenCalledTimes(2);
+  });
 });
 
 function binding(overrides: Record<string, unknown> = {}) {
