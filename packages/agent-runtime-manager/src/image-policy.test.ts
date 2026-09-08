@@ -58,6 +58,7 @@ describe("Agent runtime image policy", () => {
     expect(dockerfile).toContain("COPY docker/agent-runtime-secret-writer.mjs");
     expect(dockerfile).toContain("COPY docker/agent-runtime-oauth-callback.mjs");
     expect(dockerfile).toContain('npm install --global "pnpm@$pnpm_version"');
+    expect(dockerfile).toContain("apt-get install -y --no-install-recommends tmux");
     expect(dockerfile).toContain("node /usr/local/lib/smoke-agent-runtime.mjs");
   });
 
