@@ -72,6 +72,7 @@ describe("turn completion state", () => {
     );
 
     expect(harness.maybeRetryAfterTurnFailure).toHaveBeenCalledOnce();
+    expect(harness.clearRequest).toHaveBeenCalledWith(1, "thread-1");
     expect(harness.setError).toHaveBeenCalledWith(
       expect.stringContaining("app.appServerError"),
       expect.objectContaining({ turnId: "turn-1", toast: true, retryable: false }),

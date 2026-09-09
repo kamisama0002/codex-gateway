@@ -86,23 +86,24 @@ export function retryAfterFailedTurn(
 ) {
   const turnId = typeof turn.id === "string" || typeof turn.id === "number" ? String(turn.id) : "";
   if (!turnId) {
-    return;
+    return false;
   }
   const request = pendingTurnRequest(hostId, threadId);
   if (!request) {
-    return;
+    return false;
   }
   if (request.pendingRetryTurnId !== turnId) {
     if (isTerminalTurnStatus(turn.status)) {
       clearPendingTurnRequest(hostId, threadId);
     }
-    return;
+    return false;
   }
   if (turn.status !== "failed") {
     clearPendingTurnRequest(hostId, threadId);
-    return;
+    return false;
   }
   scheduleStoredTurnRetry(t, request);
+  return true;
 }
 
 async function handleImmediateOverloadRetry<T>(

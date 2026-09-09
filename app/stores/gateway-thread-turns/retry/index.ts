@@ -39,5 +39,5 @@ export function maybeRetryAfterTurnFailure(
   threadId: string,
   turn: ThreadHistoryTurn,
 ) {
-  retryAfterFailedTurn(t, hostId, threadId, turn);
+  return retryAfterFailedTurn(t, hostId, threadId, turn);
 }

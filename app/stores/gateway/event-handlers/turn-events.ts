@@ -54,8 +54,12 @@ export const turnEventHandlers: GatewayEventHandlerRegistry = {
       turn,
     });
     const turns = useGatewayThreadTurnsStore();
-    turns.maybeRetryAfterTurnFailure(event.hostId, threadId, turn);
+    const retryScheduled = turns.maybeRetryAfterTurnFailure(event.hostId, threadId, turn);
     if (turn.status === "failed") {
+      // A failed completion is terminal unless the overload handler retained this request for an
+      // automatic retry. Clear the submission in the terminal case so the composer cannot remain
+      // stuck in a pending state when app-server omits a separate error notification.
+      if (!retryScheduled) turns.clearRequest(event.hostId, threadId);
       showFallbackTurnError(event.hostId, threadId, String(turn.id), turn.error);
     }
     if (turn.status !== "failed") turns.clearRequest(event.hostId, threadId);
