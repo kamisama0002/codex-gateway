@@ -17,11 +17,11 @@ onBeforeUnmount(() => visibilitySubscription.dispose());
 <template>
   <div class="flex h-full min-h-0 flex-col overflow-hidden">
     <FileWorkspacePane
-      v-if="context.selectedHostId.value && context.selectedThreadId.value"
+      v-if="context.selectedHostId.value && context.workspaceThreadId.value"
       :layout="context.layout.value"
       :host-id="context.selectedHostId.value"
       :project-id="context.selectedProjectId.value"
-      :thread-id="context.selectedThreadId.value"
+      :thread-id="context.workspaceThreadId.value"
       :root-path="context.rootPath.value"
       :active="visible"
     />

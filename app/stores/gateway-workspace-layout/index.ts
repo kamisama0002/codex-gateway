@@ -26,7 +26,7 @@ export const useGatewayWorkspaceLayoutStore = defineStore("gateway-workspace-lay
   const layoutFor = (scopeKey: string) => layoutsByScope.value[scopeKey] ?? null;
   const activePanelFor = (scopeKey: string) =>
     activePanelByScope.value[scopeKey] ?? AGENT_WORKSPACE_PANEL_ID;
-  const isToolSidebarOpen = (scopeKey: string) => toolSidebarOpenByScope.value[scopeKey] ?? true;
+  const isToolSidebarOpen = (scopeKey: string) => toolSidebarOpenByScope.value[scopeKey] ?? false;
   const isFilesPanelOpen = (scopeKey: string) => filesPanelOpenByScope.value[scopeKey] === true;
   const hasFilesPanelPreference = (scopeKey: string) =>
     Object.prototype.hasOwnProperty.call(filesPanelOpenByScope.value, scopeKey);

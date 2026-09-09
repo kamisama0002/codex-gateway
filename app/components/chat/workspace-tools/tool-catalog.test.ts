@@ -5,7 +5,8 @@ describe("workspace tool catalog", () => {
   it("keeps stable tool order and targets every real sub-agent instance", () => {
     const actions = createActions();
     const catalog = createWorkspaceToolCatalog({
-      canOpenThreadTools: true,
+      canOpenFiles: true,
+      canOpenGitReview: true,
       canLaunchRemoteTools: true,
       canOpenTmux: true,
       canMonitorHost: true,
@@ -50,7 +51,8 @@ describe("workspace tool catalog", () => {
   it("shows unavailable categories without dispatching their actions", () => {
     const actions = createActions();
     const catalog = createWorkspaceToolCatalog({
-      canOpenThreadTools: false,
+      canOpenFiles: false,
+      canOpenGitReview: false,
       canLaunchRemoteTools: false,
       canOpenTmux: false,
       canMonitorHost: false,
@@ -72,6 +74,21 @@ describe("workspace tool catalog", () => {
     for (const item of catalog) item.activate();
 
     for (const action of Object.values(actions)) expect(action).not.toHaveBeenCalled();
+  });
+
+  it("keeps files available for a project without a conversation", () => {
+    const catalog = createWorkspaceToolCatalog({
+      canOpenFiles: true,
+      canOpenGitReview: false,
+      canLaunchRemoteTools: false,
+      canOpenTmux: false,
+      canMonitorHost: false,
+      subAgents: [],
+      actions: createActions(),
+    });
+
+    expect(catalog.find(({ id }) => id === "files")?.disabled).toBe(false);
+    expect(catalog.find(({ id }) => id === "gitReview")?.disabled).toBe(true);
   });
 });
 

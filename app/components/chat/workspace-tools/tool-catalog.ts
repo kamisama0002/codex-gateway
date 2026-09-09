@@ -15,7 +15,8 @@ export interface WorkspaceToolCatalogActions {
 }
 
 export interface WorkspaceToolCatalogInput {
-  canOpenThreadTools: boolean;
+  canOpenFiles: boolean;
+  canOpenGitReview: boolean;
   canLaunchRemoteTools: boolean;
   canOpenBrowser?: boolean;
   canOpenTmux: boolean;
@@ -38,9 +39,8 @@ export interface WorkspaceToolCatalogItem {
 export function createWorkspaceToolCatalog(
   input: WorkspaceToolCatalogInput,
 ): WorkspaceToolCatalogItem[] {
-  const threadUnavailable = input.canOpenThreadTools
-    ? undefined
-    : "app.workspaceToolUnavailableThread";
+  const filesUnavailable = input.canOpenFiles ? undefined : "app.workspaceToolUnavailableWorkspace";
+  const gitUnavailable = input.canOpenGitReview ? undefined : "app.workspaceToolUnavailableThread";
   const remoteUnavailable = input.canLaunchRemoteTools
     ? undefined
     : "app.workspaceToolUnavailableRemote";
@@ -54,7 +54,7 @@ export function createWorkspaceToolCatalog(
       kind: "files",
       labelKey: "app.filesTab",
       descriptionKey: "app.workspaceToolFilesDescription",
-      unavailableReasonKey: threadUnavailable,
+      unavailableReasonKey: filesUnavailable,
       action: input.actions.openFiles,
     }),
     item({
@@ -62,7 +62,7 @@ export function createWorkspaceToolCatalog(
       kind: "gitReview",
       labelKey: "app.fileGitReviewTab",
       descriptionKey: "app.workspaceToolGitDescription",
-      unavailableReasonKey: threadUnavailable,
+      unavailableReasonKey: gitUnavailable,
       action: input.actions.openGitReview,
     }),
     item({

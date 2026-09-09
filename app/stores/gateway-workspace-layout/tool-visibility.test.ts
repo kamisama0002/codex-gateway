@@ -25,13 +25,15 @@ describe("workspace tool visibility", () => {
     setActivePinia(createPinia());
   });
 
-  it("opens the tool sidebar by default and isolates explicit visibility by scope", () => {
+  it("keeps the tool sidebar closed by default and isolates explicit visibility by scope", () => {
     const layout = useGatewayWorkspaceLayoutStore();
 
-    expect(layout.isToolSidebarOpen("host:project:one")).toBe(true);
+    expect(layout.isToolSidebarOpen("host:project:one")).toBe(false);
     layout.setToolSidebarOpen("host:project:one", false);
 
     expect(layout.isToolSidebarOpen("host:project:one")).toBe(false);
+    expect(layout.isToolSidebarOpen("host:project:two")).toBe(false);
+    layout.setToolSidebarOpen("host:project:two", true);
     expect(layout.isToolSidebarOpen("host:project:two")).toBe(true);
   });
 

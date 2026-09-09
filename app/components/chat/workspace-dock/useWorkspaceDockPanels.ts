@@ -25,7 +25,7 @@ import {
 
 export function useWorkspaceDockPanels(options: {
   layout: Ref<"desktop" | "mobile">;
-  selectedThreadId: Ref<string | null>;
+  filesPanelAvailable: ComputedRef<boolean>;
   filesPanelOpen: ComputedRef<boolean>;
   toolSidebarOpen: ComputedRef<boolean>;
   terminalPanels: ComputedRef<Array<{ id: string; session: { sessionId: string; title: string } }>>;
@@ -62,7 +62,7 @@ export function useWorkspaceDockPanels(options: {
         params: { kind: "toolHome" },
       },
     ];
-    if (options.selectedThreadId.value !== null && options.filesPanelOpen.value) {
+    if (options.filesPanelAvailable.value && options.filesPanelOpen.value) {
       panels.push({
         id: FILES_WORKSPACE_PANEL_ID,
         title: t("app.filesTab"),

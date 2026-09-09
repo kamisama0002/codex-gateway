@@ -75,6 +75,7 @@
     "hideWorkspaceTools": "Hide tool sidebar",
     "workspaceToolFilesDescription": "Browse and edit files in the current workspace",
     "workspaceToolGitDescription": "Review Git changes in the current workspace",
+    "workspaceToolUnavailableWorkspace": "Select a workspace to use files",
     "workspaceToolTerminalDescription": "Open a remote terminal on the current host",
     "workspaceToolBrowserDescription": "Preview a site served by the current host",
     "workspaceToolSubAgentDescription": "Inspect a real sub-agent conversation",

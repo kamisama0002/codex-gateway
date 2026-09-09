@@ -75,6 +75,7 @@
     "hideWorkspaceTools": "收起工具侧栏",
     "workspaceToolFilesDescription": "浏览和编辑当前工作区文件",
     "workspaceToolGitDescription": "查看当前工作区的 Git 变更",
+    "workspaceToolUnavailableWorkspace": "选择一个工作区后可用",
     "workspaceToolTerminalDescription": "打开当前主机的远程终端",
     "workspaceToolBrowserDescription": "预览当前主机提供的网页",
     "workspaceToolSubAgentDescription": "查看真实子 Agent 会话",

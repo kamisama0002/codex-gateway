@@ -37,6 +37,13 @@ export function useWorkspaceLaunchActions() {
   const isLocalAgentHost = computed(
     () => selectedHost.value !== null && isManagedRuntimeHost(selectedHost.value),
   );
+  const canOpenFiles = computed(
+    () =>
+      selectedHostId.value !== null &&
+      selectedProject.value?.hostId === selectedHostId.value &&
+      selectedProject.value.remotePath.trim() !== "",
+  );
+  const canOpenGitReview = computed(() => selectedThreadId.value !== null && canOpenFiles.value);
 
   function currentScopeKey() {
     return workspaceLayoutScopeKey(
@@ -47,7 +54,7 @@ export function useWorkspaceLaunchActions() {
   }
 
   function openFiles() {
-    if (selectedThreadId.value === null) return;
+    if (!canOpenFiles.value) return;
     const scopeKey = currentScopeKey();
     layout.setFilesPanelOpen(scopeKey, true);
     layout.setToolSidebarOpen(scopeKey, true);
@@ -55,7 +62,7 @@ export function useWorkspaceLaunchActions() {
   }
 
   function openGitReview() {
-    if (selectedThreadId.value === null) return;
+    if (!canOpenGitReview.value) return;
     const scopeKey = currentScopeKey();
     gitReviewPanels.open(scopeKey);
     layout.setToolSidebarOpen(scopeKey, true);
@@ -146,7 +153,8 @@ export function useWorkspaceLaunchActions() {
   return {
     canLaunch: computed(() => selectedHostId.value !== null && !isLocalAgentHost.value),
     isManagedRuntime: isLocalAgentHost,
-    canOpenThreadTools: computed(() => selectedThreadId.value !== null),
+    canOpenFiles,
+    canOpenGitReview,
     canMonitorHost: computed(() => selectedHostId.value !== null),
     selectedHostTitle: computed(() =>
       selectedHost.value === null || isLocalAgentHost.value

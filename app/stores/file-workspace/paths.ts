@@ -2,6 +2,19 @@ export function fileWorkspaceScopeKey(hostId: number, threadId: string) {
   return `${hostId}:${threadId}`;
 }
 
+/**
+ * Files can be opened from a selected project before the first conversation exists. Keep that
+ * editor state in a project-local scope instead of inventing a Codex thread.
+ */
+export function fileWorkspaceThreadId(
+  hostId: number,
+  projectId: number | null,
+  threadId: string | null,
+) {
+  if (threadId !== null) return threadId;
+  return projectId === null ? null : `workspace-project:${hostId}:${projectId}`;
+}
+
 export function fileDocumentKey(hostId: number, threadId: string, path: string) {
   return `${fileWorkspaceScopeKey(hostId, threadId)}:${path}`;
 }

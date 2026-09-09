@@ -10,8 +10,8 @@ test("desktop keeps Agent primary and exposes a persistent tool workspace", asyn
   await expect(agentHeader).toBeVisible();
   await expect(agentHeader).toContainText("新会话");
   await expect(agentHeader.getByText("Agent", { exact: true })).toHaveCount(0);
-  await expect(page.getByTestId("workspace-tool-home")).toBeVisible();
-  await expect(page.getByTestId("workspace-tool-menu-trigger")).toBeVisible();
+  await expect(page.getByTestId("workspace-tool-home")).toBeHidden();
+  await expect(page.getByTestId("workspace-tool-menu-trigger")).toBeHidden();
   await expect(page.getByTestId("open-host-monitor-button")).toHaveCount(0);
   await expect(page.getByTestId("desktop-sidebar-collapse")).toBeVisible();
 
@@ -19,11 +19,11 @@ test("desktop keeps Agent primary and exposes a persistent tool workspace", asyn
     .getByRole("region", { name: "Agent" })
     .getByTestId("workspace-tool-sidebar-toggle");
   await toolToggle.click();
-  await expect(page.getByTestId("workspace-tool-home")).toBeHidden();
+  await expect(page.getByTestId("workspace-tool-home")).toBeVisible();
   await expect(page.getByTestId("chat-main-pane")).toBeVisible();
 
   await toolToggle.click();
-  await expect(page.getByTestId("workspace-tool-home")).toBeVisible();
+  await expect(page.getByTestId("workspace-tool-home")).toBeHidden();
 });
 
 test("restoring an active tool does not reopen an explicitly hidden sidebar", async ({ page }) => {

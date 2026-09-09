@@ -6,6 +6,7 @@ import type { WorkspaceToolCatalogItem } from "@/components/chat/workspace-tools
 export interface WorkspaceFilesPanelContext {
   layout: Ref<"desktop" | "mobile">;
   selectedThreadId: Ref<string | null>;
+  workspaceThreadId: ComputedRef<string | null>;
   selectedProjectId: Ref<number | null>;
   selectedHostId: Ref<number | null>;
   rootPath: ComputedRef<string>;

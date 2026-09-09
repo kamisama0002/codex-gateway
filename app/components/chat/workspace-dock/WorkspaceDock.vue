@@ -6,7 +6,7 @@ import { useWorkspaceLaunchActions } from "@/composables/workspace/useWorkspaceL
 import { useTmuxMonitorLauncher } from "@/composables/workspace/useTmuxMonitorLauncher";
 import { useChatWorkspaceState } from "../chat-workspace-state";
 import BrowserOpenDialog from "@/components/browser/BrowserOpenDialog.vue";
-import { fileWorkspaceScopeKey } from "@/stores/file-workspace";
+import { fileWorkspaceScopeKey, fileWorkspaceThreadId } from "@/stores/file-workspace/paths";
 import {
   useGatewayWorkspaceLayoutStore,
   workspaceLayoutScopeKey,
@@ -54,9 +54,27 @@ const {
   selectedProjectId: workspace.selectedProjectId,
   selectedThreadId: workspace.selectedThreadId,
 });
+const workspaceActions = useWorkspaceLaunchActions();
+const fileThreadId = computed(() =>
+  workspace.selectedHostId.value === null
+    ? null
+    : fileWorkspaceThreadId(
+        workspace.selectedHostId.value,
+        workspace.selectedProjectId.value,
+        workspace.selectedThreadId.value,
+      ),
+);
+const fileRequestScopeKey = computed(() =>
+  workspace.selectedHostId.value !== null && fileThreadId.value !== null
+    ? fileWorkspaceScopeKey(workspace.selectedHostId.value, fileThreadId.value)
+    : null,
+);
+const fileWorkspaceAvailable = computed(
+  () => workspaceActions.canOpenFiles.value && fileThreadId.value !== null,
+);
 const panels = useWorkspaceDockPanels({
   layout: refs.layout,
-  selectedThreadId: workspace.selectedThreadId,
+  filesPanelAvailable: fileWorkspaceAvailable,
   filesPanelOpen: computed(() => workspaceLayout.isFilesPanelOpen(scopeKey.value)),
   toolSidebarOpen,
   terminalPanels,
@@ -67,11 +85,6 @@ const panels = useWorkspaceDockPanels({
   gitReviewPanel,
   scopeKey,
 });
-const fileRequestScopeKey = computed(() =>
-  workspace.selectedHostId.value && workspace.selectedThreadId.value
-    ? fileWorkspaceScopeKey(workspace.selectedHostId.value, workspace.selectedThreadId.value)
-    : null,
-);
 const panelIds = computed(() => [
   workspaceLayout.isFilesPanelOpen(scopeKey.value),
   terminalPanels.value.map(({ id }) => id),
@@ -82,13 +95,13 @@ const panelIds = computed(() => [
   gitReviewPanel.value.map(({ id }) => id),
 ]);
 const dockviewHost = ref<HTMLElement | null>(null);
-const workspaceActions = useWorkspaceLaunchActions();
 const tmuxLauncher = useTmuxMonitorLauncher();
 const browserDialogOpen = ref(false);
 const toolCatalog = computed(() =>
   createWorkspaceToolCatalog({
-    canOpenThreadTools:
-      workspaceActions.canOpenThreadTools.value && fileWorkspaceRoot.value.trim() !== "",
+    canOpenFiles: fileWorkspaceAvailable.value,
+    canOpenGitReview:
+      workspaceActions.canOpenGitReview.value && fileWorkspaceRoot.value.trim() !== "",
     canLaunchRemoteTools: workspaceActions.canLaunch.value,
     canOpenBrowser: workspaceActions.canLaunch.value || workspaceActions.isManagedRuntime.value,
     canOpenTmux: tmuxLauncher.canOpen.value,
@@ -153,6 +166,7 @@ const dockTheme = computed(() => (isDark.value ? themeDark : themeLight));
 provide(WORKSPACE_FILES_PANEL_CONTEXT, {
   layout: refs.layout,
   selectedThreadId: workspace.selectedThreadId,
+  workspaceThreadId: fileThreadId,
   selectedProjectId: workspace.selectedProjectId,
   selectedHostId: workspace.selectedHostId,
   rootPath: fileWorkspaceRoot,
