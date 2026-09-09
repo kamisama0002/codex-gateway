@@ -159,9 +159,7 @@ class RecordingDockerEngine implements DockerEngine {
         nodeId: options.legacyPlacement === true ? null : "node__default",
         placementGeneration: options.legacyPlacement === true ? null : 1,
         workspaceKey:
-          options.legacyPlacement === true
-            ? null
-            : "ws__1234567890abcdef1234567890abcdef",
+          options.legacyPlacement === true ? null : "ws__1234567890abcdef1234567890abcdef",
         memoryBytes: 2 * 1024 * 1024 * 1024,
         nanoCpus: 0,
         pidsLimit: 256,
@@ -793,6 +791,42 @@ describe("RuntimeLifecycleService", () => {
       Memory: 4_294_967_296,
       NanoCpus: 4_000_000_000,
       PidsLimit: 512,
+    });
+  });
+
+  it("reads browser readiness without blocking the App Server lifecycle", async () => {
+    const engine = new RecordingDockerEngine({
+      existingContainerId: "container-a",
+      existingRunning: true,
+    });
+    engine.execResult = {
+      code: 0,
+      stdout: JSON.stringify({ browser: "ready" }),
+      stderr: "",
+    };
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+
+    await expect(service.browserStatus(lookupFor("runtime-a"))).resolves.toEqual({
+      runtimeId: "runtime-a",
+      status: "running",
+      browser: "ready",
+    });
+    expect(engine.execCalls[0]).toMatchObject({
+      command: "node /usr/local/lib/agent-runtime-browser-status.mjs",
+    });
+  });
+
+  it("returns a fixed internal browser relay target for a running placement", async () => {
+    const engine = new RecordingDockerEngine({
+      existingContainerId: "container-a",
+      existingRunning: true,
+    });
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+
+    await expect(service.resolveBrowserRelay(lookupFor("runtime-a"))).resolves.toEqual({
+      host: "codex-runtime-existing",
+      port: 6080,
+      serviceToken: "existing-service-token",
     });
   });
 

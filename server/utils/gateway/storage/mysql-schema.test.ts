@@ -78,4 +78,14 @@ describe("MySQL capability schema", () => {
     expect(sql).toContain("workspace_key VARCHAR(128) NULL");
     expect(sql).toContain("fk_user_agent_runtimes_runtime_node");
   });
+
+  it("moves the built-in browser capability onto the shared Chromium CDP endpoint", () => {
+    const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 18);
+    const sql = migration?.statements.join("\n") ?? "";
+    expect(sql).toContain("org__browser");
+    expect(sql).toContain("--cdp-endpoint");
+    expect(sql).toContain("http://127.0.0.1:9222");
+    expect(sql).not.toContain("--headless");
+    expect(sql).not.toContain("--user-data-dir");
+  });
 });

@@ -5,6 +5,8 @@ import { z } from "zod";
 import { HmacRequestAuthenticator, RuntimeAuthenticationError } from "./auth.js";
 
 const relayPath = /^\/v1\/runtimes\/([^/]+)\/generations\/(\d+)\/rpc$/u;
+const browserTunnelPath =
+  /^\/v1\/runtimes\/([^/]+)\/generations\/(\d+)\/browser-tunnel(?:\/raw)?$/u;
 const relayRequestSchema = z
   .object({
     runtimeId: z
@@ -63,10 +65,13 @@ async function handleUpgrade(
   let downstream: WebSocket | null = null;
   try {
     const url = new URL(request.url ?? "/", "http://runtime-manager.internal");
+    const match = relayPath.exec(url.pathname);
+    if (match === null) {
+      if (browserTunnelPath.test(url.pathname)) return;
+      return rejectUpgrade(socket, 404);
+    }
     if (request.method !== "GET" || url.search !== "") return rejectUpgrade(socket, 404);
     options.authenticator.authenticate(request.headers, Buffer.alloc(0), "GET", url.pathname);
-    const match = relayPath.exec(url.pathname);
-    if (match === null) return rejectUpgrade(socket, 404);
     const input = relayRequestSchema.parse({
       runtimeId: decodeURIComponent(match[1] ?? ""),
       placementGeneration: Number(match[2]),

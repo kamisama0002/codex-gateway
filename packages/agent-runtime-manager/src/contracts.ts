@@ -1,7 +1,9 @@
 import {
   managedRuntimeEndpointSchema,
+  runtimeBrowserStatusSchema,
   runtimeTypeSchema,
   type ManagedRuntimeEndpoint,
+  type RuntimeBrowserStatus,
   type RuntimeType,
 } from "@codex-gateway/agent-runtime-contracts";
 import { z } from "zod";
@@ -324,3 +326,5 @@ export const runtimeManagerPolicySchema = z
   );
 
 export type { ManagedRuntimeEndpoint, RuntimeType };
+export { runtimeBrowserStatusSchema };
+export type { RuntimeBrowserStatus };

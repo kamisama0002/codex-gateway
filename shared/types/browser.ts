@@ -1,4 +1,5 @@
 export interface BrowserPreviewTarget {
+  targetType?: "url" | "runtime";
   hostId: number;
   projectId?: number | null;
   threadId?: string | null;

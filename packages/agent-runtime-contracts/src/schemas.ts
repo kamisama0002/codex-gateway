@@ -37,10 +37,28 @@ export const managedRuntimeEndpointSchema = z
   .object({
     runtimeId: z.string().min(1),
     websocketUrl: z.url(),
+    browserUrl: z.url().optional(),
     serviceToken: z.string().min(1),
   })
   .strict();
 export type ManagedRuntimeEndpoint = z.infer<typeof managedRuntimeEndpointSchema>;
+
+export const runtimeBrowserStateSchema = z.enum([
+  "not_started",
+  "starting",
+  "ready",
+  "failed",
+]);
+export type RuntimeBrowserState = z.infer<typeof runtimeBrowserStateSchema>;
+
+export const runtimeBrowserStatusSchema = z
+  .object({
+    runtimeId: z.string().min(1),
+    status: z.enum(["absent", "stopped", "running"]),
+    browser: runtimeBrowserStateSchema,
+  })
+  .strict();
+export type RuntimeBrowserStatus = z.infer<typeof runtimeBrowserStatusSchema>;
 
 export const managedRuntimeStatusSchema = userAgentRuntimeRecordSchema.omit({ containerId: true });
 export type ManagedRuntimeStatus = z.infer<typeof managedRuntimeStatusSchema>;

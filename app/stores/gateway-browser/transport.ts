@@ -20,6 +20,21 @@ export async function openBrowserPreview(input: BrowserPreviewTarget) {
   return response.session;
 }
 
+export async function openRuntimeBrowserPreview(input: BrowserPreviewTarget) {
+  const response = await useGatewayRealtimeStore().request(
+    (requestId) => ({
+      type: "browser.runtime.open",
+      requestId,
+      panelId: input.panelId,
+      projectId: input.projectId,
+      threadId: input.threadId,
+    }),
+    expectBrowserOpened,
+    { timeoutMs: 90_000 },
+  );
+  return response.session;
+}
+
 function browserPreviewWireTarget(input: BrowserPreviewTarget): BrowserPreviewTarget {
   return {
     hostId: input.hostId,

@@ -90,6 +90,7 @@ const toolCatalog = computed(() =>
     canOpenThreadTools:
       workspaceActions.canOpenThreadTools.value && fileWorkspaceRoot.value.trim() !== "",
     canLaunchRemoteTools: workspaceActions.canLaunch.value,
+    canOpenBrowser: workspaceActions.canLaunch.value || workspaceActions.isManagedRuntime.value,
     canOpenTmux: tmuxLauncher.canOpen.value,
     canMonitorHost: workspaceActions.canMonitorHost.value,
     subAgents: subAgentPanels.value.map(({ hostId, threadId, title }) => ({
@@ -102,7 +103,8 @@ const toolCatalog = computed(() =>
       openGitReview: workspaceActions.openGitReview,
       openTerminal: workspaceActions.openTerminal,
       openBrowser: () => {
-        browserDialogOpen.value = true;
+        if (workspaceActions.isManagedRuntime.value) workspaceActions.openRuntimeBrowser();
+        else browserDialogOpen.value = true;
       },
       openSubAgent: (subAgent) => {
         void threadView.openSubAgentPanel({

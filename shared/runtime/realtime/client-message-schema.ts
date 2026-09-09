@@ -329,8 +329,18 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z
       .strict(),
     z
       .object({
+        type: z.literal("browser.runtime.open"),
+        ...requestIdField,
+        projectId: positiveId.nullable().optional(),
+        threadId: nullableString,
+        panelId: nonEmptyString,
+      })
+      .strict(),
+    z
+      .object({
         type: z.literal("browser.open"),
         ...requestIdField,
+        targetType: z.enum(["url", "runtime"]).optional(),
         hostId: positiveId,
         projectId: positiveId.nullable().optional(),
         threadId: nullableString,

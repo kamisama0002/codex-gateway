@@ -194,6 +194,7 @@ const threadOpenResultFields = {
 const terminalSessionSchema = z
   .object({
     sessionId: nonEmptyString,
+    targetType: z.enum(["url", "runtime"]).optional(),
     hostId: positiveId,
     projectId: positiveId.nullable(),
     threadId: z.string().nullable(),

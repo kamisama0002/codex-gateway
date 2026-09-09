@@ -79,6 +79,28 @@ describe("RuntimeManagerClient", () => {
     expect(JSON.stringify(target)).not.toContain("manager-secret");
   });
 
+  it("creates separate signed browser and raw-browser relay targets", () => {
+    const client = new RuntimeManagerClient({
+      baseUrl: "https://node-a.runtime.internal",
+      nodeId: "node__a",
+      secret: "manager-secret",
+      now: () => 1_788_134_400_000,
+      nonce: () => "browser-nonce",
+    });
+
+    const target = client.browserRelayTarget(runtimePlacement());
+
+    expect(target.websocketUrl).toBe(
+      "wss://node-a.runtime.internal/v1/runtimes/runtime_01/generations/2/browser-tunnel",
+    );
+    expect(target.rawWebsocketUrl).toBe(
+      "wss://node-a.runtime.internal/v1/runtimes/runtime_01/generations/2/browser-tunnel/raw",
+    );
+    expect(target.headers()["x-runtime-signature"]).toBeTypeOf("string");
+    expect(target.rawHeaders()["x-runtime-signature"]).toBeTypeOf("string");
+    expect(JSON.stringify(target)).not.toContain("manager-secret");
+  });
+
   it("signs requested start resources in the exact request body", async () => {
     const timestamp = 1_788_131_200_000;
     const nonce = "resources-nonce";

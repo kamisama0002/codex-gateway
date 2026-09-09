@@ -7,9 +7,13 @@ import type { AgentConnectOpts } from "agent-base";
 import { sshConnections } from "../infra/host-services";
 import { browserPreviewManager, type BrowserPreviewSession } from "./browser-preview-manager";
 import { BROWSER_PREVIEW_MAX_WEBSOCKET_PENDING_BYTES } from "./browser-preview-websocket-limits";
+import { runtimeBrowserUpstreamConnector } from "./runtime-browser-upstream";
 
 export class BrowserPreviewUpstreamConnector {
   async openSocket(session: BrowserPreviewSession): Promise<Duplex> {
+    if (session.targetConfig.targetType === "runtime") {
+      return runtimeBrowserUpstreamConnector.openSocket(session);
+    }
     const channel = await sshConnections.openTcpChannel(session.host, {
       host: session.target.hostname,
       port: targetPort(session),
@@ -42,6 +46,9 @@ export class BrowserPreviewUpstreamConnector {
     protocols: string[] | undefined,
     headers: Record<string, string>,
   ) {
+    if (session.targetConfig.targetType === "runtime") {
+      return runtimeBrowserUpstreamConnector.openWebSocket(session, path, protocols, headers);
+    }
     const socket = await this.openSocket(session);
     const protocol = session.target.protocol === "https:" ? "wss:" : "ws:";
     try {

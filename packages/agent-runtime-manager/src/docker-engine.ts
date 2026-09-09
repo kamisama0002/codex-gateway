@@ -17,6 +17,8 @@ export const runtimeResourceLabels = {
   workspaceKey: "com.codex-gateway.workspace-key",
 } as const;
 
+export const RUNTIME_BROWSER_PORT = 6080;
+
 export class DockerRuntimeIdentityError extends Error {
   readonly code = "runtime_identity_conflict";
 
@@ -182,7 +184,10 @@ export class DockerodeEngine implements DockerEngine {
   async createManagedContainer(spec: DockerContainerCreateSpec): Promise<EngineContainerState> {
     for (const mount of spec.mounts) await this.ensureManagedVolume(mount);
 
-    const exposedPort = `${spec.internalPort}/tcp`;
+    const exposedPorts = {
+      [`${spec.internalPort}/tcp`]: {},
+      [`${RUNTIME_BROWSER_PORT}/tcp`]: {},
+    };
     const [primaryNetwork, ...additionalNetworks] = spec.networkNames;
     const container = await this.docker.createContainer({
       name: spec.containerName,
@@ -210,7 +215,7 @@ export class DockerodeEngine implements DockerEngine {
               `CODEX_GATEWAY_PROVIDER_TOKEN=${spec.providerConfig.token}`,
             ]),
       ],
-      ExposedPorts: { [exposedPort]: {} },
+      ExposedPorts: exposedPorts,
       HostConfig: {
         Binds: spec.mounts.map((mount) => `${mount.volumeName}:${mount.containerPath}`),
         CapDrop: spec.security.CapDrop,

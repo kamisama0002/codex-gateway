@@ -87,6 +87,9 @@ describe("DockerodeEngine", () => {
 
     expect(createContainer).toHaveBeenCalledOnce();
     expect(createContainer.mock.calls[0]?.[0]).toMatchObject({
+      ExposedPorts: { "4555/tcp": {}, "6080/tcp": {} },
+    });
+    expect(createContainer.mock.calls[0]?.[0]).toMatchObject({
       HostConfig: { NetworkMode: "agent-runtime" },
     });
     expect(createContainer.mock.calls[0]?.[0]).not.toHaveProperty("NetworkingConfig");

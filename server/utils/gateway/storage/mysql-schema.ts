@@ -695,4 +695,28 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
       `,
     ],
   },
+  {
+    version: 18,
+    statements: [
+      `
+        UPDATE capability_definitions
+        SET
+          version = '1.1.0',
+          config_json = JSON_OBJECT(
+            'transport', 'stdio',
+            'command', 'playwright-mcp',
+            'args', JSON_ARRAY(
+              '--no-sandbox',
+              '--cdp-endpoint', 'http://127.0.0.1:9222',
+              '--output-dir', '/workspace/.agent/browser',
+              '--caps', 'vision,pdf'
+            )
+          ),
+          updated_at = DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-%dT%H:%i:%s.%fZ')
+        WHERE id = '${DEFAULT_BROWSER_CAPABILITY_ID}'
+          AND JSON_UNQUOTE(JSON_EXTRACT(source_json, '$.type')) = 'builtin'
+          AND JSON_UNQUOTE(JSON_EXTRACT(source_json, '$.locator')) = 'playwright-mcp'
+      `,
+    ],
+  },
 ];

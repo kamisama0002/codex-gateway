@@ -112,7 +112,7 @@ format="#{q:session_name} #{q:session_id} #{session_created} #{window_index} #{q
 pane_rows="$(tmux list-panes -a -F "$format" 2>&1)" || status=$?
 if [ "$status" -ne 0 ]; then
   case "$pane_rows" in
-    *"no server running"*|*"failed to connect to server"*) exit 0 ;;
+    *"no server running"*|*"failed to connect to server"*|*"error connecting to "*"(No such file or directory)"*) exit 0 ;;
     *) printf '%s\n' "$pane_rows" >&2; exit "$status" ;;
   esac
 fi

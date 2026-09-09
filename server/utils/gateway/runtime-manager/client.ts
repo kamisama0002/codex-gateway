@@ -1,8 +1,10 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import {
   managedRuntimeEndpointSchema,
+  runtimeBrowserStatusSchema,
   runtimeTypeSchema,
   type ManagedRuntimeEndpoint,
+  type RuntimeBrowserStatus,
   type RuntimeType,
 } from "@codex-gateway/agent-runtime-contracts";
 import type { ResolvedRuntimeSecret } from "~~/shared/types";
@@ -265,6 +267,16 @@ export interface RuntimeRelayTarget {
   headers(): Record<string, string>;
 }
 
+export interface RuntimeBrowserRelayTarget {
+  runtimeId: string;
+  websocketUrl: string;
+  headers(): Record<string, string>;
+  rawWebsocketUrl: string;
+  rawHeaders(): Record<string, string>;
+}
+
+export type { RuntimeBrowserStatus };
+
 export interface RuntimeLifecycleResult {
   runtimeId: string;
   containerId: string | null;
@@ -354,6 +366,31 @@ export class RuntimeManagerClient {
       websocketUrl: `${protocol}//${managerUrl.host}${path}`,
       headers: () => this.signedHeaders("GET", path, ""),
     };
+  }
+
+  browserRelayTarget(input: RuntimePlacementIdentity): RuntimeBrowserRelayTarget {
+    const placement = this.placement(input);
+    const path = `/v1/runtimes/${encodeURIComponent(placement.runtimeId)}/generations/${placement.placementGeneration}/browser-tunnel`;
+    const rawPath = `${path}/raw`;
+    const managerUrl = new URL(this.baseUrl);
+    const protocol = managerUrl.protocol === "https:" ? "wss:" : "ws:";
+    return {
+      runtimeId: placement.runtimeId,
+      websocketUrl: `${protocol}//${managerUrl.host}${path}`,
+      headers: () => this.signedHeaders("GET", path, ""),
+      rawWebsocketUrl: `${protocol}//${managerUrl.host}${rawPath}`,
+      rawHeaders: () => this.signedHeaders("GET", rawPath, ""),
+    };
+  }
+
+  browserStatus(input: RuntimePlacementIdentity): Promise<RuntimeBrowserStatus> {
+    const placement = this.placement(input);
+    return this.requestParsed(
+      "GET",
+      `/v1/runtimes/${encodeURIComponent(placement.runtimeId)}/generations/${placement.placementGeneration}/browser`,
+      undefined,
+      runtimeBrowserStatusSchema,
+    );
   }
 
   stats(input: RuntimePlacementIdentity): Promise<AgentRuntimeStatsResult> {
