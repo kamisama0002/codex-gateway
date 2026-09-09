@@ -29,6 +29,10 @@ test("archives a thread and restores it from the host-tree Archived filter", asy
 
   await page.getByTestId("host-tree-menu").click();
   await page.getByTestId("archived-threads-toggle").click();
+  await expect(page.getByTestId("archived-threads-toggle")).toHaveAttribute(
+    "data-state",
+    "checked",
+  );
   const archivedButton = page.getByTestId(`archived-thread-button-${threadId}`);
   await expect(archivedButton).toBeVisible();
 
@@ -39,6 +43,10 @@ test("archives a thread and restores it from the host-tree Archived filter", asy
   await expect(secondPage.getByTestId(`thread-button-${threadId}`)).toHaveCount(0);
   await secondPage.getByTestId("host-tree-menu").click();
   await secondPage.getByTestId("archived-threads-toggle").click();
+  await expect(secondPage.getByTestId("archived-threads-toggle")).toHaveAttribute(
+    "data-state",
+    "checked",
+  );
   await expect(secondPage.getByTestId(`archived-thread-button-${threadId}`)).toBeVisible();
 
   await archivedButton.click({ button: "right" });

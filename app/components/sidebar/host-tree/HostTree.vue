@@ -34,8 +34,8 @@ function addProject() {
   if (addProjectHost.value) props.controller.addProject(addProjectHost.value);
 }
 
-function toggleArchivedFilter() {
-  props.controller.setArchivedFilter(!props.controller.archivedFilterActive);
+function updateArchivedFilter(value: boolean | "indeterminate") {
+  props.controller.setArchivedFilter(value === true);
 }
 </script>
 
@@ -76,8 +76,8 @@ function toggleArchivedFilter() {
           <DropdownMenuLabel class="text-ink-faint">{{ $t("app.filters") }}</DropdownMenuLabel>
           <DropdownMenuCheckboxItem
             data-testid="archived-threads-toggle"
-            :checked="controller.archivedFilterActive"
-            @click="toggleArchivedFilter"
+            :model-value="controller.archivedFilterActive"
+            @update:model-value="updateArchivedFilter"
           >
             {{ $t("app.archivedThreads") }}
           </DropdownMenuCheckboxItem>
