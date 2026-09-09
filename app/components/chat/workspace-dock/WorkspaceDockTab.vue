@@ -39,7 +39,7 @@ function toggleMaximize() {
     data-testid="workspace-dock-tab"
     :data-panel-kind="kind"
     :data-panel-title="title"
-    class="group flex h-full min-w-0 items-center gap-1 px-2 text-sm"
+    class="group flex h-full w-full min-w-0 items-center gap-1 px-2 text-sm"
     @dblclick="toggleMaximize"
   >
     <WorkspaceAgentTab v-if="kind === 'agent'" />

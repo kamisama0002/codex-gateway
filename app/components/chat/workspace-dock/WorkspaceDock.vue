@@ -206,6 +206,7 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
 
 <style scoped>
 .gateway-dockview {
+  --gateway-dock-tab-width: clamp(12rem, 15vw, 16rem);
   --dv-background-color: var(--surface);
   --dv-paneview-active-outline-color: transparent;
   --dv-tabs-and-actions-container-background-color: var(--surface);
@@ -229,11 +230,28 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
   padding-inline: 0.125rem;
 }
 
+/* Keep the Agent, sub-agent, and tool tabs visually aligned. Dockview sizes tabs from their
+   content by default, which makes a short tool label look disproportionately narrow beside the
+   Agent tab. A responsive basis gives the default tab a little more breathing room without making
+   the tab strip consume the entire viewport on smaller screens. */
+.gateway-dockview :deep(.dv-tabs-container.dv-horizontal > .dv-tab) {
+  flex: 0 0 var(--gateway-dock-tab-width);
+  width: var(--gateway-dock-tab-width) !important;
+  min-width: var(--gateway-dock-tab-width) !important;
+  max-width: var(--gateway-dock-tab-width) !important;
+}
+
 .gateway-dockview :deep(.dv-tab:has([data-panel-kind="toolHome"])) {
   display: none;
 }
 
 .gateway-dockview :deep(.dv-groupview:has([data-panel-kind="agent"]) .dv-tab) {
   background: transparent;
+}
+
+@media (max-width: 48rem) {
+  .gateway-dockview {
+    --gateway-dock-tab-width: 10rem;
+  }
 }
 </style>

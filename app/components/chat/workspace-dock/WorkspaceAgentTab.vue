@@ -32,7 +32,7 @@ const showPhase = computed(() => phase.value !== "idle" && phase.value !== "comp
 <template>
   <div
     data-testid="workspace-agent-header"
-    class="flex h-full min-w-0 items-center gap-2 px-1 text-left"
+    class="flex h-full w-full min-w-0 items-center gap-2 px-1 text-left"
   >
     <span class="max-w-64 truncate text-sm font-medium text-ink" :title="title">{{ title }}</span>
     <span
