@@ -1,9 +1,11 @@
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
+import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { threadHistoryTurnFromUnknown } from "~~/shared/runtime/app-server";
 import { idFromUnknown, stringFromUnknown } from "~~/shared/utils/records";
 import { gatewayDomainEvents } from "../domain-events";
 import { runtimeStatusFromCompletedTurn } from "../thread-utils/status";
 import { runtimePhaseFromStatus } from "~~/shared/thread-runtime-status";
+import { appServerTurnErrorFromNotification } from "../errors";
 import type { GatewayEventHandlerRegistry } from "./types";
 import { useGatewayTurnRecoveryStore } from "@/stores/gateway-turn-recovery";
 
@@ -43,6 +45,7 @@ export const turnEventHandlers: GatewayEventHandlerRegistry = {
       // A completion without a valid Turn can still be emitted after a provider failure. It is
       // terminal for the browser submission even though there is no history object to hydrate.
       useGatewayThreadTurnsStore().clearRequest(event.hostId, threadId);
+      showFallbackTurnError(event.hostId, threadId, null);
       return;
     }
     gatewayDomainEvents.emit("history-turn-synced", {
@@ -52,6 +55,9 @@ export const turnEventHandlers: GatewayEventHandlerRegistry = {
     });
     const turns = useGatewayThreadTurnsStore();
     turns.maybeRetryAfterTurnFailure(event.hostId, threadId, turn);
+    if (turn.status === "failed") {
+      showFallbackTurnError(event.hostId, threadId, String(turn.id), turn.error);
+    }
     if (turn.status !== "failed") turns.clearRequest(event.hostId, threadId);
   },
   "turn/diff/updated": (event, params, threadId) => {
@@ -77,3 +83,32 @@ export const turnEventHandlers: GatewayEventHandlerRegistry = {
     });
   },
 };
+
+function showFallbackTurnError(
+  hostId: number,
+  threadId: string,
+  turnId: string | null,
+  turnError?: {
+    message?: string | null;
+    codexErrorInfo?: unknown;
+    additionalDetails?: string | null;
+  } | null,
+) {
+  const gateway = useGatewayBootstrapStore();
+  const existing = gateway.errorForScope({ hostId, projectId: null, threadId });
+  if (existing?.turnId === turnId && existing.transient === false) return;
+  const error = appServerTurnErrorFromNotification(
+    { turnId, willRetry: false, error: turnError ?? { message: gateway.t("app.appServerError") } },
+    gateway.t,
+  );
+  gateway.setError(error.toDisplayMessage(), {
+    hostId,
+    threadId,
+    turnId,
+    category: error.category,
+    code: error.code,
+    details: error.additionalDetails,
+    retryable: false,
+    toast: true,
+  });
+}

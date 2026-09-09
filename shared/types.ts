@@ -51,7 +51,9 @@ export { GATEWAY_PET_IDS, isGatewayPetId } from "./types/pet";
 export type { GatewayPetId, GatewayPetSettings, GatewayPetStatus } from "./types/pet";
 export type {
   ModelCapabilities,
+  ModelReasoningEffort,
   ModelProviderDefinition,
+  ProviderModelInput,
   ProviderModelDefinition,
   PublicModelProviderDefinition,
   UpstreamWireApi,

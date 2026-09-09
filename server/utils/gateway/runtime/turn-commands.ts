@@ -13,6 +13,8 @@ import { parseTurnStartResponse, parseTurnSteerResponse } from "~~/shared/runtim
 import { threadRuntimeEvents } from "./thread-runtime-events";
 import { interruptTurnAndReconcile } from "./turn-interrupt-reconcile";
 
+const TURN_START_TIMEOUT_MS = 45_000;
+
 export class ThreadTurnCommandService {
   constructor(
     private readonly registry: ControllerRegistry,
@@ -25,18 +27,44 @@ export class ThreadTurnCommandService {
       `gateway-${randomUUID()}`,
     );
     return this.registry.withScopedSubscription(host, threadId, async (controller) => {
-      const result = await controller.enqueue(() =>
-        controller.client.request(
-          "turn/start",
-          buildTurnStartParams(threadId, clientUserMessageId, input, {
-            managedRuntime: isManagedRuntimeHost(host),
-          }),
-          120_000,
-          parseTurnStartResponse,
-        ),
-      );
-      controller.markActiveMainThread();
-      return result;
+      try {
+        const result = await controller.enqueue(() =>
+          controller.client.request(
+            "turn/start",
+            buildTurnStartParams(threadId, clientUserMessageId, input, {
+              managedRuntime: isManagedRuntimeHost(host),
+            }),
+            TURN_START_TIMEOUT_MS,
+            parseTurnStartResponse,
+          ),
+        );
+        controller.markActiveMainThread();
+        return result;
+      } catch (error) {
+        // A provider failure can leave app-server waiting without emitting turn/started or
+        // turn/completed. Publish a terminal Gateway event so connected and reconnected clients
+        // clear their submitting state instead of showing "thinking" forever.
+        try {
+          threadRuntimeEvents.record(host.id, threadId, "error", {
+            method: "error",
+            params: {
+              threadId,
+              turnId: null,
+              willRetry: false,
+              error: {
+                message: turnStartFailureMessage(error),
+              },
+            },
+          });
+        } catch (eventError) {
+          runtimeLog("failed to publish turn start failure", {
+            hostId: host.id,
+            threadId,
+            message: eventError instanceof Error ? eventError.message : String(eventError),
+          });
+        }
+        throw error;
+      }
     });
   }
 
@@ -131,6 +159,14 @@ export class ThreadTurnCommandService {
       });
     }
   }
+}
+
+function turnStartFailureMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.toLowerCase().includes("timed out")) {
+    return "Model request timed out before the turn started. Please retry.";
+  }
+  return message;
 }
 
 function isNoActiveTurnToSteer(error: unknown) {

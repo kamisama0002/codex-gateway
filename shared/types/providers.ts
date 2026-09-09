@@ -1,11 +1,25 @@
 export type UpstreamWireApi = "responses" | "chat_completions";
 
+export interface ModelReasoningEffort {
+  reasoningEffort: string;
+  description?: string | null;
+}
+
 export interface ModelCapabilities {
   tools: boolean;
   streamingTools: boolean;
   vision: boolean;
   reasoning: boolean;
   maxContextTokens: number | null;
+  defaultReasoningEffort?: string | null;
+  supportedReasoningEfforts?: ModelReasoningEffort[];
+}
+
+export interface ProviderModelInput {
+  modelId: string;
+  displayName: string;
+  enabled?: boolean;
+  capabilities: ModelCapabilities;
 }
 
 export interface ModelProviderDefinition {

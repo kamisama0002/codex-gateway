@@ -2,6 +2,13 @@ import { z } from "zod";
 
 export const upstreamWireApiSchema = z.enum(["responses", "chat_completions"]);
 
+export const modelReasoningEffortSchema = z
+  .object({
+    reasoningEffort: z.string().trim().min(1).max(64),
+    description: z.string().trim().max(256).nullable().optional(),
+  })
+  .strict();
+
 export const modelCapabilitiesSchema = z
   .object({
     tools: z.boolean(),
@@ -9,6 +16,8 @@ export const modelCapabilitiesSchema = z
     vision: z.boolean(),
     reasoning: z.boolean(),
     maxContextTokens: z.number().int().positive().nullable(),
+    defaultReasoningEffort: z.string().trim().min(1).max(64).nullable().optional().default(null),
+    supportedReasoningEfforts: z.array(modelReasoningEffortSchema).max(32).optional().default([]),
   })
   .strict();
 

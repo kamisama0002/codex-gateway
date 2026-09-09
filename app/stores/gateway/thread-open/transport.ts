@@ -21,6 +21,7 @@ export type ThreadStartedMessage = Extract<
 >;
 
 const MANAGED_RUNTIME_BROWSER_REQUEST_TIMEOUT_MS = 130_000;
+const TURN_REQUEST_TIMEOUT_MS = 60_000;
 
 export function realtimeRequestOptionsForHost(hostId: number, signal?: AbortSignal) {
   const timeoutMs = isManagedRuntimeHostId(hostId)
@@ -30,6 +31,14 @@ export function realtimeRequestOptionsForHost(hostId: number, signal?: AbortSign
   if (timeoutMs !== undefined) return { timeoutMs };
   if (signal !== undefined) return { signal };
   return undefined;
+}
+
+export function realtimeTurnRequestOptionsForHost(hostId: number, signal?: AbortSignal) {
+  const options = realtimeRequestOptionsForHost(hostId, signal);
+  return {
+    ...options,
+    timeoutMs: TURN_REQUEST_TIMEOUT_MS,
+  };
 }
 
 export function requestActivateThreadSnapshot(input: {

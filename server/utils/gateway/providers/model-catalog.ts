@@ -1,9 +1,10 @@
-import type { ModelListResult } from "~~/shared/types";
+import type { ModelCapabilities, ModelListResult } from "~~/shared/types";
 
 interface ProviderModelAccess {
   providerId: string;
   modelId: string;
   displayName?: string;
+  capabilities?: ModelCapabilities;
 }
 
 export function filterManagedModelCatalog(
@@ -18,9 +19,9 @@ export function filterManagedModelCatalog(
       .filter((model) => model.providerId === runtimeProviderId)
       .map((model) => model.modelId),
   );
-  const data = catalog.data.filter(
-    (model) => allowedModelIds.has(model.model) || allowedModelIds.has(model.id),
-  );
+  const data = catalog.data
+    .filter((model) => allowedModelIds.has(model.model) || allowedModelIds.has(model.id))
+    .map((model) => mergeProviderModelMetadata(model, availableModels));
 
   // Codex App Server only knows the models in its own built-in catalog. Provider-backed
   // models can be added by an administrator after a runtime is provisioned, so append any
@@ -39,10 +40,38 @@ export function filterManagedModelCatalog(
       id: model.modelId,
       model: model.modelId,
       displayName: model.displayName?.trim() || model.modelId,
+      ...reasoningMetadata(model.capabilities),
     }));
   const mergedData = [...data, ...missingModels];
   if (mergedData.length === 0 || mergedData.some((model) => model.isDefault === true)) {
     return { ...catalog, data: mergedData };
   }
   return { ...catalog, data: [{ ...mergedData[0]!, isDefault: true }, ...mergedData.slice(1)] };
+}
+
+function mergeProviderModelMetadata(
+  model: ModelListResult["data"][number],
+  availableModels: ProviderModelAccess[],
+) {
+  const providerModel = availableModels.find(
+    (candidate) => candidate.modelId === model.model || candidate.modelId === model.id,
+  );
+  if (providerModel === undefined) return model;
+  return {
+    ...model,
+    ...(providerModel.displayName?.trim() ? { displayName: providerModel.displayName.trim() } : {}),
+    ...reasoningMetadata(providerModel.capabilities),
+  };
+}
+
+function reasoningMetadata(capabilities?: ModelCapabilities) {
+  if (capabilities === undefined) return {};
+  return {
+    ...(capabilities.defaultReasoningEffort
+      ? { defaultReasoningEffort: capabilities.defaultReasoningEffort }
+      : {}),
+    ...(capabilities.supportedReasoningEfforts?.length
+      ? { supportedReasoningEfforts: capabilities.supportedReasoningEfforts }
+      : {}),
+  };
 }

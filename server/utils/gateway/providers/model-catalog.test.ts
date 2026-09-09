@@ -42,4 +42,64 @@ describe("managed provider model catalog", () => {
       { id: "deepseek-v4-pro", model: "deepseek-v4-pro", displayName: "DeepSeek V4 Pro" },
     ]);
   });
+
+  it("uses provider reasoning metadata for existing and discovered models", () => {
+    const result = filterManagedModelCatalog(
+      {
+        data: [{ id: "qwen", model: "qwen3", displayName: "Qwen" }],
+      },
+      [
+        {
+          providerId: "qwen",
+          modelId: "qwen3",
+          displayName: "Qwen 3",
+          capabilities: {
+            tools: true,
+            streamingTools: true,
+            vision: true,
+            reasoning: true,
+            maxContextTokens: 131072,
+            defaultReasoningEffort: "medium",
+            supportedReasoningEfforts: [
+              { reasoningEffort: "low" },
+              { reasoningEffort: "medium" },
+            ],
+          },
+        },
+        {
+          providerId: "qwen",
+          modelId: "qwen2",
+          displayName: "Qwen 2",
+          capabilities: {
+            tools: true,
+            streamingTools: true,
+            vision: false,
+            reasoning: true,
+            maxContextTokens: null,
+            supportedReasoningEfforts: [{ reasoningEffort: "high" }],
+          },
+        },
+      ],
+    );
+
+    expect(result.data).toEqual([
+      {
+        id: "qwen",
+        model: "qwen3",
+        displayName: "Qwen 3",
+        isDefault: true,
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "low" },
+          { reasoningEffort: "medium" },
+        ],
+      },
+      {
+        id: "qwen2",
+        model: "qwen2",
+        displayName: "Qwen 2",
+        supportedReasoningEfforts: [{ reasoningEffort: "high" }],
+      },
+    ]);
+  });
 });

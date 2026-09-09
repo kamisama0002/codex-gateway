@@ -1,6 +1,6 @@
 import type { ComposerTurnOptions } from "~~/shared/types";
 import { useGatewayRealtimeStore } from "@/stores/gateway-realtime";
-import { realtimeRequestOptionsForHost } from "@/stores/gateway/thread-open/transport";
+import { realtimeTurnRequestOptionsForHost } from "@/stores/gateway/thread-open/transport";
 import {
   expectThreadTurnsPage,
   expectThreadItemsPage,
@@ -38,7 +38,7 @@ export function requestTurnStart(input: {
       references: input.options.references ?? [],
     }),
     expectTurnStartAccepted,
-    realtimeRequestOptionsForHost(input.hostId, input.signal),
+    realtimeTurnRequestOptionsForHost(input.hostId, input.signal),
   );
 }
 
@@ -88,7 +88,7 @@ export function requestTurnSteer(input: {
       references: input.options.references ?? [],
     }),
     expectTurnSteerAccepted,
-    { signal: input.signal },
+    realtimeTurnRequestOptionsForHost(input.hostId, input.signal),
   );
 }
 

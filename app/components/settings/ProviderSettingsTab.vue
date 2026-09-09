@@ -7,6 +7,7 @@ import {
   Loader2Icon,
   PencilIcon,
   PlusIcon,
+  RefreshCwIcon,
   Trash2Icon,
 } from "@lucide/vue";
 import { FetchError } from "ofetch";
@@ -69,8 +70,10 @@ const gatewayCatalog = useGatewayCatalogStore();
 const loading = ref(true);
 const saving = ref(false);
 const deleting = ref(false);
+const discoveringProviderId = ref<string | null>(null);
 const forbidden = ref(false);
 const error = ref("");
+const notice = ref("");
 const providers = ref<ProviderWithModels[]>([]);
 const availableModels = ref<UserProviderModel[]>([]);
 const expandedProviderIds = ref(new Set<string>());
@@ -103,6 +106,28 @@ async function load() {
     }
   } finally {
     loading.value = false;
+  }
+}
+
+async function discoverModels(provider: ProviderWithModels) {
+  if (discoveringProviderId.value !== null) return;
+  discoveringProviderId.value = provider.id;
+  error.value = "";
+  notice.value = "";
+  try {
+    const response = await gatewayApi<{
+      providerId: string;
+      models: ProviderModelDefinition[];
+      discoveredCount: number;
+    }>(`/api/admin/providers/${encodeURIComponent(provider.id)}/models/discover`, {
+      method: "POST",
+    });
+    notice.value = t("app.modelsDiscovered", { count: response.discoveredCount });
+    await load();
+  } catch (caught: unknown) {
+    error.value = gatewayErrorMessage(caught, t("app.modelsDiscoveryFailed"));
+  } finally {
+    discoveringProviderId.value = null;
   }
 }
 
@@ -329,6 +354,9 @@ function emptyModelForm(providerId = ""): ModelForm {
     >
       {{ error }}
     </div>
+    <div v-if="notice" role="status" class="mt-3 text-sm text-accent-green">
+      {{ notice }}
+    </div>
 
     <div v-if="loading" class="flex items-center gap-2 py-8 text-sm text-ink-muted">
       <Loader2Icon class="size-4 animate-spin" />
@@ -385,6 +413,23 @@ function emptyModelForm(providerId = ""): ModelForm {
               <span class="truncate">{{ provider.baseUrl }}</span>
             </div>
           </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            class="shrink-0 text-ink-muted"
+            :disabled="discoveringProviderId !== null"
+            :aria-label="t('app.discoverModelsNamed', { name: provider.name })"
+            :title="t('app.discoverModelsNamed', { name: provider.name })"
+            :data-testid="`discover-models-${provider.id}`"
+            @click="discoverModels(provider)"
+          >
+            <Loader2Icon
+              v-if="discoveringProviderId === provider.id"
+              class="size-3.5 animate-spin"
+            />
+            <RefreshCwIcon v-else class="size-3.5" />
+          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -581,6 +626,25 @@ function emptyModelForm(providerId = ""): ModelForm {
                 modelForm.capabilities.maxContextTokens = $event === '' ? null : Number($event)
               "
             />
+          </div>
+          <div v-if="modelForm.capabilities.supportedReasoningEfforts?.length" class="space-y-1.5">
+            <Label>{{ t("app.supportedReasoningEfforts") }}</Label>
+            <div class="flex flex-wrap gap-1.5 text-xs text-ink-secondary">
+              <span
+                v-for="effort in modelForm.capabilities.supportedReasoningEfforts"
+                :key="effort.reasoningEffort"
+                class="rounded-md border border-hairline px-2 py-1"
+              >
+                {{ effort.reasoningEffort }}
+              </span>
+            </div>
+            <p v-if="modelForm.capabilities.defaultReasoningEffort" class="text-xs text-ink-muted">
+              {{
+                t("app.defaultReasoningEffortNamed", {
+                  effort: modelForm.capabilities.defaultReasoningEffort,
+                })
+              }}
+            </p>
           </div>
           <label
             class="flex items-center justify-between gap-3 border-t border-hairline pt-3 text-sm"

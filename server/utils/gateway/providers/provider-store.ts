@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   ModelCapabilities,
   ModelProviderDefinition,
+  ProviderModelInput,
   ProviderModelDefinition,
   PublicModelProviderDefinition,
   UpstreamWireApi,
@@ -39,13 +40,6 @@ export interface ProviderUpdateInput {
   requestTimeoutMs?: number;
 }
 
-export interface ProviderModelInput {
-  modelId: string;
-  displayName: string;
-  enabled?: boolean;
-  capabilities: ModelCapabilities;
-}
-
 export interface ProviderStore {
   create(input: ProviderCreateInput): Promise<PublicModelProviderDefinition>;
   update(id: string, input: ProviderUpdateInput): Promise<PublicModelProviderDefinition>;
@@ -54,6 +48,10 @@ export interface ProviderStore {
   getWithSecret(id: string): Promise<(ModelProviderDefinition & { apiKey: string }) | null>;
   delete(id: string): Promise<boolean>;
   upsertModel(providerId: string, input: ProviderModelInput): Promise<ProviderModelDefinition>;
+  syncDiscoveredModels(
+    providerId: string,
+    inputs: ProviderModelInput[],
+  ): Promise<ProviderModelDefinition[]>;
   listModels(providerId: string): Promise<ProviderModelDefinition[]>;
   grant(input: { userId: number; providerId: string; modelId: string }): Promise<UserModelGrant>;
   revoke(input: { userId: number; providerId: string; modelId: string }): Promise<boolean>;
@@ -198,6 +196,40 @@ export function createProviderStore(db: GatewayDb): ProviderStore {
       });
     },
 
+    async syncDiscoveredModels(providerId, inputs) {
+      const normalizedProviderId = providerIdSchema.parse(providerId);
+      if (inputs.length === 0) throw new Error("No models were discovered");
+      const now = new Date().toISOString();
+      return await db.transaction(async (tx) => {
+        await requiredProvider(tx, normalizedProviderId);
+        for (const input of inputs) {
+          const modelId = providerModelIdSchema.parse(input.modelId);
+          const displayName = input.displayName.trim();
+          if (displayName === "") throw new Error("Model display name is required");
+          const capabilities = modelCapabilitiesSchema.parse(input.capabilities);
+          await tx.execute(
+            `INSERT INTO provider_models
+             (provider_id, model_id, display_name, enabled, capabilities_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               display_name = VALUES(display_name),
+               capabilities_json = VALUES(capabilities_json),
+               updated_at = VALUES(updated_at)`,
+            [
+              normalizedProviderId,
+              modelId,
+              displayName,
+              input.enabled ?? true,
+              JSON.stringify(capabilities),
+              now,
+              now,
+            ],
+          );
+        }
+        return await listModelsInTransaction(tx, normalizedProviderId);
+      });
+    },
+
     async listModels(providerId) {
       const rows = await db.many(
         "SELECT * FROM provider_models WHERE provider_id = ? ORDER BY model_id ASC",
@@ -294,6 +326,9 @@ export const providerStore: ProviderStore = {
   upsertModel(providerId, input) {
     return createProviderStore(gatewayDatabase()).upsertModel(providerId, input);
   },
+  syncDiscoveredModels(providerId, inputs) {
+    return createProviderStore(gatewayDatabase()).syncDiscoveredModels(providerId, inputs);
+  },
   listModels(providerId) {
     return createProviderStore(gatewayDatabase()).listModels(providerId);
   },
@@ -335,6 +370,17 @@ async function requiredModel(
   ]);
   if (row === null) throw new Error("Provider model not found");
   return rowToModel(row);
+}
+
+async function listModelsInTransaction(
+  db: GatewayDb,
+  providerId: string,
+): Promise<ProviderModelDefinition[]> {
+  const rows = await db.many(
+    "SELECT * FROM provider_models WHERE provider_id = ? ORDER BY model_id ASC",
+    [providerIdSchema.parse(providerId)],
+  );
+  return rows.map(rowToModel);
 }
 
 function rowToProvider(row: Record<string, unknown>): ModelProviderDefinition {

@@ -14,6 +14,8 @@ import {
   ModelSelectorTrigger,
 } from "@codex-gateway/ai-elements/model-selector";
 import { Button } from "@codex-gateway/ui/button";
+import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
+import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 
 const props = defineProps<{
   models: ModelRecord[];
@@ -35,6 +37,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const selectorOpen = ref(false);
+const gatewayCatalog = useGatewayCatalogStore();
+const navigation = useGatewayNavigationStore();
 
 function selectModel(model: string) {
   if (props.disabled) return;
@@ -58,6 +62,13 @@ watch(
     if (disabled) selectorOpen.value = false;
   },
 );
+
+watch(selectorOpen, (open) => {
+  if (!open || navigation.selectedHostId === null) return;
+  // Model visibility can change in another settings view or browser tab. Refresh on demand so
+  // the picker reflects the current global catalog without requiring a full page reload.
+  void gatewayCatalog.listModels();
+});
 </script>
 
 <template>

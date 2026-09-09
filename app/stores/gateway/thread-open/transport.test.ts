@@ -32,7 +32,7 @@ describe("managed runtime request deadlines", () => {
     testState.navigation.selectedProjectId = 7;
   });
 
-  it("uses 130000 ms for managed thread start, activation, and turn start", async () => {
+  it("uses a bounded timeout for managed turn admission", async () => {
     testState.navigation.selectedHostId = MANAGED_RUNTIME_HOST_ID;
     const controller = new AbortController();
 
@@ -58,11 +58,11 @@ describe("managed runtime request deadlines", () => {
     expect(requestOptions).toEqual([
       { timeoutMs: 130_000, signal: controller.signal },
       { timeoutMs: 130_000 },
-      { timeoutMs: 130_000, signal: controller.signal },
+      { timeoutMs: 60_000, signal: controller.signal },
     ]);
   });
 
-  it("leaves the broker deadline unchanged for SSH requests", async () => {
+  it("uses a bounded timeout for SSH turn admission too", async () => {
     const controller = new AbortController();
 
     await requestStartThread({}, { projectId: 7 }, controller.signal);
@@ -83,7 +83,7 @@ describe("managed runtime request deadlines", () => {
     expect(requestOptions).toEqual([
       { signal: controller.signal },
       undefined,
-      { signal: controller.signal },
+      { timeoutMs: 60_000, signal: controller.signal },
     ]);
   });
 });

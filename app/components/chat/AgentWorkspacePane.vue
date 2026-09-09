@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FolderIcon, Loader2Icon } from "@lucide/vue";
+import { AlertCircleIcon, FolderIcon, Loader2Icon, RefreshCwIcon } from "@lucide/vue";
 import { computed } from "vue";
 import ChatComposer from "@/components/chat/ChatComposer.vue";
 import ChatPanelScrollArea from "@/components/chat/ChatPanelScrollArea.vue";
@@ -31,7 +31,19 @@ const threadTurns = useGatewayThreadTurnsStore();
 const { t } = useI18n();
 const runtimeError = computed(() => {
   const error = visibleError.value;
-  return error !== null && error.threadId === selectedThreadId.value ? error : null;
+  if (error === null || error.threadId !== selectedThreadId.value) return null;
+  // A hydrated failed turn renders its own durable error row. Keep the banner for malformed or
+  // not-yet-persisted failures, where otherwise the user would only see the optimistic message.
+  const failedTurn = historyTurns.value.find(
+    (turn) => error.turnId !== null && String(turn.id) === error.turnId,
+  );
+  if (failedTurn?.status === "failed" && failedTurn.error?.message) return null;
+  return error;
+});
+const runtimeErrorDetails = computed(() => {
+  const error = runtimeError.value;
+  if (error?.details === null || error?.details === undefined || error.details === "") return null;
+  return error.message.includes(error.details) ? null : error.details;
 });
 const showThreadLoading = computed(
   () =>
@@ -39,6 +51,10 @@ const showThreadLoading = computed(
     openingThread.value ||
     (Boolean(selectedThreadId.value) && !selectedThreadViewReady.value && !runtimeError.value),
 );
+
+async function retryFailedTurn() {
+  await threadTurns.retryLastTurn();
+}
 </script>
 
 <template>
@@ -98,6 +114,31 @@ const showThreadLoading = computed(
           {{ t("app.chooseProject") }}
         </div>
       </ChatPanelScrollArea>
+
+      <div
+        v-if="runtimeError"
+        data-testid="thread-runtime-error"
+        class="mx-3 mb-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive md:mx-6"
+        role="alert"
+      >
+        <AlertCircleIcon class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <div class="min-w-0 flex-1 space-y-0.5">
+          <p class="whitespace-pre-wrap break-words">{{ runtimeError.message }}</p>
+          <p v-if="runtimeErrorDetails" class="whitespace-pre-wrap break-words text-xs opacity-80">
+            {{ runtimeErrorDetails }}
+          </p>
+        </div>
+        <button
+          v-if="runtimeError.retryable && !runtimeError.transient"
+          type="button"
+          class="inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 px-2 py-1 text-xs font-medium hover:bg-destructive/10"
+          data-testid="thread-runtime-error-retry"
+          @click="retryFailedTurn"
+        >
+          <RefreshCwIcon class="size-3.5" aria-hidden="true" />
+          {{ t("app.retry") }}
+        </button>
+      </div>
 
       <MisalignmentRecoveryCard v-if="selectedThreadId" />
       <ChatComposer v-if="selectedThreadId && historyTurns.length > 0" placement="docked" />
