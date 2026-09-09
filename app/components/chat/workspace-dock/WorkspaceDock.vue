@@ -102,7 +102,8 @@ const toolCatalog = computed(() =>
       openGitReview: workspaceActions.openGitReview,
       openTerminal: workspaceActions.openTerminal,
       openBrowser: () => {
-        browserDialogOpen.value = true;
+        if (workspaceActions.isManagedRuntime.value) workspaceActions.openRuntimeBrowser();
+        else browserDialogOpen.value = true;
       },
       openSubAgent: (subAgent) => {
         void threadView.openSubAgentPanel({

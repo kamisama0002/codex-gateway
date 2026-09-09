@@ -102,9 +102,32 @@ export function useWorkspaceLaunchActions() {
     if (selectedHostId.value === null || isLocalAgentHost.value) return;
     const panelId = createUuid();
     browser.addPanel({
+      targetType: "url",
       panelId,
       title: browserTitle(targetUrl),
       targetUrl,
+      hostId: selectedHostId.value,
+      projectId: selectedProjectId.value,
+      threadId: selectedThreadId.value,
+    });
+    layout.requestPanelActivation(browserWorkspacePanelId(panelId));
+  }
+
+  function openRuntimeBrowser() {
+    if (selectedHostId.value === null || !isLocalAgentHost.value) return;
+    const existing = Object.values(browser.panels).find(
+      (panel) => panel.targetType === "runtime" && panel.hostId === selectedHostId.value,
+    );
+    if (existing !== undefined) {
+      layout.requestPanelActivation(browserWorkspacePanelId(existing.panelId));
+      return;
+    }
+    const panelId = createUuid();
+    browser.addPanel({
+      targetType: "runtime",
+      panelId,
+      title: t("app.browser"),
+      targetUrl: "http://runtime-browser.internal:6080/vnc.html",
       hostId: selectedHostId.value,
       projectId: selectedProjectId.value,
       threadId: selectedThreadId.value,
@@ -133,6 +156,8 @@ export function useWorkspaceLaunchActions() {
     openGitReview,
     openTerminal,
     openBrowser,
+    openRuntimeBrowser,
+    isManagedRuntime: isLocalAgentHost,
     openHostMonitor,
   };
 }

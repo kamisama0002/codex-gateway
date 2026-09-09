@@ -10,7 +10,7 @@ import {
 import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
 import { useGatewayBrowserStore } from "@/stores/gateway-browser";
-import { openBrowserPreview } from "@/stores/gateway-browser/transport";
+import { openBrowserPreview, openRuntimeBrowserPreview } from "@/stores/gateway-browser/transport";
 import { setBrowserPreviewInsecureTls } from "@/stores/gateway-browser/transport";
 import BrowserPreviewDiagnostics from "./BrowserPreviewDiagnostics.vue";
 
@@ -52,7 +52,8 @@ watch(
     opening.value = true;
     error.value = "";
     try {
-      await openBrowserPreview(target);
+      if (target.targetType === "runtime") await openRuntimeBrowserPreview(target);
+      else await openBrowserPreview(target);
     } catch (reason) {
       error.value = reason instanceof Error ? reason.message : String(reason);
     } finally {
