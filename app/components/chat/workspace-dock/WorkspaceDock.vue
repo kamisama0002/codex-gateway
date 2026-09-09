@@ -220,7 +220,7 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
 
 <style scoped>
 .gateway-dockview {
-  --gateway-dock-tab-width: clamp(12rem, 15vw, 16rem);
+  --gateway-dock-tab-width: clamp(14rem, 18vw, 20rem);
   --dv-background-color: var(--surface);
   --dv-paneview-active-outline-color: transparent;
   --dv-tabs-and-actions-container-background-color: var(--surface);
@@ -283,7 +283,7 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
 
 @media (max-width: 48rem) {
   .gateway-dockview {
-    --gateway-dock-tab-width: 10rem;
+    --gateway-dock-tab-width: 12rem;
   }
 }
 </style>
