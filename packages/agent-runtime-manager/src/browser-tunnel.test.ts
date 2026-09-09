@@ -3,6 +3,7 @@ import { createServer as createNetServer, type Server as NetServer } from "node:
 import { WebSocket } from "ws";
 import { afterEach, describe, expect, it } from "vitest";
 import { attachRuntimeBrowserTunnel } from "./browser-tunnel.js";
+import { attachRuntimeRpcRelay } from "./rpc-relay.js";
 import { createSignedHeaders, HmacRequestAuthenticator, type NonceStore } from "./auth.js";
 
 const now = 1_788_134_400_000;
@@ -50,6 +51,17 @@ describe("Runtime Manager browser tunnel", () => {
         host: "127.0.0.1",
         port: serverPort(runtime),
         serviceToken: "runtime-token",
+      }),
+    });
+    attachRuntimeRpcRelay(manager, {
+      authenticator: new HmacRequestAuthenticator({
+        nonceStore: new MemoryNonceStore(),
+        now: () => now,
+        secret,
+      }),
+      resolveTarget: async () => ({
+        websocketUrl: "ws://127.0.0.1:1",
+        serviceToken: "unused",
       }),
     });
     await new Promise<void>((resolve) => manager.listen(0, "127.0.0.1", resolve));

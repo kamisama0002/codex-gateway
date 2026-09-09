@@ -51,10 +51,10 @@ async function handleUpgrade(
   let upstream: WebSocket | null = null;
   try {
     const url = new URL(request.url ?? "/", "http://runtime-manager.internal");
+    const match = tunnelPath.exec(url.pathname);
+    if (match === null) return;
     if (request.method !== "GET" || url.search !== "") return rejectUpgrade(socket, 404);
     options.authenticator.authenticate(request.headers, Buffer.alloc(0), "GET", url.pathname);
-    const match = tunnelPath.exec(url.pathname);
-    if (match === null) return rejectUpgrade(socket, 404);
     const input = {
       runtimeId: decodeURIComponent(match[1] ?? ""),
       placementGeneration: Number(match[2]),

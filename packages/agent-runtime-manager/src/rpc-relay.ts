@@ -63,10 +63,10 @@ async function handleUpgrade(
   let downstream: WebSocket | null = null;
   try {
     const url = new URL(request.url ?? "/", "http://runtime-manager.internal");
+    const match = relayPath.exec(url.pathname);
+    if (match === null) return;
     if (request.method !== "GET" || url.search !== "") return rejectUpgrade(socket, 404);
     options.authenticator.authenticate(request.headers, Buffer.alloc(0), "GET", url.pathname);
-    const match = relayPath.exec(url.pathname);
-    if (match === null) return rejectUpgrade(socket, 404);
     const input = relayRequestSchema.parse({
       runtimeId: decodeURIComponent(match[1] ?? ""),
       placementGeneration: Number(match[2]),
