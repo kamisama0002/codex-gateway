@@ -108,6 +108,7 @@ function capabilitiesFromModel(model: Record<string, unknown>): ModelCapabilitie
     recordValue(model, "capabilities"),
     recordValue(model, "metadata"),
     recordValue(model, "architecture"),
+    recordValue(model, "reasoning"),
   ].filter((value): value is Record<string, unknown> => value !== null);
   const sources = [model, ...nested];
   const reasoningEfforts = parseReasoningEfforts(sources);
@@ -146,6 +147,8 @@ function capabilitiesFromModel(model: Record<string, unknown>): ModelCapabilitie
         "supportsTools",
         "tool_calling",
         "function_calling",
+        "supports_function_calling",
+        "functionCalling",
       ]) ??
       (supportedParameters.length === 0 ||
         supportedParameters.some((value) => value === "tools" || value === "tool_choice")),
@@ -173,6 +176,10 @@ function capabilitiesFromModel(model: Record<string, unknown>): ModelCapabilitie
       "contextLength",
       "context_window",
       "contextWindow",
+      "max_context_length",
+      "maxContextLength",
+      "max_input_tokens",
+      "maxInputTokens",
     ]),
     defaultReasoningEffort,
     supportedReasoningEfforts: reasoningEfforts,
@@ -188,6 +195,15 @@ function parseReasoningEfforts(sources: Record<string, unknown>[]): ModelReasoni
       source.supportedReasoningEfforts,
       source.reasoning_efforts,
       source.reasoningEfforts,
+      source.reasoning_levels,
+      source.reasoningLevels,
+      source.thinking_levels,
+      source.thinkingLevels,
+      source.supported_thinking_levels,
+      source.supportedThinkingLevels,
+      source.effort_levels,
+      source.effortLevels,
+      source.reasoning,
       recordValue(source, "reasoning")?.supported_efforts,
       recordValue(source, "reasoning")?.supportedEfforts,
     ];
