@@ -23,4 +23,23 @@ describe("managed provider model catalog", () => {
       nextCursor: "3",
     });
   });
+
+  it("adds enabled provider models missing from the app-server catalog", () => {
+    const result = filterManagedModelCatalog(
+      {
+        data: [
+          { id: "terra", model: "gpt-5.6-terra", displayName: "Terra", isDefault: true },
+        ],
+      },
+      [
+        { providerId: "gpt", modelId: "gpt-5.6-terra", displayName: "Terra" },
+        { providerId: "gpt", modelId: "deepseek-v4-pro", displayName: "DeepSeek V4 Pro" },
+      ],
+    );
+
+    expect(result.data).toEqual([
+      { id: "terra", model: "gpt-5.6-terra", displayName: "Terra", isDefault: true },
+      { id: "deepseek-v4-pro", model: "deepseek-v4-pro", displayName: "DeepSeek V4 Pro" },
+    ]);
+  });
 });

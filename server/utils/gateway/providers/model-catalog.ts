@@ -3,6 +3,7 @@ import type { ModelListResult } from "~~/shared/types";
 interface ProviderModelAccess {
   providerId: string;
   modelId: string;
+  displayName?: string;
 }
 
 export function filterManagedModelCatalog(
@@ -20,8 +21,28 @@ export function filterManagedModelCatalog(
   const data = catalog.data.filter(
     (model) => allowedModelIds.has(model.model) || allowedModelIds.has(model.id),
   );
-  if (data.length === 0 || data.some((model) => model.isDefault === true)) {
-    return { ...catalog, data };
+
+  // Codex App Server only knows the models in its own built-in catalog. Provider-backed
+  // models can be added by an administrator after a runtime is provisioned, so append any
+  // enabled model that the App Server did not advertise instead of dropping it at the
+  // intersection step above.
+  const missingModels = availableModels
+    .filter((model) => model.providerId === runtimeProviderId)
+    .filter(
+      (model) =>
+        !catalog.data.some(
+          (catalogModel) =>
+            catalogModel.model === model.modelId || catalogModel.id === model.modelId,
+        ),
+    )
+    .map((model) => ({
+      id: model.modelId,
+      model: model.modelId,
+      displayName: model.displayName?.trim() || model.modelId,
+    }));
+  const mergedData = [...data, ...missingModels];
+  if (mergedData.length === 0 || mergedData.some((model) => model.isDefault === true)) {
+    return { ...catalog, data: mergedData };
   }
-  return { ...catalog, data: [{ ...data[0]!, isDefault: true }, ...data.slice(1)] };
+  return { ...catalog, data: [{ ...mergedData[0]!, isDefault: true }, ...mergedData.slice(1)] };
 }
