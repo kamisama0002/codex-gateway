@@ -108,7 +108,8 @@ export function useComposerController() {
     );
   });
   const composerInputEnabled = computed(
-    () => hasComposerTarget.value && !submit.submittingNewThread.value,
+    () =>
+      hasComposerTarget.value && !submit.submittingNewThread.value && !threadView.startingThread,
   );
   const goalInputActive = computed(() => /^\/goal(?:\s|$)/i.test(turnText.value.trimStart()));
   const activePlanSummary = computed(() =>
@@ -117,6 +118,7 @@ export function useComposerController() {
   const canSendTurn = computed(
     () =>
       (selectedThreadId.value !== null || selectedProjectId.value !== null) &&
+      !threadView.startingThread &&
       submit.hasComposerInput.value &&
       !submissionPending.value &&
       !attachmentUpload.uploadingAttachments.value,

@@ -18,6 +18,7 @@ export const useGatewayThreadViewStore = defineStore("gateway-thread-view", () =
   const subAgentPanels = ref<SubAgentPanelState[]>([]);
   const viewEpoch = ref(0);
   const currentThread = ref<GatewayThread | null>(null);
+  const startingThread = ref(false);
   const history = ref<ThreadHistoryState | null>(null);
   const timelineTurns = ref<ThreadTimelineTurn[]>([]);
   const events = ref<GatewayEvent[]>([]);
@@ -87,6 +88,7 @@ export const useGatewayThreadViewStore = defineStore("gateway-thread-view", () =
     subAgentPanels,
     viewEpoch,
     currentThread,
+    startingThread,
     history,
     timelineTurns,
     events,

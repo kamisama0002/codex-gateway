@@ -69,6 +69,7 @@ export function useComposerTurnSubmit(input: {
 
   async function submitTurn(delivery: "default" | "steer" = "default") {
     if (submissionPending.value) return;
+    if (threadView.startingThread === true) return;
     const text = input.turnText.value.trim();
     if (!text && !input.attachedFiles.value.length) return;
     const files = [...input.attachedFiles.value];
