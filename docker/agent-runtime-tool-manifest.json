@@ -57,7 +57,7 @@
     { "command": "Xvfb", "versionArgs": ["-version"], "acceptedExitCodes": [0, 1] },
     { "command": "openbox", "versionArgs": ["--version"] },
     { "command": "x11vnc", "versionArgs": ["-version"] },
-    { "command": "websockify", "versionArgs": ["--version"] },
+    { "command": "websockify", "versionArgs": ["--help"] },
     { "command": "playwright", "versionArgs": ["--version"] },
     { "command": "playwright-mcp", "versionArgs": ["--help"] },
     { "command": "docker", "versionArgs": ["--version"] },
