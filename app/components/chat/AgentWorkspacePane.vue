@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { AlertCircleIcon, FolderIcon, Loader2Icon, RefreshCwIcon } from "@lucide/vue";
+import {
+  AlertCircleIcon,
+  ChevronDownIcon,
+  FolderIcon,
+  Loader2Icon,
+  RefreshCwIcon,
+} from "@lucide/vue";
 import { computed } from "vue";
 import ChatComposer from "@/components/chat/ChatComposer.vue";
 import ChatPanelScrollArea from "@/components/chat/ChatPanelScrollArea.vue";
@@ -44,6 +50,20 @@ const runtimeErrorDetails = computed(() => {
   const error = runtimeError.value;
   if (error?.details === null || error?.details === undefined || error.details === "") return null;
   return error.message.includes(error.details) ? null : error.details;
+});
+const runtimeErrorSummary = computed(() => {
+  const message = runtimeError.value?.message.trim() ?? "";
+  return message.split(/\r?\n/, 1)[0] || t("app.appServerError");
+});
+const runtimeErrorExpandedText = computed(() => {
+  const error = runtimeError.value;
+  if (error === null) return "";
+  const messageLines = error.message.split(/\r?\n/).slice(1).join("\n").trim();
+  return [messageLines, runtimeErrorDetails.value]
+    .filter(
+      (value, index, values): value is string => Boolean(value) && values.indexOf(value) === index,
+    )
+    .join("\n");
 });
 const showThreadLoading = computed(
   () =>
@@ -118,20 +138,45 @@ async function retryFailedTurn() {
       <div
         v-if="runtimeError"
         data-testid="thread-runtime-error"
-        class="mx-3 mb-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive md:mx-6"
+        class="mx-3 mb-2 flex min-w-0 items-start gap-2 px-1 text-xs md:mx-6"
         role="alert"
       >
-        <AlertCircleIcon class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        <div class="min-w-0 flex-1 space-y-0.5">
-          <p class="whitespace-pre-wrap break-words">{{ runtimeError.message }}</p>
-          <p v-if="runtimeErrorDetails" class="whitespace-pre-wrap break-words text-xs opacity-80">
-            {{ runtimeErrorDetails }}
-          </p>
-        </div>
+        <details class="group min-w-0 flex-1">
+          <summary
+            class="flex min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1 py-1 text-ink-muted hover:bg-fill-secondary [&::-webkit-details-marker]:hidden"
+          >
+            <AlertCircleIcon
+              class="size-3.5 shrink-0"
+              :class="runtimeError.transient ? 'text-amber-500' : 'text-destructive'"
+              aria-hidden="true"
+            />
+            <span
+              class="shrink-0 font-medium"
+              :class="runtimeError.transient ? 'text-amber-600' : 'text-destructive'"
+            >
+              {{
+                runtimeError.transient ? t("app.threadRetryingTitle") : t("app.threadFailedTitle")
+              }}
+            </span>
+            <span class="min-w-0 flex-1 truncate" :title="runtimeErrorSummary">
+              {{ runtimeErrorSummary }}
+            </span>
+            <ChevronDownIcon
+              class="size-3.5 shrink-0 transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </summary>
+          <div
+            v-if="runtimeErrorExpandedText"
+            class="ml-7 max-h-24 overflow-y-auto whitespace-pre-wrap break-words px-1 pb-1 text-[11px] leading-4 text-ink-muted"
+          >
+            {{ runtimeErrorExpandedText }}
+          </div>
+        </details>
         <button
           v-if="runtimeError.retryable && !runtimeError.transient"
           type="button"
-          class="inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 px-2 py-1 text-xs font-medium hover:bg-destructive/10"
+          class="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-destructive hover:bg-destructive/10"
           data-testid="thread-runtime-error-retry"
           @click="retryFailedTurn"
         >
