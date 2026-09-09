@@ -296,6 +296,7 @@ export function createThreadOpenActions() {
       signal?: AbortSignal,
     ) {
       const navigation = useGatewayNavigationStore();
+      if (navigation.selectedHostId === null) return null;
       const views = useGatewayThreadViewStore();
       // A sidebar "new conversation" can take a long time on a managed Runtime. Keep the
       // centered composer from starting a second thread while that request is still in flight.
@@ -309,7 +310,6 @@ export function createThreadOpenActions() {
         navigation.selectedProjectId = context.projectId ?? null;
         clearCurrentThreadView();
       }
-      if (navigation.selectedHostId === null) return null;
       const sessionIsCurrent = captureSessionEpoch();
       const gateway = useGatewayBootstrapStore();
       try {
