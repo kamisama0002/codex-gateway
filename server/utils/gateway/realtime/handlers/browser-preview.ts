@@ -41,10 +41,12 @@ export async function openRuntimeBrowserPreview(
   request: Extract<RealtimeClientMessage, { type: "browser.runtime.open" }>,
 ) {
   const state = stateFor(peer);
-  const host = runPeerScoped(peer, () => hostStore.getWithSecret(MANAGED_RUNTIME_HOST_ID));
-  if (!host) throw new Error("Managed runtime host is unavailable");
   const userId = authenticatedUserId(peer);
   await runtimeService.start(userId);
+  // Managed hosts are intentionally excluded from hostStore. Resolve the host
+  // from the runtime service after start so an idle-released runtime can be
+  // provisioned again before the browser relay is opened.
+  const host = await runtimeService.resolveManagedHost(userId);
   const target = await waitForRuntimeBrowser(userId);
   const session = browserPreviewManager.open(
     requireOwnerId(state.browserOwnerId),
