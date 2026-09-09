@@ -41,7 +41,7 @@ describe("generateModelThreadTitle", () => {
     expect(payload).toMatchObject({ model: "model-1", stream: false });
   });
 
-  it("does not fall back to a different granted model", async () => {
+  it("does not fall back to a different enabled model", async () => {
     await expect(
       generateModelThreadTitle(
         {

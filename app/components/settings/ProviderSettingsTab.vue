@@ -72,7 +72,7 @@ const deleting = ref(false);
 const forbidden = ref(false);
 const error = ref("");
 const providers = ref<ProviderWithModels[]>([]);
-const assignedModels = ref<UserProviderModel[]>([]);
+const availableModels = ref<UserProviderModel[]>([]);
 const expandedProviderIds = ref(new Set<string>());
 const providerEditorOpen = ref(false);
 const modelEditorOpen = ref(false);
@@ -97,7 +97,7 @@ async function load() {
     if (caught instanceof FetchError && caught.statusCode === 403) {
       forbidden.value = true;
       const response = await gatewayApi<{ data: UserProviderModel[] }>("/api/provider-models");
-      assignedModels.value = response.data;
+      availableModels.value = response.data;
     } else {
       error.value = gatewayErrorMessage(caught, t("app.providersLoadFailed"));
     }
@@ -337,7 +337,7 @@ function emptyModelForm(providerId = ""): ModelForm {
 
     <div v-else-if="forbidden" class="divide-y divide-hairline">
       <div
-        v-for="model in assignedModels"
+        v-for="model in availableModels"
         :key="`${model.providerId}:${model.modelId}`"
         class="flex min-w-0 items-center gap-3 py-3"
       >
@@ -349,7 +349,7 @@ function emptyModelForm(providerId = ""): ModelForm {
           </div>
         </div>
       </div>
-      <p v-if="!assignedModels.length" class="py-8 text-sm text-ink-muted">
+      <p v-if="!availableModels.length" class="py-8 text-sm text-ink-muted">
         {{ t("app.noAssignedModels") }}
       </p>
     </div>

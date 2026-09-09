@@ -6,7 +6,7 @@ import { issueRuntimeModelToken, verifyRuntimeModelToken } from "./runtime-token
 import { handleProviderResponses } from "./provider-proxy";
 
 describe("provider proxy", () => {
-  it("allows a runtime to switch to another granted model from the same provider", async () => {
+  it("allows a runtime to switch to another globally enabled model from the same provider", async () => {
     const db = await freshMysqlTestDatabase();
     await migrateMysqlGatewayDatabase(db);
     await db.execute(
@@ -32,7 +32,6 @@ describe("provider proxy", () => {
           maxContextTokens: null,
         },
       });
-      await store.grant({ userId: 1, providerId: provider.id, modelId });
     }
     const token = issueRuntimeModelToken(
       { userId: 1, runtimeId: "r1", providerId: "p1", modelId: "m1" },
@@ -118,7 +117,7 @@ describe("provider proxy", () => {
     expect(seen?.headers).toMatchObject({ authorization: "Bearer secret-key" });
   });
 
-  it("rejects a revoked model grant before contacting upstream", async () => {
+  it("rejects a globally disabled model before contacting upstream", async () => {
     const db = await freshMysqlTestDatabase();
     await migrateMysqlGatewayDatabase(db);
     await db.execute(
@@ -135,6 +134,7 @@ describe("provider proxy", () => {
     await store.upsertModel(provider.id, {
       modelId: "m1",
       displayName: "Model",
+      enabled: false,
       capabilities: {
         tools: false,
         streamingTools: false,

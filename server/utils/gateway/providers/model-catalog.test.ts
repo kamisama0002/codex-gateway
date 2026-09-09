@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { filterManagedModelCatalog } from "./model-catalog";
 
 describe("managed provider model catalog", () => {
-  it("exposes only enabled grants from the runtime provider and recalculates the default", () => {
+  it("exposes only globally enabled models from the runtime provider and recalculates the default", () => {
     const result = filterManagedModelCatalog(
       {
         data: [

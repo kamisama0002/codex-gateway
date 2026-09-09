@@ -2,8 +2,9 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 const TOKEN_VERSION = "rt1";
 // Managed runtimes are intentionally long-lived. The Gateway still checks the
-// current user grant on every request, so this is a bounded capability token,
-// not a permanent authorization; runtime re-provisioning rotates it.
+// current globally enabled model on every request, so this is a bounded
+// capability token, not a permanent authorization; runtime re-provisioning
+// rotates it.
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60_000;
 
 export interface RuntimeModelTokenClaims {
@@ -11,7 +12,7 @@ export interface RuntimeModelTokenClaims {
   runtimeId: string;
   providerId: string;
   // Kept as the container's startup default; request authorization uses the provider scope and
-  // the current per-user model grant so a long-lived runtime can switch models safely.
+  // current global model availability so a long-lived runtime can switch models safely.
   modelId: string;
   jti: string;
   exp: number;

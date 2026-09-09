@@ -7,13 +7,13 @@ interface ProviderModelAccess {
 
 export function filterManagedModelCatalog(
   catalog: ModelListResult,
-  accessibleModels: ProviderModelAccess[],
+  availableModels: ProviderModelAccess[],
 ): ModelListResult {
-  const runtimeProviderId = accessibleModels[0]?.providerId;
+  const runtimeProviderId = availableModels[0]?.providerId;
   if (runtimeProviderId === undefined) return { ...catalog, data: [] };
 
   const allowedModelIds = new Set(
-    accessibleModels
+    availableModels
       .filter((model) => model.providerId === runtimeProviderId)
       .map((model) => model.modelId),
   );

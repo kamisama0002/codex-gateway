@@ -40,7 +40,7 @@ export async function generateModelThreadTitle(
   const model = (await store.listForUser(input.userId)).find(
     (candidate) => candidate.modelId === input.model,
   );
-  if (model === undefined) throw new Error("No granted Provider model matches the current turn");
+  if (model === undefined) throw new Error("No enabled Provider model matches the current turn");
   const provider = await store.getWithSecret(model.providerId);
   if (provider === null || !provider.enabled) throw new Error("Title Provider is unavailable");
 

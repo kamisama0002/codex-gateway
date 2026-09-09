@@ -245,15 +245,18 @@ export function createProviderStore(db: GatewayDb): ProviderStore {
     },
 
     async listForUser(userId) {
+      // Model availability is controlled globally by administrators. Keep the
+      // user argument for API and runtime compatibility, but do not require a
+      // per-user grant before exposing an enabled model.
+      positiveUserId(userId);
       const rows = await db.many(
         `SELECT p.*, m.model_id, m.display_name, m.enabled AS model_enabled, m.capabilities_json,
                 m.created_at AS model_created_at, m.updated_at AS model_updated_at
-         FROM user_model_grants g
-         JOIN model_providers p ON p.id = g.provider_id
-         JOIN provider_models m ON m.provider_id = g.provider_id AND m.model_id = g.model_id
-         WHERE g.user_id = ? AND p.enabled = 1 AND m.enabled = 1
+         FROM model_providers p
+         JOIN provider_models m ON m.provider_id = p.id
+         WHERE p.enabled = 1 AND m.enabled = 1
          ORDER BY p.name ASC, m.model_id ASC`,
-        [positiveUserId(userId)],
+        [],
       );
       return rows.map((row) => ({
         provider: rowToPublic(row),

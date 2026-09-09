@@ -76,7 +76,7 @@ describe("providerStore", () => {
     expect((await store.getWithSecret(provider.id))?.apiKey).toBe("rotated-key");
   });
 
-  it("upserts models and returns only globally enabled grants for the requesting user", async () => {
+  it("upserts models and exposes globally enabled models to every user", async () => {
     const provider = await store.create({
       id: "glm",
       name: "GLM",
@@ -100,19 +100,23 @@ describe("providerStore", () => {
       enabled: false,
       capabilities: capabilities(false),
     });
-    await store.grant({ userId: 1, providerId: provider.id, modelId: "glm-4" });
-    await store.grant({ userId: 1, providerId: provider.id, modelId: "disabled" });
-
     expect(updated).toMatchObject({ displayName: "GLM-4 Plus", capabilities: capabilities(false) });
     expect((await store.listModels(provider.id)).map((model) => model.modelId)).toEqual([
       "disabled",
       "glm-4",
     ]);
     expect((await store.listForUser(1)).map((item) => item.modelId)).toEqual(["glm-4"]);
-    await expect(store.listForUser(2)).resolves.toEqual([]);
+    await expect(store.listForUser(2)).resolves.toMatchObject([
+      { providerId: provider.id, modelId: "glm-4", enabled: true },
+    ]);
+
+    // Legacy per-user grants remain data-compatible but do not change global
+    // model visibility.
+    await store.grant({ userId: 1, providerId: provider.id, modelId: "disabled" });
 
     await store.update(provider.id, { enabled: false });
     await expect(store.listForUser(1)).resolves.toEqual([]);
+    await expect(store.listForUser(2)).resolves.toEqual([]);
   });
 
   it("keeps grants idempotent and revokes only an existing grant", async () => {
