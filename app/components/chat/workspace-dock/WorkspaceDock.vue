@@ -237,11 +237,29 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
 .gateway-dockview :deep(.dv-tabs-and-actions-container) {
   height: 2rem;
   min-height: 2rem;
+  border-bottom: 1px solid var(--hairline);
 }
 
 .gateway-dockview :deep(.dv-tab) {
   margin: 0;
   padding-inline: 0.125rem;
+  border-radius: 9999px;
+  background-color: transparent !important;
+}
+
+.gateway-dockview :deep(.dv-tab.dv-active-tab) {
+  background-color: var(--canvas-soft) !important;
+}
+
+.gateway-dockview :deep(.dv-tab.dv-inactive-tab:hover) {
+  background-color: var(--canvas-soft) !important;
+}
+
+/* The Agent title is the conversation header, so it shares the full-width strip with the content
+   below instead of reading as a separate floating tab. Tool tabs keep their compact pill treatment. */
+.gateway-dockview :deep(.dv-tab:has([data-panel-kind="agent"])) {
+  border-radius: 0;
+  background-color: transparent !important;
 }
 
 /* Keep the Agent, sub-agent, and tool tabs visually aligned. Dockview sizes tabs from their

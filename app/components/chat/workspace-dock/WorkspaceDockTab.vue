@@ -50,7 +50,7 @@ function toggleMaximize() {
     <button
       v-if="policy.closable"
       type="button"
-      class="ml-0.5 inline-flex size-4 items-center justify-center rounded text-ink-faint opacity-70 hover:bg-muted hover:text-ink"
+      class="ml-0.5 inline-flex size-4 items-center justify-center rounded-full bg-surface/70 text-ink-faint opacity-70 hover:bg-surface hover:text-ink"
       :aria-label="$t('app.closeTab')"
       @click="closePanel"
     >
