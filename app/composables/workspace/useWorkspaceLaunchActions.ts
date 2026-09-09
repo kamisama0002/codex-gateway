@@ -158,7 +158,6 @@ export function useWorkspaceLaunchActions() {
     openTerminal,
     openBrowser,
     openRuntimeBrowser,
-    isManagedRuntime: isLocalAgentHost,
     openHostMonitor,
   };
 }
