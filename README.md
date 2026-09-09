@@ -216,6 +216,7 @@ Environment variables:
 | Variable | Required | Description |
 | --- | --- | --- |
 | `CODEX_GATEWAY_CONFIG_SECRET` | Yes in production | Stable secret used to encrypt stored host/project/thread config. |
+| `DATAOPS_SERVICE_TOKEN` | When connecting Dinky | Long-lived service token used between Gateway and Dinky. Enter it in Dinky Agent Platform settings and reconnect when rotating it. |
 | `DATABASE_URL` | External MySQL mode | MySQL 8 connection URL. Use the external database Compose overlay when setting it. |
 | `MYSQL_TLS_MODE` | External MySQL mode | `required` encrypts without certificate/hostname verification; `verify-identity` verifies both and is recommended. Bundled MySQL defaults to `disabled` on its private network. |
 | `MYSQL_TLS_CA_FILE` | With `verify-identity` | CA file path readable by Gateway and every database CLI container. |

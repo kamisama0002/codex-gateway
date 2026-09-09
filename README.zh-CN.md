@@ -213,6 +213,7 @@ pnpm test:e2e
 | 变量 | 是否必需 | 说明 |
 | --- | --- | --- |
 | `CODEX_GATEWAY_CONFIG_SECRET` | 生产环境必需 | 用于加密保存 host/project/thread 配置的稳定 secret。 |
+| `DATAOPS_SERVICE_TOKEN` | 连接 Dinky 时 | Gateway 与 Dinky 连接使用的长效服务 Token；在 Dinky 智能体平台设置中录入，轮换 Token 后重新连接。 |
 | `DATABASE_URL` | 外部 MySQL 模式 | MySQL 8 连接 URL；设置后使用外部数据库 Compose 覆盖。 |
 | `MYSQL_TLS_MODE` | 外部 MySQL 模式 | `required` 仅加密但不校验证书和主机名；推荐使用同时校验两者的 `verify-identity`。自带 MySQL 在私有网络中默认使用 `disabled`。 |
 | `MYSQL_TLS_CA_FILE` | 使用 `verify-identity` 时 | Gateway 和所有数据库 CLI 容器都能读取的 CA 文件路径。 |
