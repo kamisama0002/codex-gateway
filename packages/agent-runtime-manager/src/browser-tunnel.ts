@@ -7,6 +7,7 @@ import WebSocket, { WebSocketServer, type RawData } from "ws";
 import { HmacRequestAuthenticator, RuntimeAuthenticationError } from "./auth.js";
 
 const tunnelPath = /^\/v1\/runtimes\/([^/]+)\/generations\/(\d+)\/browser-tunnel(?<raw>\/raw)?$/u;
+const rpcPath = /^\/v1\/runtimes\/([^/]+)\/generations\/(\d+)\/rpc$/u;
 const MAX_TUNNEL_PREAMBLE_BYTES = 1024;
 
 export interface RuntimeBrowserRelayRequest {
@@ -52,7 +53,10 @@ async function handleUpgrade(
   try {
     const url = new URL(request.url ?? "/", "http://runtime-manager.internal");
     const match = tunnelPath.exec(url.pathname);
-    if (match === null) return;
+    if (match === null) {
+      if (rpcPath.test(url.pathname)) return;
+      return rejectUpgrade(socket, 404);
+    }
     if (request.method !== "GET" || url.search !== "") return rejectUpgrade(socket, 404);
     options.authenticator.authenticate(request.headers, Buffer.alloc(0), "GET", url.pathname);
     const input = {
