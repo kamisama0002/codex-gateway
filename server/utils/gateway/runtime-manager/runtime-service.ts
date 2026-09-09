@@ -250,7 +250,16 @@ export class ManagedRuntimeService {
     const released: number[] = [];
     for (const runtime of await this.options.store.list()) {
       if (runtime.status !== "ready") continue;
-      const policy = await this.options.policyStore.getByUserId(runtime.userId);
+      let policy: AssignedRuntimePolicy | null = null;
+      try {
+        policy = await this.options.policyStore.getByUserId(runtime.userId);
+      } catch (error) {
+        // A transient policy-store failure must not stop the global reaper.
+        console.warn("[gateway-runtime] tenant idle policy lookup failed", {
+          userId: runtime.userId,
+          code: safeErrorCode(error),
+        });
+      }
       const idleTimeoutMs =
         policy?.idleTimeoutMinutes === null || policy?.idleTimeoutMinutes === undefined
           ? this.idleTimeoutMs
