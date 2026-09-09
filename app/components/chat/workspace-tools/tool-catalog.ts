@@ -17,6 +17,7 @@ export interface WorkspaceToolCatalogActions {
 export interface WorkspaceToolCatalogInput {
   canOpenThreadTools: boolean;
   canLaunchRemoteTools: boolean;
+  canOpenBrowser?: boolean;
   canOpenTmux: boolean;
   canMonitorHost: boolean;
   subAgents: WorkspaceSubAgentTool[];
@@ -43,6 +44,10 @@ export function createWorkspaceToolCatalog(
   const remoteUnavailable = input.canLaunchRemoteTools
     ? undefined
     : "app.workspaceToolUnavailableRemote";
+  const browserUnavailable =
+    (input.canOpenBrowser ?? input.canLaunchRemoteTools)
+      ? undefined
+      : "app.workspaceToolUnavailableRemote";
   const items: WorkspaceToolCatalogItem[] = [
     item({
       id: "files",
@@ -73,7 +78,7 @@ export function createWorkspaceToolCatalog(
       kind: "browser",
       labelKey: "app.openBrowser",
       descriptionKey: "app.workspaceToolBrowserDescription",
-      unavailableReasonKey: remoteUnavailable,
+      unavailableReasonKey: browserUnavailable,
       action: input.actions.openBrowser,
     }),
   ];

@@ -10,6 +10,8 @@ import {
   type RealtimePeer,
 } from "../peer-state";
 import { runtimeLog } from "../../runtime/runtime-log";
+import { runtimeService } from "../../runtime-manager/runtime-service";
+import { MANAGED_RUNTIME_HOST_ID } from "~~/shared/runtime/managed-runtime";
 
 export function openBrowserPreview(
   peer: RealtimePeer,
@@ -34,12 +36,62 @@ export function openBrowserPreview(
   sendRealtimePeerMessage(peer, { type: "browser.opened", requestId: request.requestId, session });
 }
 
+export async function openRuntimeBrowserPreview(
+  peer: RealtimePeer,
+  request: Extract<RealtimeClientMessage, { type: "browser.runtime.open" }>,
+) {
+  const state = stateFor(peer);
+  const host = runPeerScoped(peer, () => hostStore.getWithSecret(MANAGED_RUNTIME_HOST_ID));
+  if (!host) throw new Error("Managed runtime host is unavailable");
+  const userId = authenticatedUserId(peer);
+  await runtimeService.start(userId);
+  const target = await waitForRuntimeBrowser(userId);
+  const session = browserPreviewManager.open(
+    requireOwnerId(state.browserOwnerId),
+    authenticatedUserId(peer),
+    host,
+    {
+      targetType: "runtime",
+      hostId: MANAGED_RUNTIME_HOST_ID,
+      projectId: request.projectId,
+      threadId: request.threadId,
+      panelId: request.panelId,
+      targetUrl: "http://runtime-browser.internal:6080/vnc.html",
+    },
+    target.relayTarget,
+  );
+  runtimeLog("managed runtime browser session opened", {
+    userId: authenticatedUserId(peer),
+    runtimeId: target.runtimeId,
+    sessionId: session.sessionId,
+    panelId: request.panelId,
+  });
+  sendRealtimePeerMessage(peer, { type: "browser.opened", requestId: request.requestId, session });
+}
+
+async function waitForRuntimeBrowser(userId: number) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      return await runtimeService.resolveBrowser(userId);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof Error) || !error.message.includes("runtime_browser_unavailable")) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("runtime_browser_unavailable");
+}
+
 function browserPreviewTarget(
   request: Extract<RealtimeClientMessage, { type: "browser.open" }>,
 ): BrowserPreviewTarget {
   // The request also owns `type` and `requestId`. Persisting it through structural typing leaks
   // those transport fields into browser.opened.session, which the strict client schema must reject.
   return {
+    ...(request.targetType === undefined ? {} : { targetType: request.targetType }),
     hostId: request.hostId,
     projectId: request.projectId,
     threadId: request.threadId,

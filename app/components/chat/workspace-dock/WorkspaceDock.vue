@@ -90,6 +90,7 @@ const toolCatalog = computed(() =>
     canOpenThreadTools:
       workspaceActions.canOpenThreadTools.value && fileWorkspaceRoot.value.trim() !== "",
     canLaunchRemoteTools: workspaceActions.canLaunch.value,
+    canOpenBrowser: workspaceActions.canLaunch.value || workspaceActions.isManagedRuntime.value,
     canOpenTmux: tmuxLauncher.canOpen.value,
     canMonitorHost: workspaceActions.canMonitorHost.value,
     subAgents: subAgentPanels.value.map(({ hostId, threadId, title }) => ({

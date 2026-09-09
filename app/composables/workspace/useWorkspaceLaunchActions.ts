@@ -102,8 +102,8 @@ export function useWorkspaceLaunchActions() {
     if (selectedHostId.value === null || isLocalAgentHost.value) return;
     const panelId = createUuid();
     browser.addPanel({
-      targetType: "url",
       panelId,
+      targetType: "url",
       title: browserTitle(targetUrl),
       targetUrl,
       hostId: selectedHostId.value,
@@ -145,6 +145,7 @@ export function useWorkspaceLaunchActions() {
 
   return {
     canLaunch: computed(() => selectedHostId.value !== null && !isLocalAgentHost.value),
+    isManagedRuntime: isLocalAgentHost,
     canOpenThreadTools: computed(() => selectedThreadId.value !== null),
     canMonitorHost: computed(() => selectedHostId.value !== null),
     selectedHostTitle: computed(() =>

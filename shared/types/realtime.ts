@@ -295,6 +295,13 @@ export type RealtimeClientMessage =
       sessionId: string;
     }
   | ({ type: "browser.open"; requestId: string } & BrowserPreviewTarget)
+  | {
+      type: "browser.runtime.open";
+      requestId: string;
+      projectId?: number | null;
+      threadId?: string | null;
+      panelId: string;
+    }
   | { type: "browser.close"; requestId: string; sessionId: string }
   | {
       type: "browser.allowInsecureTls";

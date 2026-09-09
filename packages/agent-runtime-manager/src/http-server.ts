@@ -31,6 +31,7 @@ import { DockerodeEngine } from "./docker-engine.js";
 import type { E2eDockerInspection } from "./docker-engine.js";
 import { RuntimeLifecycleError, RuntimeLifecycleService } from "./lifecycle-service.js";
 import { attachRuntimeRpcRelay } from "./rpc-relay.js";
+import { attachRuntimeBrowserTunnel } from "./browser-tunnel.js";
 import {
   parseAgentMemoryBytes,
   parseAgentNanoCpus,
@@ -107,6 +108,18 @@ async function handleRequest(
           runtimeLookupRequestSchema.parse({
             runtimeId: decodeURIComponent(statsMatch[1] ?? ""),
             placementGeneration: Number(statsMatch[2]),
+          }),
+        );
+        return sendJson(response, 200, result);
+      }
+      const browserMatch = /^\/v1\/runtimes\/([^/]+)\/generations\/(\d+)\/browser$/.exec(
+        url.pathname,
+      );
+      if (browserMatch) {
+        const result = await options.service.browserStatus(
+          runtimeLookupRequestSchema.parse({
+            runtimeId: decodeURIComponent(browserMatch[1] ?? ""),
+            placementGeneration: Number(browserMatch[2]),
           }),
         );
         return sendJson(response, 200, result);
@@ -269,6 +282,10 @@ export function startRuntimeManager(environment: NodeJS.ProcessEnv = process.env
   attachRuntimeRpcRelay(server, {
     authenticator,
     resolveTarget: async (input) => await service.resolveRpcRelay(input),
+  });
+  attachRuntimeBrowserTunnel(server, {
+    authenticator,
+    resolveTarget: async (input) => await service.resolveBrowserRelay(input),
   });
   const port = Number(environment.RUNTIME_MANAGER_PORT ?? "8787");
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {

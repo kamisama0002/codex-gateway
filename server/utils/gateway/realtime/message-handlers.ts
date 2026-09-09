@@ -37,6 +37,7 @@ import {
   allowInsecureBrowserPreviewTls,
   closeBrowserPreview,
   openBrowserPreview,
+  openRuntimeBrowserPreview,
 } from "./handlers/browser-preview";
 import { subscribeHostMetrics, unsubscribeHostMetrics } from "./handlers/host-metrics";
 import {
@@ -88,6 +89,7 @@ export const realtimeMessageDispatcher = new RealtimeMessageDispatcher({
   "terminal.resize": resizeTerminal,
   "terminal.close": closeTerminal,
   "browser.open": openBrowserPreview,
+  "browser.runtime.open": openRuntimeBrowserPreview,
   "browser.close": closeBrowserPreview,
   "browser.allowInsecureTls": allowInsecureBrowserPreviewTls,
   "file.git.compare": compareGitFile,

@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { Duplex } from "node:stream";
 import type { BrowserPreviewHttpAgent } from "./browser-preview-http-agent";
+import type { RuntimeBrowserRelayTarget } from "../runtime-manager/client";
 import type {
   BrowserPreviewSessionSnapshot,
   BrowserPreviewTarget,
@@ -24,6 +25,7 @@ export interface BrowserPreviewSession {
   status: "open" | "closed";
   sockets: Set<Duplex>;
   agent: BrowserPreviewHttpAgent | null;
+  runtimeRelayTarget?: RuntimeBrowserRelayTarget;
 }
 
 export class BrowserPreviewManager {
@@ -31,7 +33,16 @@ export class BrowserPreviewManager {
   private sessionsByCookie = new Map<string, BrowserPreviewSession>();
   private tickets = new Map<string, BrowserPreviewSession>();
 
-  open(ownerId: string, userId: number, host: HostRecord, input: BrowserPreviewTarget) {
+  open(
+    ownerId: string,
+    userId: number,
+    host: HostRecord,
+    input: BrowserPreviewTarget,
+    runtimeRelayTarget?: RuntimeBrowserRelayTarget,
+  ) {
+    if (input.targetType === "runtime" && runtimeRelayTarget === undefined) {
+      throw new Error("Managed runtime browser relay is unavailable");
+    }
     const target = normalizeTarget(input.targetUrl);
     const sessionId = randomUUID();
     const ticket = randomBytes(32).toString("base64url");
@@ -54,6 +65,7 @@ export class BrowserPreviewManager {
       status: "open",
       sockets: new Set(),
       agent: null,
+      runtimeRelayTarget,
     };
     this.sessions.set(sessionId, session);
     this.tickets.set(ticket, session);

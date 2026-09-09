@@ -41,6 +41,8 @@ import {
   type ProvisionRuntimeRequest,
   type RuntimePlacementIdentity,
   type RuntimeLifecycleResult,
+  type RuntimeBrowserStatus,
+  type RuntimeBrowserRelayTarget,
   type SyncRuntimeSecretsRequest,
 } from "./client";
 import { runtimeAgentResourcesFromEnvironment } from "./runtime-node-bootstrap";
@@ -51,6 +53,8 @@ import { runtimeIdleTimeoutMs } from "./runtime-idle-timeout";
 
 interface RuntimeManagerPort {
   relayTarget(placement: RuntimePlacementIdentity): ManagedRuntimeRelayTarget;
+  browserRelayTarget?(placement: RuntimePlacementIdentity): RuntimeBrowserRelayTarget;
+  browserStatus?(placement: RuntimePlacementIdentity): Promise<RuntimeBrowserStatus>;
   provision(input: ProvisionRuntimeRequest): Promise<RuntimeLifecycleResult>;
   inspect(placement: RuntimePlacementIdentity): Promise<RuntimeLifecycleResult>;
   stats(placement: RuntimePlacementIdentity): Promise<AgentRuntimeStatsResult>;
@@ -161,6 +165,8 @@ const safeManagerErrorCodes = new Set([
   "runtime_policy_exceeds_platform_limit",
   "managed_rpc_handshake_timeout",
   "runtime_not_found",
+  "runtime_not_ready",
+  "runtime_browser_unavailable",
   "unauthorized",
   "unknown_image_alias",
   "capability_sync_failed",
@@ -510,6 +516,37 @@ export class ManagedRuntimeService {
       await this.touchActivity(runtime);
       return createManagedRuntimeHost(targetUserId, runtime, endpoint);
     } catch (error) {
+      throw new ManagedRuntimeServiceError(safeErrorCode(error));
+    }
+  }
+
+  async resolveBrowser(userId: number): Promise<{
+    runtimeId: string;
+    nodeId: string;
+    placementGeneration: number;
+    relayTarget: RuntimeBrowserRelayTarget;
+  }> {
+    const targetUserId = positiveUserId(userId);
+    const runtime = await this.requiredRuntime(targetUserId);
+    if (runtime.status !== "ready") throw new ManagedRuntimeServiceError("runtime_not_ready");
+    const placement = await this.requiredPlacement(targetUserId);
+    try {
+      const manager = await this.managerForPlacement(placement);
+      if (manager.browserStatus === undefined || manager.browserRelayTarget === undefined) {
+        throw new ManagedRuntimeServiceError("runtime_browser_unavailable", 503);
+      }
+      const status = await manager.browserStatus(managerPlacement(placement));
+      if (status.status !== "running" || status.browser !== "ready") {
+        throw new ManagedRuntimeServiceError("runtime_browser_unavailable", 503);
+      }
+      return {
+        runtimeId: placement.runtimeId,
+        nodeId: placement.runtimeNodeId,
+        placementGeneration: placement.placementGeneration,
+        relayTarget: manager.browserRelayTarget(managerPlacement(placement)),
+      };
+    } catch (error) {
+      if (error instanceof ManagedRuntimeServiceError) throw error;
       throw new ManagedRuntimeServiceError(safeErrorCode(error));
     }
   }
@@ -996,6 +1033,9 @@ export const runtimeService = {
   },
   releaseIdleRuntimes(nowMs?: number) {
     return defaultRuntimeService().releaseIdleRuntimes(nowMs);
+  },
+  resolveBrowser(userId: number) {
+    return defaultRuntimeService().resolveBrowser(userId);
   },
   runtimeIdForUser(userId: number) {
     return defaultRuntimeService().runtimeIdForUser(userId);

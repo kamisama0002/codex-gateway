@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { createConnection } from "node:net";
 import { request } from "node:http";
 import { join } from "node:path";
 
@@ -26,11 +25,23 @@ const environment = {
 start("xvfb", "Xvfb", [display, "-screen", "0", "1440x900x24", "-nolisten", "tcp", "-ac"]);
 await wait(150);
 start("openbox", "openbox", ["--sm-disable"]);
-start("x11vnc", "x11vnc", ["-display", display, "-localhost", "-forever", "-shared", "-rfbport", "5900", "-nopw", "-quiet"]);
+start("x11vnc", "x11vnc", [
+  "-display",
+  display,
+  "-localhost",
+  "-forever",
+  "-shared",
+  "-rfbport",
+  "5900",
+  "-nopw",
+  "-quiet",
+]);
 start("websockify", "websockify", ["--web=/usr/share/novnc", "127.0.0.1:6081", "127.0.0.1:5900"]);
 start("proxy", "node", ["/usr/local/lib/agent-runtime-browser-proxy.mjs"]);
 startChromium();
-start("codex", "node", [process.env.CODEX_RUNTIME_CONFIG_HELPER ?? "/usr/local/lib/agent-runtime-config.mjs"]);
+start("codex", "node", [
+  process.env.CODEX_RUNTIME_CONFIG_HELPER ?? "/usr/local/lib/agent-runtime-config.mjs",
+]);
 
 const ready = await waitForBrowserReady(60_000);
 await setStatus(ready ? "ready" : "failed");
@@ -38,7 +49,7 @@ await setStatus(ready ? "ready" : "failed");
 function start(name, command, args) {
   const child = spawn(command, args, { env: environment, stdio: "inherit" });
   children.set(name, child);
-  child.once("exit", (code, signal) => {
+  child.once("exit", () => {
     children.delete(name);
     if (shuttingDown || name === "codex") return;
     if (name === "chromium") {
@@ -84,9 +95,8 @@ function scheduleChromiumRestart() {
 async function waitForBrowserReady(timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (!shuttingDown && Date.now() < deadline) {
-    if (await isHttpReady(9222, "/json/version") && (await isHttpReady(6081, "/vnc.html"))) {
+    if ((await isHttpReady(9222, "/json/version")) && (await isHttpReady(6081, "/vnc.html")))
       return true;
-    }
     await wait(250);
   }
   return false;
@@ -94,10 +104,13 @@ async function waitForBrowserReady(timeoutMs) {
 
 function isHttpReady(port, path) {
   return new Promise((resolve) => {
-    const req = request({ host: "127.0.0.1", port, path, method: "GET", timeout: 500 }, (response) => {
-      response.resume();
-      resolve((response.statusCode ?? 500) < 500);
-    });
+    const req = request(
+      { host: "127.0.0.1", port, path, method: "GET", timeout: 500 },
+      (response) => {
+        response.resume();
+        resolve((response.statusCode ?? 500) < 500);
+      },
+    );
     req.once("error", () => resolve(false));
     req.once("timeout", () => {
       req.destroy();

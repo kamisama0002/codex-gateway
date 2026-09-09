@@ -49,6 +49,8 @@ RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
       lsof \
       maven \
       netcat-openbsd \
+      novnc \
+      openbox \
       ninja-build \
       openssh-client \
       p7zip-full \
@@ -74,7 +76,10 @@ RUN sh /tmp/rewrite-debian-mirror.sh "${DEBIAN_MIRROR}" \
       tini \
       tmux \
       unzip \
+      websockify \
       wget \
+      x11vnc \
+      xvfb \
       zip \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 codex \
@@ -116,6 +121,9 @@ COPY docker/agent-runtime-config.mjs /usr/local/lib/agent-runtime-config.mjs
 COPY docker/agent-runtime-oauth-callback.mjs /usr/local/lib/agent-runtime-oauth-callback.mjs
 COPY docker/agent-runtime-secret-writer.mjs /usr/local/lib/agent-runtime-secret-writer.mjs
 COPY docker/agent-runtime-healthcheck.mjs /usr/local/lib/agent-runtime-healthcheck.mjs
+COPY docker/agent-runtime-browser-proxy.mjs /usr/local/lib/agent-runtime-browser-proxy.mjs
+COPY docker/agent-runtime-browser-status.mjs /usr/local/lib/agent-runtime-browser-status.mjs
+COPY docker/agent-runtime-browser-supervisor.mjs /usr/local/lib/agent-runtime-browser-supervisor.mjs
 COPY scripts/smoke-agent-runtime.mjs /usr/local/lib/smoke-agent-runtime.mjs
 
 RUN chmod 0555 /usr/local/bin/agent-runtime-entrypoint \
@@ -123,12 +131,15 @@ RUN chmod 0555 /usr/local/bin/agent-runtime-entrypoint \
       /usr/local/lib/agent-runtime-oauth-callback.mjs \
       /usr/local/lib/agent-runtime-secret-writer.mjs \
       /usr/local/lib/agent-runtime-healthcheck.mjs \
+      /usr/local/lib/agent-runtime-browser-proxy.mjs \
+      /usr/local/lib/agent-runtime-browser-status.mjs \
+      /usr/local/lib/agent-runtime-browser-supervisor.mjs \
       /usr/local/lib/smoke-agent-runtime.mjs \
     && node /usr/local/lib/smoke-agent-runtime.mjs
 
 USER 10001:10001
 WORKDIR /workspace
-EXPOSE 4500
+EXPOSE 4500 6080
 VOLUME ["/codex-home", "/workspace"]
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=20s \

@@ -4,6 +4,7 @@ import type { ManagedRuntimeEndpoint } from "@codex-gateway/agent-runtime-contra
 
 import {
   runtimeResourceLabels,
+  RUNTIME_BROWSER_PORT,
   DockerRuntimeIdentityError,
   type DockerContainerCreateSpec,
   type DockerEngine,
@@ -28,6 +29,7 @@ import {
   type ForwardOAuthCallbackRequest,
   type ProvisionRuntimeRequest,
   type RuntimeActionRequest,
+  type RuntimeBrowserStatus,
   type RuntimeLifecycleResult,
   type RuntimeLookupRequest,
   type RuntimeNodeHealth,
@@ -157,6 +159,47 @@ export class RuntimeLifecycleService {
       websocketUrl: `ws://${container.containerName}:${container.internalPort}`,
       serviceToken: container.serviceToken,
     };
+  }
+
+  async resolveBrowserRelay(request: RuntimeLookupRequest) {
+    const normalized = runtimeLookupRequestSchema.parse(request);
+    const container = await this.findManagedContainer(normalized.runtimeId);
+    if (container === null) throw new RuntimeLifecycleError("runtime_not_found");
+    this.assertLookup(container, normalized);
+    if (!container.running) throw new RuntimeLifecycleError("runtime_not_found");
+    return {
+      host: container.containerName,
+      port: RUNTIME_BROWSER_PORT,
+      serviceToken: container.serviceToken,
+    };
+  }
+
+  async browserStatus(request: RuntimeLookupRequest): Promise<RuntimeBrowserStatus> {
+    const normalized = runtimeLookupRequestSchema.parse(request);
+    const container = await this.findManagedContainer(normalized.runtimeId);
+    if (container === null) {
+      return { runtimeId: normalized.runtimeId, status: "absent", browser: "not_started" };
+    }
+    this.assertLookup(container, normalized);
+    if (!container.running) {
+      return { runtimeId: normalized.runtimeId, status: "stopped", browser: "not_started" };
+    }
+    const result = await this.engine.execInContainer(
+      container.containerId,
+      "node /usr/local/lib/agent-runtime-browser-status.mjs",
+      { timeoutMs: 5_000, maxOutputBytes: 16 * 1024 },
+    );
+    if (result.code !== 0)
+      return { runtimeId: normalized.runtimeId, status: "running", browser: "failed" };
+    try {
+      const parsed = JSON.parse(result.stdout) as unknown;
+      if (parsed === null || typeof parsed !== "object" || !("browser" in parsed))
+        throw new Error("browser status is invalid");
+      const browser = runtimeBrowserStatusValue(parsed.browser);
+      return { runtimeId: normalized.runtimeId, status: "running", browser };
+    } catch {
+      return { runtimeId: normalized.runtimeId, status: "running", browser: "failed" };
+    }
   }
 
   async stats(request: RuntimeLookupRequest): Promise<AgentRuntimeStatsResult> {
@@ -473,6 +516,7 @@ function toResult(container: EngineContainerState): RuntimeLifecycleResult {
     runtimeId: container.runtimeId,
     serviceToken: container.serviceToken,
     websocketUrl: `ws://${container.containerName}:${container.internalPort}`,
+    browserUrl: `http://${container.containerName}:${RUNTIME_BROWSER_PORT}`,
   };
   return {
     containerId: container.containerId,
@@ -487,6 +531,10 @@ function toResult(container: EngineContainerState): RuntimeLifecycleResult {
       pidsLimit: container.pidsLimit,
     },
   };
+}
+
+function runtimeBrowserStatusValue(value: unknown): RuntimeBrowserStatus["browser"] {
+  return value === "starting" || value === "ready" || value === "failed" ? value : "not_started";
 }
 
 function absentResult(runtimeId: string): RuntimeLifecycleResult {

@@ -21,5 +21,5 @@ while [ ! -f "$secret_dir/.ready" ]; do
   fi
   sleep 0.1
 done
-config_helper="${CODEX_RUNTIME_CONFIG_HELPER:-/usr/local/lib/agent-runtime-config.mjs}"
-exec node "$config_helper"
+browser_supervisor="${CODEX_RUNTIME_BROWSER_SUPERVISOR:-/usr/local/lib/agent-runtime-browser-supervisor.mjs}"
+exec node "$browser_supervisor"
