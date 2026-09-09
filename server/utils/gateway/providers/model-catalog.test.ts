@@ -27,9 +27,7 @@ describe("managed provider model catalog", () => {
   it("adds enabled provider models missing from the app-server catalog", () => {
     const result = filterManagedModelCatalog(
       {
-        data: [
-          { id: "terra", model: "gpt-5.6-terra", displayName: "Terra", isDefault: true },
-        ],
+        data: [{ id: "terra", model: "gpt-5.6-terra", displayName: "Terra", isDefault: true }],
       },
       [
         { providerId: "gpt", modelId: "gpt-5.6-terra", displayName: "Terra" },
@@ -60,10 +58,7 @@ describe("managed provider model catalog", () => {
             reasoning: true,
             maxContextTokens: 131072,
             defaultReasoningEffort: "medium",
-            supportedReasoningEfforts: [
-              { reasoningEffort: "low" },
-              { reasoningEffort: "medium" },
-            ],
+            supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "medium" }],
           },
         },
         {
@@ -89,10 +84,7 @@ describe("managed provider model catalog", () => {
         displayName: "Qwen 3",
         isDefault: true,
         defaultReasoningEffort: "medium",
-        supportedReasoningEfforts: [
-          { reasoningEffort: "low" },
-          { reasoningEffort: "medium" },
-        ],
+        supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "medium" }],
       },
       {
         id: "qwen2",

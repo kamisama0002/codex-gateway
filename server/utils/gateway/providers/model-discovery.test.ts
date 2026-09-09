@@ -52,9 +52,9 @@ describe("provider model discovery", () => {
   });
 
   it("uses the provider URL, bearer key, and timeout", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      Response.json({ data: [{ id: "model-a" }] }),
-    );
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ data: [{ id: "model-a" }] }));
     const result = await discoverProviderModels(
       {
         baseUrl: "https://provider.example/v1/",

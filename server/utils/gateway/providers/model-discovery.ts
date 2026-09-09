@@ -133,7 +133,7 @@ function capabilitiesFromModel(model: Record<string, unknown>): ModelCapabilitie
       : [],
   );
   if (
-    defaultReasoningEffort &&
+    defaultReasoningEffort !== null &&
     !reasoningEfforts.some((item) => item.reasoningEffort === defaultReasoningEffort)
   ) {
     reasoningEfforts.unshift({ reasoningEffort: defaultReasoningEffort, description: null });
@@ -181,31 +181,39 @@ function capabilitiesFromModel(model: Record<string, unknown>): ModelCapabilitie
 }
 
 function parseReasoningEfforts(sources: Record<string, unknown>[]): ModelReasoningEffort[] {
-  const values = sources.flatMap((source) =>
-    [
+  const values: unknown[] = [];
+  for (const source of sources) {
+    const candidates = [
       source.supported_reasoning_efforts,
       source.supportedReasoningEfforts,
       source.reasoning_efforts,
       source.reasoningEfforts,
       recordValue(source, "reasoning")?.supported_efforts,
       recordValue(source, "reasoning")?.supportedEfforts,
-    ].flatMap((value) => (Array.isArray(value) ? value : [])),
-  );
+    ];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        for (const item of candidate as unknown[]) values.push(item);
+      }
+    }
+  }
   const seen = new Set<string>();
-  return values.flatMap((value) => {
+  const result: ModelReasoningEffort[] = [];
+  for (const value of values) {
     const effort =
       typeof value === "string"
         ? value.trim()
         : isRecord(value)
           ? firstString(value, ["reasoning_effort", "reasoningEffort", "effort", "name", "id"])
           : null;
-    if (effort === null || effort.length > 64 || seen.has(effort)) return [];
+    if (effort === null || effort.length > 64 || seen.has(effort)) continue;
     seen.add(effort);
     const description = isRecord(value)
       ? firstString(value, ["description", "label", "display_name"])
       : null;
-    return [{ reasoningEffort: effort, description }];
-  });
+    result.push({ reasoningEffort: effort, description });
+  }
+  return result;
 }
 
 function firstStringFromSources(sources: Record<string, unknown>[], keys: string[]): string | null {
