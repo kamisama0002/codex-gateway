@@ -21,7 +21,7 @@ export function filterManagedModelCatalog(
   );
   const data = catalog.data
     .filter((model) => allowedModelIds.has(model.model) || allowedModelIds.has(model.id))
-    .map((model) => mergeProviderModelMetadata(model, availableModels));
+    .map((model) => mergeProviderModelMetadata(model, availableModels, runtimeProviderId));
 
   // Codex App Server only knows the models in its own built-in catalog. Provider-backed
   // models can be added by an administrator after a runtime is provisioned, so append any
@@ -55,9 +55,12 @@ export function filterManagedModelCatalog(
 function mergeProviderModelMetadata(
   model: ModelListResult["data"][number],
   availableModels: ProviderModelAccess[],
+  providerId: string,
 ) {
   const providerModel = availableModels.find(
-    (candidate) => candidate.modelId === model.model || candidate.modelId === model.id,
+    (candidate) =>
+      candidate.providerId === providerId &&
+      (candidate.modelId === model.model || candidate.modelId === model.id),
   );
   if (providerModel === undefined) return model;
   const displayName = providerModel.displayName?.trim();

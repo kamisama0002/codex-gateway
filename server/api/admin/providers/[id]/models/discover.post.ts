@@ -1,4 +1,4 @@
-import { getRouterParam, type H3Event } from "h3";
+import { createError, getRouterParam, type H3Event } from "h3";
 import { requireAdminUser } from "../../../../../utils/gateway/auth/context";
 import { defineGatewayEventHandler } from "../../../../../utils/gateway/http/errors";
 import { providerIdSchema } from "../../../../../utils/gateway/http/validation/providers";
@@ -10,7 +10,9 @@ export async function discoverProviderModelsForEvent(event: H3Event) {
   const admin = requireAdminUser(event);
   const providerId = providerIdSchema.parse(getRouterParam(event, "id"));
   const provider = await providerStore.getWithSecret(providerId);
-  if (provider === null) throw new Error("Provider not found");
+  if (provider === null) {
+    throw createError({ statusCode: 404, statusMessage: "Provider not found" });
+  }
   const discovered = await discoverProviderModels(provider);
   const models = await providerStore.syncDiscoveredModels(providerId, discovered);
   await auditStore.record({
