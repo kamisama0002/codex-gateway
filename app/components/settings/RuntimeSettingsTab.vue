@@ -11,6 +11,7 @@ import {
   shouldShowRuntimePolicy,
   type RuntimePolicyBadge,
 } from "@/utils/runtime-policy-view";
+import { isRuntimeActionPending, runtimeActionForStatus } from "@/utils/runtime-action";
 import { errorMessageLabels, messageFromError } from "@/stores/gateway/thread-utils/identity";
 import RuntimeNodeSettings from "./RuntimeNodeSettings.vue";
 
@@ -28,6 +29,7 @@ const runtimes = ref<RuntimeStatusView[]>([]);
 const canAdminister = ref(false);
 const minePolicy = computed(() => (mine.value === null ? null : runtimePolicySummary(mine.value)));
 const mineHasPolicy = computed(() => mine.value !== null && shouldShowRuntimePolicy(mine.value));
+const mineAction = computed(() => runtimeActionForStatus(mine.value?.runtime?.status));
 
 function statusVariant(status: string) {
   if (status === "ready") return "default" as const;
@@ -252,7 +254,7 @@ function formatUpdatedAt(value: string) {
           </div>
         </div>
         <Button
-          v-if="mine?.runtime"
+          v-if="mineAction === 'restart'"
           data-testid="runtime-self-restart-button"
           class="shrink-0"
           :disabled="loading || restartingMine"
@@ -261,6 +263,15 @@ function formatUpdatedAt(value: string) {
           <Loader2Icon v-if="restartingMine" class="size-4 animate-spin" />
           <RefreshCwIcon v-else class="size-4" />
           {{ t("app.runtimeRestart") }}
+        </Button>
+        <Button
+          v-else-if="mineAction === 'pending'"
+          data-testid="runtime-pending-button"
+          class="shrink-0"
+          disabled
+        >
+          <Loader2Icon class="size-4 animate-spin" />
+          {{ statusLabel(mine?.runtime?.status ?? "provisioning") }}
         </Button>
         <Button
           v-else
@@ -312,7 +323,10 @@ function formatUpdatedAt(value: string) {
             variant="outline"
             size="sm"
             class="shrink-0"
-            :disabled="restartingUserId === runtime.runtime.userId"
+            :disabled="
+              restartingUserId === runtime.runtime.userId ||
+              isRuntimeActionPending(runtime.runtime.status)
+            "
             data-testid="runtime-restart-button"
             @click="restartRuntime(runtime.runtime.userId)"
           >

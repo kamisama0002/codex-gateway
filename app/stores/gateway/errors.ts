@@ -128,7 +128,7 @@ export function unknownGatewayErrorFromError(
   }
 
   const context = [
-    labelValue(labels.scope, details.scope),
+    labelValue(labels.scope, details.scope === "request" ? null : details.scope),
     labelValue(labels.host, details.hostName),
     labelValue(labels.ssh, sshTarget(details)),
     labelValue(labels.auth, details.authMode),
@@ -163,6 +163,9 @@ function displayGatewayErrorMessage(
   const code = typeof payload.code === "string" ? payload.code : null;
   if (code === "runtime_node_capacity_unavailable") {
     return labels.runtimeNodeCapacityUnavailable ?? gatewayErrorMessage(error, fallback);
+  }
+  if (code === "runtime_not_found") {
+    return labels.runtimeNotFound ?? gatewayErrorMessage(error, fallback);
   }
   const rawMessage = gatewayErrorMessage(error, fallback);
   return rawMessage === code && code === "runtime_node_capacity_unavailable"

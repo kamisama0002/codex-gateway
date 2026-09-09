@@ -15,6 +15,7 @@ export interface ErrorMessageLabels {
   proxyEnabled: string;
   proxyNone: string;
   runtimeNodeCapacityUnavailable?: string;
+  runtimeNotFound?: string;
 }
 
 const defaultErrorLabels: ErrorMessageLabels = {
@@ -30,6 +31,8 @@ const defaultErrorLabels: ErrorMessageLabels = {
   proxyNone: "none",
   runtimeNodeCapacityUnavailable:
     "No Agent runtime node resources are available right now. Try again later or contact an administrator to add capacity.",
+  runtimeNotFound:
+    "This Agent runtime no longer exists or was released. Start the Agent again to recreate it.",
 };
 
 export function messageFromError(
@@ -53,6 +56,7 @@ export function errorMessageLabels(t: (key: string) => string): ErrorMessageLabe
     proxyEnabled: t("app.errorProxyEnabled"),
     proxyNone: t("app.errorProxyNone"),
     runtimeNodeCapacityUnavailable: t("app.runtimeNodeCapacityUnavailable"),
+    runtimeNotFound: t("app.runtimeNotFound"),
   };
 }
 
