@@ -39,6 +39,12 @@ export const errorEventHandlers: GatewayEventHandlerRegistry = {
       )
     )
       return;
+    // A non-retryable app-server error is the terminal result for this submission. Keep the
+    // last request available for the explicit Retry action, but remove the pending admission
+    // record so the composer does not stay in "cancel send" state forever.
+    if (!error.willRetry) {
+      useGatewayThreadTurnsStore().clearRequest(event.hostId, threadId);
+    }
     gatewayDomainEvents.emit("thread-status-detected", {
       hostId: event.hostId,
       threadId,
@@ -55,14 +61,24 @@ export const errorEventHandlers: GatewayEventHandlerRegistry = {
       code: error.code,
       details: error.additionalDetails,
       retryable: error.willRetry,
-      toast: false,
+      // Surface terminal failures immediately. The inline error row is populated only after a
+      // valid failed Turn is persisted, so malformed or interrupted completions still need a
+      // toast to explain why the run stopped.
+      toast: !error.willRetry,
     });
   },
   "thread/realtime/error": (event, params, threadId) => {
     const gateway = useGatewayBootstrapStore();
+    useGatewayThreadTurnsStore().clearRequest(event.hostId, threadId);
+    gatewayDomainEvents.emit("thread-status-detected", {
+      hostId: event.hostId,
+      threadId,
+      status: "failed",
+      phase: "failed",
+    });
     gateway.setError(
       typeof params.message === "string" ? params.message : gateway.t("app.appServerError"),
-      { hostId: event.hostId, threadId, category: "unavailable", toast: false },
+      { hostId: event.hostId, threadId, category: "unavailable", toast: true },
     );
   },
 };

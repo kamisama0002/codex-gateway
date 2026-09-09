@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { AlertCircleIcon } from "@lucide/vue";
 import IntermediateStepsToggle from "@/components/thread/IntermediateStepsToggle.vue";
 import ThreadItemView from "@/components/thread/ThreadItemView.vue";
 import TurnDurationLabel from "@/components/thread/TurnDurationLabel.vue";
@@ -49,6 +50,20 @@ const emit = defineEmits<{
     v-else-if="props.row.type === 'turnStatus'"
     :started-at-ms="props.row.startedAtMs"
   />
+  <div
+    v-else-if="props.row.type === 'turnError'"
+    data-testid="turn-error"
+    class="my-1 flex max-w-2xl items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+    role="alert"
+  >
+    <AlertCircleIcon class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+    <div class="min-w-0 space-y-0.5">
+      <p class="whitespace-pre-wrap break-words">{{ props.row.message }}</p>
+      <p v-if="props.row.details" class="whitespace-pre-wrap break-words text-xs opacity-80">
+        {{ props.row.details }}
+      </p>
+    </div>
+  </div>
   <div v-else class="flex items-center gap-3">
     <TurnDurationLabel :timing="props.row" />
     <TurnUsageAmountLabel :usage="props.row.responseUsage" />

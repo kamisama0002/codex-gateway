@@ -57,6 +57,13 @@ export type ThreadTimelineRow = (
     }
   | {
       key: string;
+      type: "turnError";
+      turnId: string;
+      message: string;
+      details: string | null;
+    }
+  | {
+      key: string;
       type: "turnDuration";
       turnId: string;
       startedAt: number | null;
@@ -142,6 +149,21 @@ export function buildThreadTimelineRows(input: {
         startedAtMs: normalizedTimestampMs(turn.startedAt),
       });
     }
+    const turnError = turn.error;
+    const turnErrorMessage = typeof turnError?.message === "string" ? turnError.message.trim() : "";
+    const turnErrorDetails =
+      typeof turnError?.additionalDetails === "string"
+        ? turnError.additionalDetails.trim() || null
+        : null;
+    if (turn.status === "failed" && turnErrorMessage !== "") {
+      rows.push({
+        key: `${input.threadId}:turn-${turn.id}:error`,
+        type: "turnError",
+        turnId: turn.id,
+        message: turnErrorMessage,
+        details: turnErrorDetails,
+      });
+    }
     // Completed turns normally render timing beside the final answer's copy action. Keep a
     // standalone row only for interrupted/error turns that never produced an Agent answer.
     if (
@@ -181,6 +203,7 @@ export function estimateThreadTimelineRow(row: ThreadTimelineRow | undefined) {
   if (row === undefined) return 96;
   if (row.type === "intermediateHeader") return 48;
   if (row.type === "turnStatus") return 34;
+  if (row.type === "turnError") return 72;
   if (row.type === "turnDuration") return 28;
   return estimatedItemHeights[row.item.type] ?? 96;
 }
@@ -281,6 +304,14 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
     return (
       left.turnId === right.turnId &&
       left.startedAtMs === right.startedAtMs &&
+      sameTurnNavigation(left.turnNavigation, right.turnNavigation)
+    );
+  }
+  if (left.type === "turnError" && right.type === "turnError") {
+    return (
+      left.turnId === right.turnId &&
+      left.message === right.message &&
+      left.details === right.details &&
       sameTurnNavigation(left.turnNavigation, right.turnNavigation)
     );
   }

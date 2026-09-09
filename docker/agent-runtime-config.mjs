@@ -147,9 +147,13 @@ function providerArguments(provider) {
     "-c",
     'model_providers.codex_gateway.wire_api="responses"',
     "-c",
-    "model_providers.codex_gateway.request_max_retries=2",
+    // Keep transient provider failures bounded. A dead or unavailable model must reach the
+    // app-server terminal error path quickly instead of leaving the turn running for tens of
+    // minutes through the upstream retry schedule.
+    "model_providers.codex_gateway.request_max_retries=1",
     "-c",
-    "model_providers.codex_gateway.stream_max_retries=2",
+    "model_providers.codex_gateway.stream_max_retries=1",
+    "model_providers.codex_gateway.stream_idle_timeout_ms=120000",
   ];
 }
 

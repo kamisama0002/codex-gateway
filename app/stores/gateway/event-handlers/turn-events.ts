@@ -28,7 +28,10 @@ export const turnEventHandlers: GatewayEventHandlerRegistry = {
   },
   "turn/completed": (event, params, threadId) => {
     const turn = threadHistoryTurnFromUnknown(params.turn);
-    const status = runtimeStatusFromCompletedTurn(turn);
+    // A malformed completion is still terminal for the browser submission, but it is not
+    // evidence of a successful turn. Mark it failed so a prior app-server error cannot be
+    // overwritten by a synthetic "completed" status and the composer becomes usable again.
+    const status = turn === null ? "failed" : runtimeStatusFromCompletedTurn(turn);
     gatewayDomainEvents.emit("thread-status-detected", {
       hostId: event.hostId,
       threadId,
@@ -36,7 +39,12 @@ export const turnEventHandlers: GatewayEventHandlerRegistry = {
       phase: runtimePhaseFromStatus(status),
       turnId: turn === null ? null : String(turn.id),
     });
-    if (turn === null) return;
+    if (turn === null) {
+      // A completion without a valid Turn can still be emitted after a provider failure. It is
+      // terminal for the browser submission even though there is no history object to hydrate.
+      useGatewayThreadTurnsStore().clearRequest(event.hostId, threadId);
+      return;
+    }
     gatewayDomainEvents.emit("history-turn-synced", {
       hostId: event.hostId,
       threadId,

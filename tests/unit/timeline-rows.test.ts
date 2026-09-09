@@ -134,6 +134,39 @@ describe("running turn status", () => {
     expect(rows[1]).toMatchObject({ type: "turnStatus", startedAtMs: 1_782_986_400_000 });
   });
 
+  it("keeps a failed turn error visible after the provider stops", () => {
+    const turn: ThreadTimelineTurn = {
+      id: "turn-failed",
+      status: "failed",
+      itemsView: "full",
+      items: [
+        {
+          id: "turn-failed-user",
+          type: "userMessage",
+          content: [{ type: "text", text: "查询营业额" }],
+        },
+      ],
+      error: {
+        message: "Model unavailable",
+        additionalDetails: "Provider returned HTTP 503",
+      },
+    };
+    const sections = buildThreadTurnSections(turn, { planModeActive: false });
+    const rows = buildThreadTimelineRows({
+      threadId: "thread-1",
+      turns: [{ turn, sections, intermediateOpen: false, intermediateLoading: false }],
+      agentActionsAvailable: true,
+    });
+
+    expect(rows).toContainEqual(
+      expect.objectContaining({
+        type: "turnError",
+        message: "Model unavailable",
+        details: "Provider returned HTTP 503",
+      }),
+    );
+  });
+
   it("does not trust a stale in-progress Turn after the thread runtime is terminal", () => {
     const state = turnState({
       id: "turn-stale",
