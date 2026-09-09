@@ -1,6 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { ManagedRuntimeEndpoint } from "@codex-gateway/agent-runtime-contracts";
+import {
+  runtimeTerminalOpenSchema,
+  type ManagedRuntimeEndpoint,
+  type RuntimeTerminalOpen,
+} from "@codex-gateway/agent-runtime-contracts";
 
 import {
   runtimeResourceLabels,
@@ -68,6 +72,7 @@ export class RuntimeLifecycleError extends Error {
     readonly code:
       | "runtime_not_found"
       | "runtime_identity_conflict"
+      | "runtime_not_ready"
       | "stale_placement_generation"
       | "unknown_image_alias"
       | "runtime_policy_exceeds_platform_limit",
@@ -181,6 +186,16 @@ export class RuntimeLifecycleService {
       timeoutMs: normalized.timeoutMs,
       maxOutputBytes: normalized.maxOutputBytes,
     });
+  }
+
+  async openTerminal(request: RuntimeLookupRequest, input: RuntimeTerminalOpen) {
+    const normalized = runtimeLookupRequestSchema.parse(request);
+    const terminal = runtimeTerminalOpenSchema.parse(input);
+    const container = await this.findManagedContainer(normalized.runtimeId);
+    if (container === null) throw new RuntimeLifecycleError("runtime_not_found");
+    this.assertLookup(container, normalized);
+    if (!container.running) throw new RuntimeLifecycleError("runtime_not_ready");
+    return await this.engine.openTerminal(container.containerId, terminal);
   }
 
   async start(request: RuntimeResourceActionRequest): Promise<RuntimeLifecycleResult> {

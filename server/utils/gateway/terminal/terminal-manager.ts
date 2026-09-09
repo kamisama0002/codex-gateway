@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { ClientChannel } from "ssh2";
 import type {
   HostRecord,
   TerminalOpenTarget,
@@ -12,6 +11,16 @@ import { sshConnections } from "../infra/host-services";
 import { terminalEventBus } from "./events";
 
 const MAX_OUTPUT_BUFFER_BYTES = 256 * 1024;
+
+export interface TerminalChannel {
+  stderr: NodeJS.ReadableStream;
+  write(data: string): unknown;
+  setWindow(rows: number, cols: number, height: number, width: number): unknown;
+  close(): unknown;
+  on(event: "data", listener: (chunk: Buffer) => void): this;
+  on(event: "error", listener: (error: Error) => void): this;
+  on(event: "close", listener: (code: number | null, signal: string | null) => void): this;
+}
 
 interface TerminalSession {
   sessionId: string;
@@ -29,28 +38,43 @@ interface TerminalSession {
   status: "open" | "closed";
   output: string;
   seq: number;
-  channel: ClientChannel;
+  channel: TerminalChannel;
 }
 
 export class TerminalManager {
   private sessions = new Map<string, TerminalSession>();
 
   async open(userId: number, host: HostRecord, target: TerminalOpenTarget) {
-    const sessionId = randomUUID();
-    const now = new Date().toISOString();
     const channel = await sshConnections.openShell(host, {
       term: "xterm-256color",
       cols: normalizeDimension(target.cols, 80),
       rows: normalizeDimension(target.rows, 24),
     });
+    return this.register(userId, host.id, target, channel, titleForScope(target.scope, host), true);
+  }
+
+  openManaged(userId: number, target: TerminalOpenTarget, channel: TerminalChannel) {
+    return this.register(userId, target.hostId, target, channel, "Agent Runtime terminal", false);
+  }
+
+  private register(
+    userId: number,
+    hostId: number,
+    target: TerminalOpenTarget,
+    channel: TerminalChannel,
+    fallbackTitle: string,
+    enterCwd: boolean,
+  ) {
+    const sessionId = randomUUID();
+    const now = new Date().toISOString();
     const session: TerminalSession = {
       sessionId,
       userId,
-      hostId: host.id,
+      hostId,
       projectId: target.projectId ?? null,
       threadId: trimmedOrNull(target.threadId),
       cwd: trimmedOrNull(target.cwd),
-      title: trimmedOrFallback(target.title, titleForScope(target.scope, host)),
+      title: trimmedOrFallback(target.title, fallbackTitle),
       scope: target.scope,
       cols: normalizeDimension(target.cols, 80),
       rows: normalizeDimension(target.rows, 24),
@@ -63,7 +87,7 @@ export class TerminalManager {
     };
     this.sessions.set(sessionId, session);
     this.bindChannel(session);
-    this.enterWorkingDirectory(session);
+    if (enterCwd) this.enterWorkingDirectory(session);
     return this.snapshot(session);
   }
 

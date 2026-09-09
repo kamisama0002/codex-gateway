@@ -31,6 +31,7 @@ import { DockerodeEngine } from "./docker-engine.js";
 import type { E2eDockerInspection } from "./docker-engine.js";
 import { RuntimeLifecycleError, RuntimeLifecycleService } from "./lifecycle-service.js";
 import { attachRuntimeRpcRelay } from "./rpc-relay.js";
+import { attachRuntimeTerminal } from "./runtime-terminal.js";
 import {
   parseAgentMemoryBytes,
   parseAgentNanoCpus,
@@ -269,6 +270,10 @@ export function startRuntimeManager(environment: NodeJS.ProcessEnv = process.env
   attachRuntimeRpcRelay(server, {
     authenticator,
     resolveTarget: async (input) => await service.resolveRpcRelay(input),
+  });
+  attachRuntimeTerminal(server, {
+    authenticator,
+    openTerminal: async (request, input) => await service.openTerminal(request, input),
   });
   const port = Number(environment.RUNTIME_MANAGER_PORT ?? "8787");
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {

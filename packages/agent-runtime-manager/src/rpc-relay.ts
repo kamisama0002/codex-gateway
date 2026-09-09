@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 import { z } from "zod";
 import { HmacRequestAuthenticator, RuntimeAuthenticationError } from "./auth.js";
+import { isRuntimeTerminalPath } from "./runtime-terminal.js";
 
 const relayPath = /^\/v1\/runtimes\/([^/]+)\/generations\/(\d+)\/rpc$/u;
 const relayRequestSchema = z
@@ -42,6 +43,8 @@ export function attachRuntimeRpcRelay(
 ) {
   const websocketServer = new WebSocketServer({ noServer: true, perMessageDeflate: false });
   server.on("upgrade", (request, socket, head) => {
+    const pathname = new URL(request.url ?? "/", "http://runtime-manager.internal").pathname;
+    if (isRuntimeTerminalPath(pathname)) return;
     void handleUpgrade(request, socket, head, websocketServer, options);
   });
   server.on("close", () => websocketServer.close());

@@ -79,6 +79,29 @@ describe("RuntimeManagerClient", () => {
     expect(JSON.stringify(target)).not.toContain("manager-secret");
   });
 
+  it("creates a freshly signed managed terminal target", () => {
+    let nonce = 0;
+    const client = new RuntimeManagerClient({
+      baseUrl: "https://node-a.runtime.internal",
+      nodeId: "node__a",
+      secret: "manager-secret",
+      now: () => 1_788_134_400_000,
+      nonce: () => `terminal-${++nonce}`,
+    });
+
+    const target = client.terminalTarget(runtimePlacement());
+    const first = target.headers();
+    const second = target.headers();
+
+    expect(target.websocketUrl).toBe(
+      "wss://node-a.runtime.internal/v1/runtimes/runtime_01/generations/2/terminal",
+    );
+    expect(first["x-runtime-nonce"]).toBe("terminal-1");
+    expect(second["x-runtime-nonce"]).toBe("terminal-2");
+    expect(first["x-runtime-signature"]).not.toBe(second["x-runtime-signature"]);
+    expect(JSON.stringify(target)).not.toContain("manager-secret");
+  });
+
   it("signs requested start resources in the exact request body", async () => {
     const timestamp = 1_788_131_200_000;
     const nonce = "resources-nonce";
@@ -474,7 +497,7 @@ describe("RuntimeManagerClient", () => {
 });
 
 describe("managed runtime browser boundary", () => {
-  it("rejects SSH-only workspace actions on the local Agent host", () => {
+  it("allows terminal access on the local Agent host", () => {
     const result = realtimeClientMessageSchema.safeParse({
       type: "terminal.open",
       requestId: "request-1",
@@ -482,6 +505,18 @@ describe("managed runtime browser boundary", () => {
       scope: "host",
       cols: 80,
       rows: 24,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("continues to reject browser access on the local Agent host", () => {
+    const result = realtimeClientMessageSchema.safeParse({
+      type: "browser.open",
+      requestId: "request-1",
+      hostId: MANAGED_RUNTIME_HOST_ID,
+      panelId: "panel-1",
+      targetUrl: "https://example.com",
     });
 
     expect(result.success).toBe(false);

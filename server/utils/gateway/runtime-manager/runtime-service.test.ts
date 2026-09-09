@@ -110,6 +110,19 @@ describe("ManagedRuntimeService", () => {
     expect(statsPlacement?.runtimeId).toMatch(/^codex_[a-f0-9]{32}$/);
   });
 
+  it("resolves a terminal target through the authenticated user's durable placement", async () => {
+    const fixture = runtimeFixture({ runtimeNodeId: "node__b" });
+
+    const target = await fixture.service.terminalTarget(7);
+
+    expect(fixture.nodeClients.get).toHaveBeenCalledWith("node__b");
+    expect(fixture.manager.terminalTarget).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "node__b", placementGeneration: 3 }),
+    );
+    expect(target.websocketUrl).toBe("ws://runtime-manager:8787/v1/runtimes/terminal");
+    expect(JSON.stringify(target)).not.toContain("manager-secret");
+  });
+
   it("executes a command in the user's Agent container by identity", async () => {
     const fixture = runtimeFixture();
 
@@ -862,6 +875,11 @@ function runtimeFixture(
       runtimeId: placement.runtimeId,
       websocketUrl: "ws://runtime-manager:8787/v1/runtimes/relay",
       headers: () => ({ "x-runtime-nonce": "fresh-relay-nonce" }),
+    })),
+    terminalTarget: vi.fn((placement: { runtimeId: string }) => ({
+      runtimeId: placement.runtimeId,
+      websocketUrl: "ws://runtime-manager:8787/v1/runtimes/terminal",
+      headers: () => ({ "x-runtime-nonce": "fresh-terminal-nonce" }),
     })),
     provision: vi.fn(async (request: ProvisionRuntimeRequest) => ({
       runtimeId: request.runtimeId,

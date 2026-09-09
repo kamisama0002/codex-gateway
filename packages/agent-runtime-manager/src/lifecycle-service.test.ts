@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import { PassThrough } from "node:stream";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -127,6 +128,8 @@ class RecordingDockerEngine implements DockerEngine {
     timeoutMs: number;
     maxOutputBytes: number;
   }> = [];
+  readonly terminalCalls: Array<{ containerId: string; cwd: string; cols: number; rows: number }> =
+    [];
   nodeInspection = {
     dockerAvailable: true,
     dataRootWritable: true,
@@ -261,6 +264,19 @@ class RecordingDockerEngine implements DockerEngine {
       }
     }
     throw new Error("container not found");
+  }
+
+  async openTerminal(
+    containerId: string,
+    input: { type: "open"; cwd: string; cols: number; rows: number },
+  ) {
+    this.terminalCalls.push({ containerId, cwd: input.cwd, cols: input.cols, rows: input.rows });
+    return {
+      stream: new PassThrough(),
+      resize: async () => undefined,
+      exitCode: async () => 0,
+      close: () => undefined,
+    };
   }
 
   async updateContainerResources(
@@ -509,6 +525,24 @@ describe("RuntimeLifecycleService", () => {
         maxOutputBytes: 1_024,
       }),
     ).rejects.toThrow("Agent runtime is not running");
+  });
+
+  it("opens a terminal only in the matching running Runtime placement", async () => {
+    const engine = new RecordingDockerEngine();
+    const service = new RuntimeLifecycleService(engine, testPolicy);
+    await service.provision({ ...requestFor("runtime-terminal"), placementGeneration: 2 });
+    await service.start(actionFor("runtime-terminal", 2));
+    const open = { type: "open" as const, cwd: "/workspace", cols: 80, rows: 24 };
+
+    await expect(
+      service.openTerminal({ runtimeId: "runtime-terminal", placementGeneration: 2 }, open),
+    ).resolves.toBeTruthy();
+    expect(engine.terminalCalls).toEqual([
+      { containerId: "container-1", cwd: "/workspace", cols: 80, rows: 24 },
+    ]);
+    await expect(
+      service.openTerminal({ runtimeId: "runtime-terminal", placementGeneration: 1 }, open),
+    ).rejects.toThrow("stale_placement_generation");
   });
 
   it("uses the fixed 4500 endpoint when production environment attempts to override it", async () => {

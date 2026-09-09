@@ -1,11 +1,14 @@
 import type { RealtimeClientMessage } from "~~/shared/types";
+import { MANAGED_RUNTIME_HOST_ID, MANAGED_WORKSPACE_PATH } from "~~/shared/runtime/managed-runtime";
 import { firstNonEmptyString, trimmedOrNull } from "~~/shared/utils/strings";
 import { requireRecord } from "../../http/validation/common";
 import { hostStore } from "../../state/hosts";
 import { projectStore } from "../../state/projects";
 import { threadMetadataStore } from "../../state/thread-metadata";
 import { terminalEventBus } from "../../terminal/events";
+import { ManagedTerminalChannel } from "../../terminal/managed-terminal-channel";
 import { terminalManager } from "../../terminal/terminal-manager";
+import { runtimeService } from "../../runtime-manager/runtime-service";
 import {
   authenticatedUserId,
   sendRealtimePeerMessage,
@@ -18,7 +21,6 @@ export async function openTerminal(
   request: Extract<RealtimeClientMessage, { type: "terminal.open" }>,
 ) {
   const userId = authenticatedUserId(peer);
-  const host = requireRecord(hostStore.getWithSecret(request.hostId), "Host not found");
   const target = {
     ...request,
     projectId: request.projectId ?? null,
@@ -26,8 +28,38 @@ export async function openTerminal(
     cwd: resolveTerminalCwd(request),
     title: trimmedOrNull(request.title) ?? terminalTitle(request),
   };
+  if (request.hostId === MANAGED_RUNTIME_HOST_ID) {
+    const managedCwd = managedTerminalCwd(target.cwd);
+    await runtimeService.start(userId);
+    const channel = await ManagedTerminalChannel.open(await runtimeService.terminalTarget(userId), {
+      type: "open",
+      cwd: managedCwd,
+      cols: Math.min(target.cols, 1000),
+      rows: Math.min(target.rows, 1000),
+    });
+    const session = terminalManager.openManaged(userId, { ...target, cwd: managedCwd }, channel);
+    sendRealtimePeerMessage(peer, {
+      type: "terminal.opened",
+      requestId: request.requestId,
+      session,
+    });
+    return;
+  }
+  const host = requireRecord(hostStore.getWithSecret(request.hostId), "Host not found");
   const session = await terminalManager.open(userId, host, target);
   sendRealtimePeerMessage(peer, { type: "terminal.opened", requestId: request.requestId, session });
+}
+
+function managedTerminalCwd(cwd: string | null) {
+  if (cwd === null || cwd === "") return MANAGED_WORKSPACE_PATH;
+  if (
+    (cwd !== MANAGED_WORKSPACE_PATH && !cwd.startsWith(`${MANAGED_WORKSPACE_PATH}/`)) ||
+    cwd.includes("\0") ||
+    cwd.split("/").some((segment) => segment === "." || segment === "..")
+  ) {
+    throw new Error("Managed runtime terminal cwd must stay within /workspace");
+  }
+  return cwd;
 }
 
 export function listTerminals(

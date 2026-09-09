@@ -265,6 +265,8 @@ export interface RuntimeRelayTarget {
   headers(): Record<string, string>;
 }
 
+export type RuntimeTerminalTarget = RuntimeRelayTarget;
+
 export interface RuntimeLifecycleResult {
   runtimeId: string;
   containerId: string | null;
@@ -347,6 +349,18 @@ export class RuntimeManagerClient {
   relayTarget(input: RuntimePlacementIdentity): RuntimeRelayTarget {
     const placement = this.placement(input);
     const path = `/v1/runtimes/${encodeURIComponent(placement.runtimeId)}/generations/${placement.placementGeneration}/rpc`;
+    const managerUrl = new URL(this.baseUrl);
+    const protocol = managerUrl.protocol === "https:" ? "wss:" : "ws:";
+    return {
+      runtimeId: placement.runtimeId,
+      websocketUrl: `${protocol}//${managerUrl.host}${path}`,
+      headers: () => this.signedHeaders("GET", path, ""),
+    };
+  }
+
+  terminalTarget(input: RuntimePlacementIdentity): RuntimeTerminalTarget {
+    const placement = this.placement(input);
+    const path = `/v1/runtimes/${encodeURIComponent(placement.runtimeId)}/generations/${placement.placementGeneration}/terminal`;
     const managerUrl = new URL(this.baseUrl);
     const protocol = managerUrl.protocol === "https:" ? "wss:" : "ws:";
     return {

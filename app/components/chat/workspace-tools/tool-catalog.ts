@@ -16,7 +16,8 @@ export interface WorkspaceToolCatalogActions {
 
 export interface WorkspaceToolCatalogInput {
   canOpenThreadTools: boolean;
-  canLaunchRemoteTools: boolean;
+  canOpenTerminal: boolean;
+  canOpenBrowser: boolean;
   canOpenTmux: boolean;
   canMonitorHost: boolean;
   subAgents: WorkspaceSubAgentTool[];
@@ -40,7 +41,10 @@ export function createWorkspaceToolCatalog(
   const threadUnavailable = input.canOpenThreadTools
     ? undefined
     : "app.workspaceToolUnavailableThread";
-  const remoteUnavailable = input.canLaunchRemoteTools
+  const terminalUnavailable = input.canOpenTerminal
+    ? undefined
+    : "app.workspaceToolUnavailableRemote";
+  const browserUnavailable = input.canOpenBrowser
     ? undefined
     : "app.workspaceToolUnavailableRemote";
   const items: WorkspaceToolCatalogItem[] = [
@@ -65,7 +69,7 @@ export function createWorkspaceToolCatalog(
       kind: "terminal",
       labelKey: "app.openTerminal",
       descriptionKey: "app.workspaceToolTerminalDescription",
-      unavailableReasonKey: remoteUnavailable,
+      unavailableReasonKey: terminalUnavailable,
       action: input.actions.openTerminal,
     }),
     item({
@@ -73,7 +77,7 @@ export function createWorkspaceToolCatalog(
       kind: "browser",
       labelKey: "app.openBrowser",
       descriptionKey: "app.workspaceToolBrowserDescription",
-      unavailableReasonKey: remoteUnavailable,
+      unavailableReasonKey: browserUnavailable,
       action: input.actions.openBrowser,
     }),
   ];

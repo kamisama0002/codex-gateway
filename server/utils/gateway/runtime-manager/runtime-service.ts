@@ -22,6 +22,7 @@ import { CodexRpcClient } from "../infra/rpc/rpc";
 import { SUPPORTED_CODEX_VERSION, parseCodexVersion } from "../infra/codex/codex-version";
 import { runWithGatewayUser } from "../state/memory";
 import { threadBroker } from "../runtime/broker";
+import { terminalManager } from "../terminal/terminal-manager";
 import { auditStore } from "../audit/audit-store";
 import { userStore } from "../auth/users";
 import { runtimePolicyStore } from "./runtime-policy-store";
@@ -40,6 +41,7 @@ import {
   type ForwardOAuthCallbackRequest,
   type ProvisionRuntimeRequest,
   type RuntimePlacementIdentity,
+  type RuntimeTerminalTarget,
   type RuntimeLifecycleResult,
   type SyncRuntimeSecretsRequest,
 } from "./client";
@@ -50,6 +52,7 @@ import { runtimeNodeClientRegistry } from "./runtime-node-client-registry";
 
 interface RuntimeManagerPort {
   relayTarget(placement: RuntimePlacementIdentity): ManagedRuntimeRelayTarget;
+  terminalTarget(placement: RuntimePlacementIdentity): RuntimeTerminalTarget;
   provision(input: ProvisionRuntimeRequest): Promise<RuntimeLifecycleResult>;
   inspect(placement: RuntimePlacementIdentity): Promise<RuntimeLifecycleResult>;
   stats(placement: RuntimePlacementIdentity): Promise<AgentRuntimeStatsResult>;
@@ -238,6 +241,17 @@ export class ManagedRuntimeService {
   async sampleAgentStats(userId: number): Promise<AgentRuntimeStatsResult> {
     const placement = await this.requiredPlacement(positiveUserId(userId));
     return await (await this.managerForPlacement(placement)).stats(managerPlacement(placement));
+  }
+
+  async terminalTarget(userId: number): Promise<RuntimeTerminalTarget> {
+    const placement = await this.requiredPlacement(positiveUserId(userId));
+    try {
+      return (await this.managerForPlacement(placement)).terminalTarget(
+        managerPlacement(placement),
+      );
+    } catch (error) {
+      throw new ManagedRuntimeServiceError(safeErrorCode(error));
+    }
   }
 
   async execAgentCommand(
@@ -940,6 +954,9 @@ export const runtimeService = {
   sampleAgentStats(userId: number) {
     return defaultRuntimeService().sampleAgentStats(userId);
   },
+  terminalTarget(userId: number) {
+    return defaultRuntimeService().terminalTarget(userId);
+  },
   execAgentCommand(
     userId: number,
     command: string,
@@ -987,7 +1004,10 @@ function defaultRuntimeService(): ManagedRuntimeService {
     expectedRuntimeVersion: SUPPORTED_CODEX_VERSION,
     probe: probeManagedCodexRuntime,
     closeConnections: (userId) =>
-      runWithGatewayUser(userId, () => threadBroker.closeHost(MANAGED_RUNTIME_HOST_ID)),
+      runWithGatewayUser(userId, () => {
+        threadBroker.closeHost(MANAGED_RUNTIME_HOST_ID);
+        terminalManager.closeHost(userId, MANAGED_RUNTIME_HOST_ID);
+      }),
     usernameFor: (userId) => userStore.findUsername(userId),
     runtimeSecretsFor: async (userId, projectId) => {
       const capabilities = await capabilityStore.listDesiredForContext({

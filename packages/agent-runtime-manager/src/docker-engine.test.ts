@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import Docker from "dockerode";
+import { PassThrough } from "node:stream";
 
 import {
   DockerodeEngine,
@@ -92,6 +93,45 @@ describe("DockerodeEngine", () => {
     expect(createContainer.mock.calls[0]?.[0]).not.toHaveProperty("NetworkingConfig");
     expect(getNetwork).toHaveBeenCalledWith("agent-egress");
     expect(connect).toHaveBeenCalledWith({ Container: "container-a" });
+  });
+
+  it("opens a non-root Docker Exec TTY in the requested workspace directory", async () => {
+    const stream = new PassThrough();
+    const resize = vi.fn(async () => undefined);
+    const inspect = vi.fn(async () => ({ ExitCode: 0 }));
+    const start = vi.fn(async () => stream);
+    const exec = vi.fn(async () => ({ resize, inspect, start }));
+    const docker = Object.assign(new Docker(), {
+      getContainer: vi.fn(() => ({ exec })),
+    });
+
+    const terminal = await new DockerodeEngine(docker).openTerminal("container-a", {
+      type: "open",
+      cwd: "/workspace/project-a",
+      cols: 120,
+      rows: 40,
+    });
+
+    expect(exec).toHaveBeenCalledWith({
+      AttachStderr: true,
+      AttachStdin: true,
+      AttachStdout: true,
+      Cmd: [
+        "/bin/sh",
+        "-lc",
+        "if command -v bash >/dev/null 2>&1; then exec bash -l; else exec /bin/sh -l; fi",
+      ],
+      Env: ["TERM=xterm-256color"],
+      Tty: true,
+      User: "10001:10001",
+      WorkingDir: "/workspace/project-a",
+    });
+    expect(start).toHaveBeenCalledWith({ hijack: true, stdin: true, Tty: true });
+    await terminal.resize(160, 48);
+    expect(resize).toHaveBeenCalledWith({ h: 48, w: 160 });
+    await expect(terminal.exitCode()).resolves.toBe(0);
+    terminal.close();
+    expect(stream.destroyed).toBe(true);
   });
 });
 

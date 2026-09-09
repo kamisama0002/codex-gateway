@@ -27,8 +27,8 @@ describe("managed runtime tmux messages", () => {
     ).toMatchObject({ type: "tmux.sessions.subscribe", hostId: MANAGED_RUNTIME_HOST_ID });
   });
 
-  it("continues to reject terminal and browser SSH actions for the local Docker Agent", () => {
-    expect(() =>
+  it("allows terminal access but keeps browser access disabled for the local Docker Agent", () => {
+    expect(
       parseRealtimeClientMessage({
         type: "terminal.open",
         requestId: "terminal-local-1",
@@ -41,7 +41,18 @@ describe("managed runtime tmux messages", () => {
         cols: 80,
         rows: 24,
       }),
-    ).toThrow("SSH-only workspace actions are not available on the local Agent");
+    ).toMatchObject({ type: "terminal.open", hostId: MANAGED_RUNTIME_HOST_ID });
+    expect(() =>
+      parseRealtimeClientMessage({
+        type: "browser.open",
+        requestId: "browser-local-1",
+        hostId: MANAGED_RUNTIME_HOST_ID,
+        projectId: null,
+        threadId: null,
+        panelId: "panel-local-1",
+        targetUrl: "https://example.com",
+      }),
+    ).toThrow("This workspace action is not available on the local Agent");
   });
 });
 

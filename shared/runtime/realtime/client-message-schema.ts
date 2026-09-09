@@ -400,8 +400,8 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z
   .refine((message) => {
     if (!("hostId" in message) || message.hostId !== MANAGED_RUNTIME_HOST_ID) return true;
     return !isSshOnlyManagedHostMessage(message.type);
-  }, "SSH-only workspace actions are not available on the local Agent");
+  }, "This workspace action is not available on the local Agent");
 
 function isSshOnlyManagedHostMessage(type: string) {
-  return type.startsWith("terminal.") || type.startsWith("browser.");
+  return type.startsWith("browser.");
 }

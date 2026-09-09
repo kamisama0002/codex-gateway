@@ -18,7 +18,11 @@ import {
   GIT_REVIEW_WORKSPACE_PANEL_ID,
   HOST_METRICS_WORKSPACE_PANEL_ID,
 } from "@/stores/gateway/workspace-panels";
-import { isManagedRuntimeHost } from "~~/shared/runtime/managed-runtime";
+import {
+  isInsideManagedWorkspace,
+  isManagedRuntimeHost,
+  MANAGED_WORKSPACE_PATH,
+} from "~~/shared/runtime/managed-runtime";
 
 export function useWorkspaceLaunchActions() {
   const gateway = useGatewayCatalogStore();
@@ -63,8 +67,7 @@ export function useWorkspaceLaunchActions() {
   }
 
   function openTerminal() {
-    if (selectedHostId.value === null || selectedHost.value === null || isLocalAgentHost.value)
-      return;
+    if (selectedHostId.value === null || selectedHost.value === null) return;
     if (selectedThreadId.value !== null) {
       const thread = threadView.currentThread;
       void terminal.openTerminal({
@@ -72,7 +75,10 @@ export function useWorkspaceLaunchActions() {
         hostId: selectedHostId.value,
         projectId: selectedProjectId.value,
         threadId: selectedThreadId.value,
-        cwd: thread?.cwd ?? selectedProject.value?.remotePath ?? null,
+        cwd: terminalCwd(
+          thread?.cwd ?? selectedProject.value?.remotePath ?? null,
+          isLocalAgentHost.value,
+        ),
         title: titleForThread(
           thread ?? { id: selectedThreadId.value },
           threadTitleFallbacks(t),
@@ -86,7 +92,7 @@ export function useWorkspaceLaunchActions() {
         scope: "project",
         hostId: selectedProject.value.hostId,
         projectId: selectedProject.value.id,
-        cwd: selectedProject.value.remotePath,
+        cwd: terminalCwd(selectedProject.value.remotePath, isLocalAgentHost.value),
         title: selectedProject.value.name,
       });
       return;
@@ -94,6 +100,7 @@ export function useWorkspaceLaunchActions() {
     void terminal.openTerminal({
       scope: "host",
       hostId: selectedHostId.value,
+      cwd: terminalCwd(null, isLocalAgentHost.value),
       title: selectedHost.value.name,
     });
   }
@@ -121,6 +128,8 @@ export function useWorkspaceLaunchActions() {
   }
 
   return {
+    canOpenTerminal: computed(() => selectedHostId.value !== null),
+    canOpenBrowser: computed(() => selectedHostId.value !== null && !isLocalAgentHost.value),
     canLaunch: computed(() => selectedHostId.value !== null && !isLocalAgentHost.value),
     canOpenThreadTools: computed(() => selectedThreadId.value !== null),
     canMonitorHost: computed(() => selectedHostId.value !== null),
@@ -135,6 +144,19 @@ export function useWorkspaceLaunchActions() {
     openBrowser,
     openHostMonitor,
   };
+}
+
+function terminalCwd(cwd: string | null, managed: boolean) {
+  if (!managed) return cwd;
+  if (
+    cwd !== null &&
+    isInsideManagedWorkspace(cwd) &&
+    !cwd.split("/").some((segment) => segment === "." || segment === "..") &&
+    !cwd.includes("\0")
+  ) {
+    return cwd;
+  }
+  return MANAGED_WORKSPACE_PATH;
 }
 
 function browserTitle(targetUrl: string) {

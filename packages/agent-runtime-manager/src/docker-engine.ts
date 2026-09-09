@@ -1,9 +1,9 @@
-import type { RuntimeType } from "@codex-gateway/agent-runtime-contracts";
+import type { RuntimeTerminalOpen, RuntimeType } from "@codex-gateway/agent-runtime-contracts";
 import type { RuntimeProviderConfig, RuntimeSecret } from "./contracts.js";
 import { runtimeTypeSchema } from "@codex-gateway/agent-runtime-contracts";
 import { constants as fsConstants } from "node:fs";
 import { access, statfs } from "node:fs/promises";
-import { PassThrough } from "node:stream";
+import { PassThrough, type Duplex } from "node:stream";
 import Docker from "dockerode";
 
 export const runtimeResourceLabels = {
@@ -102,6 +102,13 @@ export interface DockerNodeInspection {
   runningRuntimeCount: number;
 }
 
+export interface DockerTerminalProcess {
+  stream: Duplex;
+  resize(cols: number, rows: number): Promise<void>;
+  exitCode(): Promise<number | null>;
+  close(): void;
+}
+
 export interface DockerEngine {
   inspectNode(dataRoot: string): Promise<DockerNodeInspection>;
   findManagedContainer(runtimeId: string): Promise<EngineContainerState | null>;
@@ -116,6 +123,7 @@ export interface DockerEngine {
     command: string,
     options: { timeoutMs: number; maxOutputBytes: number },
   ): Promise<{ code: number | null; stdout: string; stderr: string }>;
+  openTerminal(containerId: string, input: RuntimeTerminalOpen): Promise<DockerTerminalProcess>;
   updateContainerResources(
     containerId: string,
     resources: { Memory: number; NanoCpus: number; PidsLimit: number },
@@ -306,6 +314,33 @@ export class DockerodeEngine implements DockerEngine {
     });
     const stream = await exec.start({ hijack: true, stdin: false });
     return collectExecOutput(this.docker, stream, exec, options);
+  }
+
+  async openTerminal(
+    containerId: string,
+    input: RuntimeTerminalOpen,
+  ): Promise<DockerTerminalProcess> {
+    const exec = await this.docker.getContainer(containerId).exec({
+      AttachStderr: true,
+      AttachStdin: true,
+      AttachStdout: true,
+      Cmd: [
+        "/bin/sh",
+        "-lc",
+        "if command -v bash >/dev/null 2>&1; then exec bash -l; else exec /bin/sh -l; fi",
+      ],
+      Env: ["TERM=xterm-256color"],
+      Tty: true,
+      User: "10001:10001",
+      WorkingDir: input.cwd,
+    });
+    const stream = (await exec.start({ hijack: true, stdin: true, Tty: true })) as Duplex;
+    return {
+      stream,
+      resize: async (cols, rows) => await exec.resize({ h: rows, w: cols }),
+      exitCode: async () => (await exec.inspect()).ExitCode,
+      close: () => stream.destroy(),
+    };
   }
 
   async removeContainer(containerId: string): Promise<void> {

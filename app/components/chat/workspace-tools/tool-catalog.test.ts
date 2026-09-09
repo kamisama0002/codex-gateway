@@ -6,7 +6,8 @@ describe("workspace tool catalog", () => {
     const actions = createActions();
     const catalog = createWorkspaceToolCatalog({
       canOpenThreadTools: true,
-      canLaunchRemoteTools: true,
+      canOpenTerminal: true,
+      canOpenBrowser: true,
       canOpenTmux: true,
       canMonitorHost: true,
       subAgents: [
@@ -51,7 +52,8 @@ describe("workspace tool catalog", () => {
     const actions = createActions();
     const catalog = createWorkspaceToolCatalog({
       canOpenThreadTools: false,
-      canLaunchRemoteTools: false,
+      canOpenTerminal: false,
+      canOpenBrowser: false,
       canOpenTmux: false,
       canMonitorHost: false,
       subAgents: [],
