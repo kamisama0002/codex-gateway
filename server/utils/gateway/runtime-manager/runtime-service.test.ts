@@ -92,6 +92,23 @@ describe("ManagedRuntimeService", () => {
     expect(JSON.stringify(fixture.audit)).not.toContain("container-01");
   });
 
+  it("releases an idle runtime without removing its durable placement", async () => {
+    const fixture = runtimeFixture({ idleTimeoutMs: 60_000 });
+
+    await fixture.service.start(7);
+
+    await expect(
+      fixture.service.releaseIdleRuntimes(Date.parse("2030-01-01T00:00:00.000Z")),
+    ).resolves.toEqual([7]);
+
+    expect(fixture.manager.stop).toHaveBeenCalledOnce();
+    expect(fixture.placementStore.getByUserId).toHaveBeenCalled();
+    expect(await fixture.store.getByUserId(7)).toMatchObject({
+      status: "degraded",
+      lastError: "runtime_stopped",
+    });
+  });
+
   it("samples Agent container stats by user identity without requiring a store record", async () => {
     const fixture = runtimeFixture();
 
@@ -792,6 +809,7 @@ function runtimeFixture(
     assignedPolicy?: AssignedRuntimePolicy | null;
     runtimeNodeId?: string;
     nodeClientError?: Error;
+    idleTimeoutMs?: number;
   } = {},
 ) {
   const records = new Map<number, UserAgentRuntimeRecord>();
@@ -996,6 +1014,7 @@ function runtimeFixture(
     identitySecret: "identity-secret",
     imageAlias: "stable",
     expectedRuntimeVersion: "0.151.0",
+    idleTimeoutMs: options.idleTimeoutMs,
     probe,
     probeRetryOptions: options.probeRetryOptions,
     closeConnections,

@@ -126,6 +126,7 @@ async function placementReservations(db: GatewayDb) {
             COUNT(*) AS runtime_count
      FROM user_agent_runtimes
      WHERE runtime_node_id IS NOT NULL
+       AND status IN ('provisioning', 'starting', 'schema_checking', 'syncing_capabilities', 'ready', 'restarting')
      GROUP BY runtime_node_id
      ORDER BY runtime_node_id`,
   );

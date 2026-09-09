@@ -121,7 +121,7 @@ export function unknownGatewayErrorFromError(
   labels: ErrorMessageLabels,
 ) {
   const payload = gatewayErrorPayload(error);
-  const message = gatewayErrorMessage(error, fallback);
+  const message = displayGatewayErrorMessage(error, fallback, payload, labels);
   const details = payload?.details;
   if (details === null || typeof details !== "object") {
     return new UnknownGatewayDisplayError(message);
@@ -152,6 +152,22 @@ export function unknownGatewayErrorFromError(
   return new UnknownGatewayDisplayError(
     context.length > 0 ? `${message}\n${context.join(" · ")}` : message,
   );
+}
+
+function displayGatewayErrorMessage(
+  error: unknown,
+  fallback: string,
+  payload: ReturnType<typeof gatewayErrorPayload>,
+  labels: ErrorMessageLabels,
+) {
+  const code = typeof payload.code === "string" ? payload.code : null;
+  if (code === "runtime_node_capacity_unavailable") {
+    return labels.runtimeNodeCapacityUnavailable ?? gatewayErrorMessage(error, fallback);
+  }
+  const rawMessage = gatewayErrorMessage(error, fallback);
+  return rawMessage === code && code === "runtime_node_capacity_unavailable"
+    ? (labels.runtimeNodeCapacityUnavailable ?? rawMessage)
+    : rawMessage;
 }
 
 function codexErrorCode(value: unknown): string | null {

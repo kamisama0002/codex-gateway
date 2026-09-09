@@ -490,6 +490,7 @@
     "runtimeNodeNeverSeen": "从未",
     "runtimeSettingsLoadFailed": "读取运行时失败",
     "runtimeStartFailed": "创建 Agent Docker 失败",
+    "runtimeNodeCapacityUnavailable": "当前没有可用的 Agent 运行节点资源，请稍后重试或联系管理员扩容。",
     "runtimeRestartFailed": "重启 Agent 失败",
     "runtimeAssignedPolicy": "分配的容器策略",
     "runtimeActualResources": "当前实际资源",

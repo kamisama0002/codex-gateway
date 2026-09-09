@@ -47,6 +47,7 @@ import { runtimeAgentResourcesFromEnvironment } from "./runtime-node-bootstrap";
 import { createRuntimePlacementStore } from "./runtime-placement-store";
 import type { RuntimePlacementRecord } from "./runtime-node-types";
 import { runtimeNodeClientRegistry } from "./runtime-node-client-registry";
+import { runtimeIdleTimeoutMs } from "./runtime-idle-timeout";
 
 interface RuntimeManagerPort {
   relayTarget(placement: RuntimePlacementIdentity): ManagedRuntimeRelayTarget;
@@ -127,6 +128,7 @@ interface ManagedRuntimeServiceOptions {
   now?: () => string;
   workspaceKey?: () => string;
   defaultResources?: { cpuMillis: number; memoryBytes: number; pids: number };
+  idleTimeoutMs?: number;
   usernameFor?(userId: number): Promise<string | null>;
   syncCapabilities?(
     host: HostRecord,
@@ -182,6 +184,7 @@ export class ManagedRuntimeService {
   private readonly now: () => string;
   private readonly workspaceKey: () => string;
   private readonly defaultResources: { cpuMillis: number; memoryBytes: number; pids: number };
+  private readonly idleTimeoutMs: number;
 
   constructor(private readonly options: ManagedRuntimeServiceOptions) {
     if (options.identitySecret.length === 0) throw new Error("Runtime identity secret is required");
@@ -196,6 +199,7 @@ export class ManagedRuntimeService {
       memoryBytes: 8 * 1024 * 1024 * 1024,
       pids: 1_024,
     };
+    this.idleTimeoutMs = options.idleTimeoutMs ?? runtimeIdleTimeoutMs();
   }
 
   async getStatus(userId: number): Promise<ManagedRuntimeStatus | null> {
@@ -233,6 +237,26 @@ export class ManagedRuntimeService {
         username: (await this.options.usernameFor?.(runtime.userId)) ?? `user-${runtime.userId}`,
       })),
     );
+  }
+
+  async releaseIdleRuntimes(nowMs = Date.parse(this.now())): Promise<number[]> {
+    if (this.idleTimeoutMs === 0 || !Number.isFinite(nowMs)) return [];
+    const released: number[] = [];
+    for (const runtime of await this.options.store.list()) {
+      if (runtime.status !== "ready") continue;
+      const updatedAtMs = Date.parse(runtime.updatedAt);
+      if (!Number.isFinite(updatedAtMs) || nowMs - updatedAtMs < this.idleTimeoutMs) continue;
+      try {
+        await this.stop(runtime.userId, runtime.userId);
+        released.push(runtime.userId);
+      } catch (error) {
+        console.error("[gateway-runtime] idle runtime release failed", {
+          userId: runtime.userId,
+          code: safeErrorCode(error),
+        });
+      }
+    }
+    return released;
   }
 
   async sampleAgentStats(userId: number): Promise<AgentRuntimeStatsResult> {
@@ -483,6 +507,7 @@ export class ManagedRuntimeService {
       const manager = await this.managerForPlacement(placement);
       result = await manager.inspect(managerPlacement(placement));
       const endpoint = this.runningEndpoint(manager, managerPlacement(placement), result);
+      await this.touchActivity(runtime);
       return createManagedRuntimeHost(targetUserId, runtime, endpoint);
     } catch (error) {
       throw new ManagedRuntimeServiceError(safeErrorCode(error));
@@ -738,6 +763,10 @@ export class ManagedRuntimeService {
     });
   }
 
+  private async touchActivity(runtime: UserAgentRuntimeRecord) {
+    return await this.options.store.upsert({ ...runtime, updatedAt: this.now() });
+  }
+
   private async requiredRuntime(userId: number): Promise<UserAgentRuntimeRecord> {
     const runtime = await this.options.store.getByUserId(userId);
     if (runtime === null) throw new ManagedRuntimeServiceError("runtime_not_found");
@@ -965,6 +994,9 @@ export const runtimeService = {
   resolveManagedHost(userId: number) {
     return defaultRuntimeService().resolveManagedHost(userId);
   },
+  releaseIdleRuntimes(nowMs?: number) {
+    return defaultRuntimeService().releaseIdleRuntimes(nowMs);
+  },
   runtimeIdForUser(userId: number) {
     return defaultRuntimeService().runtimeIdForUser(userId);
   },
@@ -985,6 +1017,7 @@ function defaultRuntimeService(): ManagedRuntimeService {
     defaultResources: runtimeAgentResourcesFromEnvironment(),
     imageAlias: requiredEnvironment("RUNTIME_MANAGER_DEFAULT_IMAGE_ALIAS"),
     expectedRuntimeVersion: SUPPORTED_CODEX_VERSION,
+    idleTimeoutMs: runtimeIdleTimeoutMs(),
     probe: probeManagedCodexRuntime,
     closeConnections: (userId) =>
       runWithGatewayUser(userId, () => threadBroker.closeHost(MANAGED_RUNTIME_HOST_ID)),

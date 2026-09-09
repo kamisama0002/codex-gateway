@@ -28,6 +28,12 @@ const lifecycle = vi.hoisted(() => {
     stopNodeHealthMonitor: vi.fn(() => {
       calls.push("stop node health monitor");
     }),
+    startIdleReaper: vi.fn(() => {
+      calls.push("start idle runtime reaper");
+    }),
+    stopIdleReaper: vi.fn(() => {
+      calls.push("stop idle runtime reaper");
+    }),
     stop: vi.fn(() => {
       calls.push("stop supervisor");
     }),
@@ -62,6 +68,13 @@ vi.mock("../utils/gateway/runtime-manager/runtime-node-health-monitor", () => ({
   runtimeNodeHealthMonitor: {
     start: lifecycle.startNodeHealthMonitor,
     stop: lifecycle.stopNodeHealthMonitor,
+  },
+}));
+
+vi.mock("../utils/gateway/runtime-manager/runtime-idle-reaper", () => ({
+  runtimeIdleReaper: {
+    start: lifecycle.startIdleReaper,
+    stop: lifecycle.stopIdleReaper,
   },
 }));
 
@@ -104,6 +117,7 @@ describe("host runtime supervisor Nitro lifecycle", () => {
       "start supervisor",
       "bootstrap stored users",
       "start node health monitor",
+      "start idle runtime reaper",
     ]);
     expect(lifecycle.bootstrapStoredUsers).toHaveBeenCalledOnce();
   });
@@ -173,6 +187,8 @@ describe("host runtime supervisor Nitro lifecycle", () => {
       "start supervisor",
       "bootstrap stored users",
       "start node health monitor",
+      "start idle runtime reaper",
+      "stop idle runtime reaper",
       "stop node health monitor",
       "stop supervisor",
       "close database",

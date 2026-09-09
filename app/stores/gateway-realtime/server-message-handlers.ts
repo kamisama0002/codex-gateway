@@ -129,7 +129,9 @@ function handleRealtimeError(
   message: RealtimeServerMessageMap["error"],
 ) {
   const requestError = realtimeRequestErrorFromServer(
-    message.message,
+    message.code === "runtime_node_capacity_unavailable"
+      ? ctx.t("app.runtimeNodeCapacityUnavailable")
+      : message.message,
     message.request !== null && message.request !== undefined && "requestId" in message.request
       ? message.request
       : undefined,

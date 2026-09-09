@@ -143,6 +143,10 @@ function realtimeErrorCode(error: unknown) {
   if (recordFromUnknown(error)?.code === DATABASE_UNAVAILABLE_CODE) {
     return DATABASE_UNAVAILABLE_CODE;
   }
+  const code = recordFromUnknown(error)?.code;
+  if (code === "runtime_node_capacity_unavailable") {
+    return code;
+  }
   if (isStaleThreadCursorErrorLike(error)) {
     return STALE_THREAD_CURSOR_ERROR_CODE;
   }

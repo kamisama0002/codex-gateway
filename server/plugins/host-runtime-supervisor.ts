@@ -1,6 +1,7 @@
 import { hostRuntimeSupervisor } from "../utils/gateway/runtime/host-runtime-supervisor";
 import { bootstrapLegacyRuntimeNodeFromEnvironment } from "../utils/gateway/runtime-manager/runtime-node-bootstrap";
 import { runtimeNodeHealthMonitor } from "../utils/gateway/runtime-manager/runtime-node-health-monitor";
+import { runtimeIdleReaper } from "../utils/gateway/runtime-manager/runtime-idle-reaper";
 import {
   closeGatewayDatabase,
   databaseUnavailableError,
@@ -10,6 +11,7 @@ import {
 let startupPhase = "database_verification";
 let supervisorStarted = false;
 let nodeHealthMonitorStarted = false;
+let idleReaperStarted = false;
 try {
   try {
     await verifyGatewayDatabase();
@@ -24,7 +26,12 @@ try {
   await hostRuntimeSupervisor.bootstrapStoredUsers();
   runtimeNodeHealthMonitor.start();
   nodeHealthMonitorStarted = true;
+  runtimeIdleReaper.start();
+  idleReaperStarted = true;
 } catch (error) {
+  if (idleReaperStarted) {
+    runtimeIdleReaper.stop();
+  }
   if (nodeHealthMonitorStarted) {
     runtimeNodeHealthMonitor.stop();
   }
@@ -47,6 +54,7 @@ try {
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook("close", async () => {
+    runtimeIdleReaper.stop();
     runtimeNodeHealthMonitor.stop();
     hostRuntimeSupervisor.stop();
     await closeGatewayDatabase();

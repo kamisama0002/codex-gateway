@@ -490,6 +490,7 @@
     "runtimeNodeNeverSeen": "Never",
     "runtimeSettingsLoadFailed": "Failed to load runtimes",
     "runtimeStartFailed": "Failed to create Agent Docker",
+    "runtimeNodeCapacityUnavailable": "No Agent runtime node resources are available right now. Try again later or contact an administrator to add capacity.",
     "runtimeRestartFailed": "Failed to restart Agent",
     "runtimeAssignedPolicy": "Assigned container policy",
     "runtimeActualResources": "Current actual resources",
