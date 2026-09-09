@@ -83,5 +83,14 @@ async function migrationStatementAlreadyApplied(
       )) !== null
     );
   }
+  if (version === 19 && statementIndex === 0) {
+    const column = await db.one(
+      "SELECT 1 AS exists_row FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'user_runtime_policies' AND column_name = 'idle_timeout_minutes'",
+    );
+    const constraint = await db.one(
+      "SELECT 1 AS exists_row FROM information_schema.table_constraints WHERE constraint_schema = DATABASE() AND table_name = 'user_runtime_policies' AND constraint_name = 'chk_user_runtime_policies_idle_timeout'",
+    );
+    return column !== null && constraint !== null;
+  }
   return false;
 }

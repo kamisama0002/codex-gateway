@@ -82,6 +82,7 @@ const assignedRuntimePolicyViewSchema = z
     memoryMiB: z.number().int().min(128).max(16_384),
     cpuCores: z.number().min(0.25).max(8).multipleOf(0.01),
     pidsLimit: z.number().int().min(32).max(4096),
+    idleTimeoutMinutes: z.number().int().min(0).max(1440).nullable(),
   })
   .strict();
 

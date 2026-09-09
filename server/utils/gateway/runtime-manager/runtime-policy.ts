@@ -8,6 +8,8 @@ export const dataOpsRuntimePolicySchema = z
     // oxlint-disable-next-line typescript/no-deprecated -- Keep the wire contract explicitly finite.
     cpuCores: z.number().finite().min(0.25).max(8).multipleOf(0.01),
     pidsLimit: z.number().int().min(32).max(4096),
+    // Zero is an explicit platform-admin override that disables idle recycling.
+    idleTimeoutMinutes: z.number().int().min(0).max(1440).optional(),
   })
   .strict();
 
@@ -21,6 +23,7 @@ export interface AssignedRuntimePolicy {
   memoryMiB: number;
   cpuMillicores: number;
   pidsLimit: number;
+  idleTimeoutMinutes: number | null;
   sourceIssuedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -43,6 +46,7 @@ export const assignedRuntimePolicySchema: z.ZodType<AssignedRuntimePolicy> = z
     memoryMiB: z.number().int().min(128).max(16_384),
     cpuMillicores: z.number().int().min(250).max(8000).multipleOf(10),
     pidsLimit: z.number().int().min(32).max(4096),
+    idleTimeoutMinutes: z.number().int().min(0).max(1440).nullable(),
     sourceIssuedAt: timestampSchema(),
     createdAt: timestampSchema(),
     updatedAt: timestampSchema(),
@@ -60,6 +64,7 @@ export function assignRuntimePolicy(input: AssignRuntimePolicyInput): AssignedRu
     memoryMiB: policy.memoryMiB,
     cpuMillicores: Math.round(policy.cpuCores * 1000),
     pidsLimit: policy.pidsLimit,
+    idleTimeoutMinutes: policy.idleTimeoutMinutes ?? null,
     sourceIssuedAt: new Date(input.sourceIssuedAt).toISOString(),
     createdAt: now,
     updatedAt: now,

@@ -38,15 +38,16 @@ export function createRuntimePolicyStore(db: GatewayDb) {
           await tx.execute(
             `INSERT INTO user_runtime_policies (
               user_id, tenant_id, policy_version, image_alias, memory_mib, cpu_millicores,
-              pids_limit, source_issued_at, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              pids_limit, idle_timeout_minutes, source_issued_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             policyParams(assigned),
           );
         } else {
           await tx.execute(
             `UPDATE user_runtime_policies
              SET tenant_id = ?, policy_version = ?, image_alias = ?, memory_mib = ?,
-                 cpu_millicores = ?, pids_limit = ?, source_issued_at = ?, updated_at = ?
+                 cpu_millicores = ?, pids_limit = ?, idle_timeout_minutes = ?,
+                 source_issued_at = ?, updated_at = ?
              WHERE user_id = ?`,
             [
               assigned.tenantId,
@@ -55,6 +56,7 @@ export function createRuntimePolicyStore(db: GatewayDb) {
               assigned.memoryMiB,
               assigned.cpuMillicores,
               assigned.pidsLimit,
+              assigned.idleTimeoutMinutes,
               assigned.sourceIssuedAt,
               assigned.updatedAt,
               assigned.userId,
@@ -96,6 +98,7 @@ function policyParams(policy: AssignedRuntimePolicy) {
     policy.memoryMiB,
     policy.cpuMillicores,
     policy.pidsLimit,
+    policy.idleTimeoutMinutes,
     policy.sourceIssuedAt,
     policy.createdAt,
     policy.updatedAt,
@@ -111,6 +114,10 @@ function rowToRuntimePolicy(row: Record<string, unknown>): AssignedRuntimePolicy
     memoryMiB: Number(row.memory_mib),
     cpuMillicores: Number(row.cpu_millicores),
     pidsLimit: Number(row.pids_limit),
+    idleTimeoutMinutes:
+      row.idle_timeout_minutes === undefined || row.idle_timeout_minutes === null
+        ? null
+        : Number(row.idle_timeout_minutes),
     sourceIssuedAt: row.source_issued_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

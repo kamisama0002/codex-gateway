@@ -440,6 +440,7 @@
     "runtimeStart": "启动 Agent",
     "runtimeRestart": "重启",
     "runtimeUpdatedAt": "更新于 {time}",
+    "runtimeIdleTimeout": "空闲回收时间",
     "runtimeUserFallback": "用户 {id}",
     "runtimeAdminList": "全部用户运行时",
     "runtimeAdminEmpty": "还没有用户启动过 Agent 容器。",

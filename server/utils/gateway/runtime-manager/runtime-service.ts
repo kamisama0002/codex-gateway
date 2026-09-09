@@ -246,12 +246,18 @@ export class ManagedRuntimeService {
   }
 
   async releaseIdleRuntimes(nowMs = Date.parse(this.now())): Promise<number[]> {
-    if (this.idleTimeoutMs === 0 || !Number.isFinite(nowMs)) return [];
+    if (!Number.isFinite(nowMs)) return [];
     const released: number[] = [];
     for (const runtime of await this.options.store.list()) {
       if (runtime.status !== "ready") continue;
+      const policy = await this.options.policyStore.getByUserId(runtime.userId);
+      const idleTimeoutMs =
+        policy?.idleTimeoutMinutes === null || policy?.idleTimeoutMinutes === undefined
+          ? this.idleTimeoutMs
+          : policy.idleTimeoutMinutes * 60_000;
+      if (idleTimeoutMs === 0) continue;
       const updatedAtMs = Date.parse(runtime.updatedAt);
-      if (!Number.isFinite(updatedAtMs) || nowMs - updatedAtMs < this.idleTimeoutMs) continue;
+      if (!Number.isFinite(updatedAtMs) || nowMs - updatedAtMs < idleTimeoutMs) continue;
       try {
         await this.stop(runtime.userId, runtime.userId);
         released.push(runtime.userId);
@@ -898,6 +904,7 @@ export class ManagedRuntimeService {
             memoryMiB: policy.memoryMiB,
             cpuCores: policy.cpuMillicores / 1000,
             pidsLimit: policy.pidsLimit,
+            idleTimeoutMinutes: policy.idleTimeoutMinutes,
           };
     const expectedResources = policy === null ? null : managerResources(policy);
     return managedRuntimeStatusViewSchema.parse({

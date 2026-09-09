@@ -17,6 +17,7 @@ interface ResourceSummary {
   memory: string;
   cpu: string;
   pids: string;
+  idleTimeout: string;
 }
 
 export interface RuntimePolicySummary {
@@ -36,6 +37,14 @@ export function formatCpuCores(cpuMillicores: number) {
 
 export function formatPidsLimit(pidsLimit: number) {
   return String(pidsLimit);
+}
+
+export function formatIdleTimeoutMinutes(minutes: number | null, fallbackMinutes?: number | null) {
+  const effective = minutes ?? fallbackMinutes;
+  if (effective === null || effective === undefined) return "-";
+  if (effective === 0) return "Disabled";
+  if (effective % 60 === 0) return `${effective / 60} h`;
+  return `${effective} min`;
 }
 
 export function policyBadges(
@@ -61,6 +70,7 @@ export function runtimePolicySummary(view: RuntimePolicyView): RuntimePolicySumm
             memory: formatMemoryMiB(view.assignedPolicy.memoryMiB),
             cpu: formatCpuCores(view.assignedPolicy.cpuCores * 1000),
             pids: formatPidsLimit(view.assignedPolicy.pidsLimit),
+            idleTimeout: formatIdleTimeoutMinutes(view.assignedPolicy.idleTimeoutMinutes),
           },
     actual:
       view.actualResources === null
@@ -70,6 +80,7 @@ export function runtimePolicySummary(view: RuntimePolicyView): RuntimePolicySumm
             memory: formatMemoryMiB(view.actualResources.memoryBytes / (1024 * 1024)),
             cpu: formatCpuCores(view.actualResources.nanoCpus / 1_000_000),
             pids: formatPidsLimit(view.actualResources.pidsLimit),
+            idleTimeout: "-",
           },
     badges: policyBadges(view),
   };

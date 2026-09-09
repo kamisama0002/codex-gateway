@@ -719,4 +719,15 @@ export const MYSQL_SCHEMA_MIGRATIONS: readonly MysqlSchemaMigration[] = [
       `,
     ],
   },
+  {
+    version: 19,
+    statements: [
+      `
+        ALTER TABLE user_runtime_policies
+          ADD COLUMN idle_timeout_minutes INT UNSIGNED NULL AFTER pids_limit,
+          ADD CONSTRAINT chk_user_runtime_policies_idle_timeout
+            CHECK (idle_timeout_minutes IS NULL OR idle_timeout_minutes <= 1440)
+      `,
+    ],
+  },
 ];

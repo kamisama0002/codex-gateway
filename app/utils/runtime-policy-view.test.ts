@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatCpuCores,
+  formatIdleTimeoutMinutes,
   formatMemoryMiB,
   formatPidsLimit,
   policyBadges,
@@ -14,6 +15,8 @@ describe("runtime policy presentation", () => {
     expect(formatMemoryMiB(2048)).toBe("2 GiB");
     expect(formatCpuCores(1500)).toBe("1.5 CPU");
     expect(formatPidsLimit(256)).toBe("256");
+    expect(formatIdleTimeoutMinutes(30)).toBe("30 min");
+    expect(formatIdleTimeoutMinutes(0)).toBe("Disabled");
   });
 
   it("formats assigned and inspected resources from the public runtime view", () => {
@@ -24,6 +27,7 @@ describe("runtime policy presentation", () => {
           memoryMiB: 2048,
           cpuCores: 1.5,
           pidsLimit: 256,
+          idleTimeoutMinutes: 30,
         },
         actualResources: {
           memoryBytes: 1024 * 1024 * 1024,
@@ -40,12 +44,14 @@ describe("runtime policy presentation", () => {
         memory: "2 GiB",
         cpu: "1.5 CPU",
         pids: "256",
+        idleTimeout: "30 min",
       },
       actual: {
         imageAlias: "tenant-current",
         memory: "1 GiB",
         cpu: "1 CPU",
         pids: "128",
+        idleTimeout: "-",
       },
       badges: [],
     });
@@ -67,6 +73,7 @@ describe("runtime policy presentation", () => {
           memoryMiB: 2048,
           cpuCores: 1.5,
           pidsLimit: 256,
+          idleTimeoutMinutes: 30,
         },
         actualResources: null,
       }),

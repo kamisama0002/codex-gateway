@@ -88,4 +88,11 @@ describe("MySQL capability schema", () => {
     expect(sql).not.toContain("--headless");
     expect(sql).not.toContain("--user-data-dir");
   });
+
+  it("adds the optional per-tenant idle timeout to runtime policies", () => {
+    const migration = MYSQL_SCHEMA_MIGRATIONS.find((item) => item.version === 19);
+    const sql = migration?.statements.join("\n") ?? "";
+    expect(sql).toContain("ADD COLUMN idle_timeout_minutes INT UNSIGNED NULL");
+    expect(sql).toContain("chk_user_runtime_policies_idle_timeout");
+  });
 });

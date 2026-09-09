@@ -86,6 +86,7 @@ function runtimeView() {
       memoryMiB: 1024,
       cpuCores: 1.5,
       pidsLimit: 128,
+      idleTimeoutMinutes: null,
     },
     actualResources: {
       memoryBytes: 1024 * 1024 * 1024,

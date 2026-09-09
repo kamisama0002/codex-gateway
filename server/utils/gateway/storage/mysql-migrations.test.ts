@@ -129,6 +129,7 @@ describe("MySQL gateway migrations", () => {
       { column_name: "memory_mib", column_type: "int unsigned", is_nullable: "NO" },
       { column_name: "cpu_millicores", column_type: "int unsigned", is_nullable: "NO" },
       { column_name: "pids_limit", column_type: "int unsigned", is_nullable: "NO" },
+      { column_name: "idle_timeout_minutes", column_type: "int unsigned", is_nullable: "YES" },
       { column_name: "source_issued_at", column_type: "varchar(32)", is_nullable: "NO" },
       { column_name: "created_at", column_type: "varchar(32)", is_nullable: "NO" },
       { column_name: "updated_at", column_type: "varchar(32)", is_nullable: "NO" },

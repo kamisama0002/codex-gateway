@@ -25,12 +25,12 @@ describe("RuntimeIdleReaper", () => {
     reaper.stop();
   });
 
-  it("does not start when the timeout is disabled", async () => {
+  it("still starts when the global timeout is disabled for tenant overrides", async () => {
     const releaseIdleRuntimes = vi.fn(async () => [7]);
     const reaper = new RuntimeIdleReaper({ idleTimeoutMs: 0, releaseIdleRuntimes });
 
     reaper.start();
-    await expect(reaper.sweep()).resolves.toEqual([]);
-    expect(releaseIdleRuntimes).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(releaseIdleRuntimes).toHaveBeenCalledOnce());
+    reaper.stop();
   });
 });

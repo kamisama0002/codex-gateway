@@ -17,7 +17,7 @@ export class RuntimeIdleReaper {
   ) {}
 
   start() {
-    if (this.timer !== null || this.options.idleTimeoutMs === 0) return;
+    if (this.timer !== null) return;
     const intervalMs =
       this.options.intervalMs ??
       Math.min(
@@ -36,7 +36,9 @@ export class RuntimeIdleReaper {
   }
 
   async sweep() {
-    if (this.active || this.options.idleTimeoutMs === 0) return [];
+    // The service applies the global timeout only when a tenant has no override.
+    // Always sweep so tenant policies can enable recycling when the global default is 0.
+    if (this.active) return [];
     this.active = true;
     try {
       const released = await this.options.releaseIdleRuntimes();

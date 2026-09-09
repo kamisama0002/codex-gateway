@@ -30,6 +30,7 @@ describe("runtimePolicyStore", () => {
       memoryMiB: 2048,
       cpuMillicores: 2250,
       pidsLimit: 256,
+      idleTimeoutMinutes: null,
       sourceIssuedAt: "2026-09-04T00:00:00.000Z",
       createdAt: "2026-09-04T00:01:00.000Z",
       updatedAt: "2026-09-04T00:01:00.000Z",

@@ -440,6 +440,7 @@
     "runtimeStart": "Start Agent",
     "runtimeRestart": "Restart",
     "runtimeUpdatedAt": "Updated {time}",
+    "runtimeIdleTimeout": "Idle recycle time",
     "runtimeUserFallback": "User {id}",
     "runtimeAdminList": "All user runtimes",
     "runtimeAdminEmpty": "No user has started an Agent container yet.",

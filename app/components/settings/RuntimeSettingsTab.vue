@@ -7,6 +7,7 @@ import { Button } from "@codex-gateway/ui/button";
 import type { ManagedRuntimeStatusView } from "@codex-gateway/agent-runtime-contracts";
 import { gatewayApi } from "@/utils/gateway-api";
 import {
+  formatIdleTimeoutMinutes,
   runtimePolicySummary,
   shouldShowRuntimePolicy,
   type RuntimePolicyBadge,
@@ -26,6 +27,7 @@ const restartingUserId = ref<number | null>(null);
 const error = ref("");
 const mine = ref<RuntimeStatusView | null>(null);
 const runtimes = ref<RuntimeStatusView[]>([]);
+const platformIdleTimeoutMinutes = ref<number | null>(null);
 const canAdminister = ref(false);
 const minePolicy = computed(() => (mine.value === null ? null : runtimePolicySummary(mine.value)));
 const mineHasPolicy = computed(() => mine.value !== null && shouldShowRuntimePolicy(mine.value));
@@ -45,7 +47,12 @@ async function refresh() {
   loading.value = true;
   error.value = "";
   try {
-    mine.value = await gatewayApi<RuntimeStatusView | null>("/api/runtime/me");
+    const [nextMine, runtimeConfig] = await Promise.all([
+      gatewayApi<RuntimeStatusView | null>("/api/runtime/me"),
+      gatewayApi<{ idleTimeoutMinutes: number }>("/api/runtime/config"),
+    ]);
+    mine.value = nextMine;
+    platformIdleTimeoutMinutes.value = runtimeConfig.idleTimeoutMinutes;
     try {
       runtimes.value = await gatewayApi<RuntimeStatusView[]>("/api/admin/runtimes");
       canAdminister.value = true;
@@ -145,6 +152,13 @@ function formatUpdatedAt(value: string) {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? value : new Date(parsed).toLocaleString();
 }
+
+function idleTimeoutLabel(view: RuntimeStatusView | null) {
+  return formatIdleTimeoutMinutes(
+    view?.assignedPolicy?.idleTimeoutMinutes ?? null,
+    platformIdleTimeoutMinutes.value,
+  );
+}
 </script>
 
 <template>
@@ -179,6 +193,10 @@ function formatUpdatedAt(value: string) {
                 }}</Badge>
                 <span class="text-ink-muted">{{ mine.runtime.runtimeVersion }}</span>
               </div>
+              <div class="flex items-center justify-between gap-2 text-ink-muted">
+                <span>{{ t("app.runtimeIdleTimeout") }}</span>
+                <span>{{ idleTimeoutLabel(mine) }}</span>
+              </div>
               <div v-if="minePolicy?.badges.length" class="flex flex-wrap gap-2">
                 <Badge
                   v-for="badge in minePolicy.badges"
@@ -210,6 +228,10 @@ function formatUpdatedAt(value: string) {
                   <div class="flex items-center justify-between gap-2">
                     <span class="text-ink-muted">{{ t("app.runtimeImageAlias") }}</span>
                     <span>{{ minePolicy.assigned.imageAlias }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-ink-muted">{{ t("app.runtimeIdleTimeout") }}</span>
+                    <span>{{ idleTimeoutLabel(mine) }}</span>
                   </div>
                 </div>
               </div>
@@ -317,6 +339,9 @@ function formatUpdatedAt(value: string) {
             </p>
             <p class="text-sm text-ink-muted">
               {{ t("app.runtimeUpdatedAt", { time: formatUpdatedAt(runtime.runtime.updatedAt) }) }}
+            </p>
+            <p class="text-sm text-ink-muted">
+              {{ t("app.runtimeIdleTimeout") }}: {{ idleTimeoutLabel(runtime) }}
             </p>
           </div>
           <Button
