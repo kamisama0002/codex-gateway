@@ -7,6 +7,7 @@ import {
   type DataOpsBindingStatus,
   type DataOpsIntegrationRow,
   type DataOpsIntegrationSecret,
+  type DirectDataOpsIntegrationInput,
   normalizeDataOpsBaseUrl,
   positiveSafeRevision,
   type StageDataOpsIntegrationInput,
@@ -78,6 +79,51 @@ export function createDataOpsIntegrationRepository(db: GatewayDb = gatewayDataba
           );
           await tx.execute(
             "INSERT INTO platform_integrations (provider, pairing_id, base_url, encrypted_shared_secret, status, revision, created_at, updated_at) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",
+            [
+              DATAOPS_INTEGRATION_PROVIDER,
+              normalized.pairingId,
+              normalized.dataOpsBaseUrl,
+              encryptJson({ sharedSecret: normalized.sharedSecret }),
+              normalized.revision,
+              normalized.now,
+              normalized.now,
+            ],
+          );
+          return requiredMappedRow(
+            await tx.one<DataOpsIntegrationRow>(
+              "SELECT * FROM platform_integrations WHERE pairing_id = ?",
+              [normalized.pairingId],
+            ),
+          );
+        },
+        { isolationLevel: "serializable" },
+      );
+    },
+
+    async connect(input: DirectDataOpsIntegrationInput): Promise<DataOpsIntegrationSecret> {
+      const normalized = validateDirectInput(input);
+      return await db.transaction(
+        async (tx) => {
+          const existing = await tx.one<DataOpsIntegrationRow>(
+            "SELECT * FROM platform_integrations WHERE pairing_id = ? FOR UPDATE",
+            [normalized.pairingId],
+          );
+          if (existing !== null) {
+            throw new DataOpsIntegrationRevisionConflictError();
+          }
+          if (normalized.revision <= (await providerHighWaterRevision(tx))) {
+            throw new DataOpsIntegrationRevisionConflictError();
+          }
+          await tx.execute(
+            "UPDATE platform_integrations SET status = 'retired', updated_at = ? WHERE provider = ? AND (status = 'pending' OR status = 'grace')",
+            [normalized.now, DATAOPS_INTEGRATION_PROVIDER],
+          );
+          await tx.execute(
+            "UPDATE platform_integrations SET status = 'grace', grace_expires_at = ?, updated_at = ? WHERE provider = ? AND status = 'active'",
+            [normalized.graceExpiresAt, normalized.now, DATAOPS_INTEGRATION_PROVIDER],
+          );
+          await tx.execute(
+            "INSERT INTO platform_integrations (provider, pairing_id, base_url, encrypted_shared_secret, status, revision, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
             [
               DATAOPS_INTEGRATION_PROVIDER,
               normalized.pairingId,
@@ -185,6 +231,14 @@ function validateStageInput(input: StageDataOpsIntegrationInput): StageDataOpsIn
   if (input.sharedSecret.trim().length < 32) throw new Error("integration_shared_secret_invalid");
   if (Number.isNaN(Date.parse(input.now))) throw new Error("integration_timestamp_invalid");
   return { ...input, dataOpsBaseUrl: normalizeDataOpsBaseUrl(input.dataOpsBaseUrl) };
+}
+
+function validateDirectInput(input: DirectDataOpsIntegrationInput): DirectDataOpsIntegrationInput {
+  const normalized = validateStageInput(input);
+  if (Number.isNaN(Date.parse(input.graceExpiresAt))) {
+    throw new Error("integration_timestamp_invalid");
+  }
+  return { ...normalized, graceExpiresAt: input.graceExpiresAt };
 }
 
 function validateIdentity(pairingId: string, revision: number): void {

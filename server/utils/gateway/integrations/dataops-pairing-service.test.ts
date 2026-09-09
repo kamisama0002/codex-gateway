@@ -66,6 +66,41 @@ describe("DataOpsPairingService", () => {
     expect(fixture.integrations.confirm).not.toHaveBeenCalled();
   });
 
+  it("connects with the configured long-lived service token", async () => {
+    const serviceToken = "service-token-that-is-at-least-32-characters";
+    const fixture = createFixture({ serviceToken });
+    fixture.integrations.connect.mockResolvedValue({
+      pairingId: "direct_pairing",
+      revision: 1_000,
+      status: "active",
+      dataOpsBaseUrl: "https://dinky.example.test",
+      sharedSecret: serviceToken,
+    });
+
+    await expect(
+      fixture.service.connect({ dataOpsBaseUrl: "https://dinky.example.test/" }, serviceToken),
+    ).resolves.toEqual({ pairingId: "direct_pairing", revision: 1_000, status: "active" });
+    expect(fixture.integrations.connect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dataOpsBaseUrl: "https://dinky.example.test",
+        sharedSecret: serviceToken,
+      }),
+    );
+    expect(fixture.publish).toHaveBeenCalledWith({ pairingId: "direct_pairing", revision: 1_000 });
+  });
+
+  it("rejects a service token that does not match the Gateway configuration", async () => {
+    const fixture = createFixture({ serviceToken: "service-token-that-is-at-least-32-characters" });
+
+    await expect(
+      fixture.service.connect(
+        { dataOpsBaseUrl: "https://dinky.example.test" },
+        "wrong-token-that-is-at-least-32-characters",
+      ),
+    ).rejects.toThrow("dataops_service_token_rejected");
+    expect(fixture.integrations.connect).not.toHaveBeenCalled();
+  });
+
   it("rejects expired or reused codes without staging an integration", async () => {
     const fixture = createFixture();
     fixture.codes.consume.mockResolvedValue(false);
@@ -289,13 +324,18 @@ describe("DataOpsPairingService", () => {
 });
 
 function createFixture(
-  options: { rateLimit?: () => boolean; fetch?: typeof globalThis.fetch } = {},
+  options: {
+    rateLimit?: () => boolean;
+    fetch?: typeof globalThis.fetch;
+    serviceToken?: string;
+  } = {},
 ) {
   const integrations = {
     active: vi.fn(),
     acceptedForAuthentication: vi.fn(),
     pending: vi.fn(),
     stage: vi.fn(),
+    connect: vi.fn(),
     confirm: vi.fn(),
     finalize: vi.fn(),
   };
@@ -324,6 +364,7 @@ function createFixture(
       publish,
       ensureMcp,
       getMcp,
+      serviceToken: () => options.serviceToken ?? "service-token-that-is-at-least-32-characters",
     }),
   };
 }

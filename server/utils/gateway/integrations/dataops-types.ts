@@ -24,6 +24,10 @@ export interface StageDataOpsIntegrationInput {
   now: string;
 }
 
+export interface DirectDataOpsIntegrationInput extends StageDataOpsIntegrationInput {
+  graceExpiresAt: string;
+}
+
 export interface DataOpsIntegrationRow extends DbRow {
   id: number | bigint | string;
   pairing_id: string;

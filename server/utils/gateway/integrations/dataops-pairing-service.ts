@@ -9,6 +9,7 @@ import {
   createDinkyMcpCapabilityService,
   dinkyMcpCapabilityMatches,
 } from "./dataops-mcp-capability";
+import { dataOpsServiceToken, matchesDataOpsServiceToken } from "./dataops-service-token";
 
 const PAIRING_CODE_TTL_MS = 10 * 60_000;
 const GRACE_TTL_MS = 5 * 60_000;
@@ -25,6 +26,10 @@ export const dataOpsPairInputSchema = z
 
 export const dataOpsRevisionBodySchema = z
   .object({ revision: z.number().int().positive() })
+  .strict();
+
+export const dataOpsConnectInputSchema = z
+  .object({ dataOpsBaseUrl: z.string().trim().min(1).max(2048) })
   .strict();
 
 export const dataOpsProbeInputSchema = z
@@ -50,7 +55,13 @@ type PairingCodeRepository = ReturnType<typeof createPairingCodeRepository>;
 export interface DataOpsPairingServiceOptions {
   integrations?: Pick<
     IntegrationRepository,
-    "active" | "acceptedForAuthentication" | "pending" | "stage" | "confirm" | "finalize"
+    | "active"
+    | "acceptedForAuthentication"
+    | "pending"
+    | "stage"
+    | "connect"
+    | "confirm"
+    | "finalize"
   >;
   codes?: Pick<PairingCodeRepository, "create" | "consume" | "revokeActive" | "activeStatus">;
   now?: () => Date;
@@ -65,6 +76,7 @@ export interface DataOpsPairingServiceOptions {
     sharedSecret: string;
   }) => Promise<unknown>;
   getMcp?: () => Promise<CapabilityDefinition | null>;
+  serviceToken?: () => string;
 }
 
 export function createDataOpsPairingService(options: DataOpsPairingServiceOptions = {}) {
@@ -78,6 +90,7 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
   const mcpService = createDinkyMcpCapabilityService(capabilityStore);
   const ensureMcp = options.ensureMcp ?? (async (binding) => await mcpService.ensure(binding));
   const getMcp = options.getMcp ?? (() => capabilityStore.get("org__dinky_mcp"));
+  const serviceToken = options.serviceToken ?? (() => dataOpsServiceToken());
 
   return {
     async status() {
@@ -136,6 +149,37 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
         revision: parsed.revision,
         now: timestamp,
       });
+      return publicBinding(binding);
+    },
+
+    async connect(input: unknown, bearerSecret: string) {
+      const parsed = dataOpsConnectInputSchema.parse(input);
+      const configuredToken = serviceToken();
+      if (configuredToken === "") {
+        throw new DataOpsPairingError("dataops_service_token_not_configured", 503);
+      }
+      if (!matchesDataOpsServiceToken(bearerSecret, { DATAOPS_SERVICE_TOKEN: configuredToken })) {
+        throw new DataOpsPairingError("dataops_service_token_rejected", 401);
+      }
+      let dataOpsBaseUrl: string;
+      try {
+        dataOpsBaseUrl = normalizeDataOpsBaseUrl(parsed.dataOpsBaseUrl);
+      } catch {
+        throw new DataOpsPairingError("dataops_base_url_invalid", 400);
+      }
+      const issuedAt = now();
+      const pairingId = `direct_${randomBytes(24).toString("base64url")}`;
+      const revision = issuedAt.getTime() * 1000 + (randomBytes(2).readUInt16BE(0) % 1000);
+      const binding = await integrations.connect({
+        pairingId,
+        dataOpsBaseUrl,
+        sharedSecret: bearerSecret,
+        revision,
+        now: issuedAt.toISOString(),
+        graceExpiresAt: new Date(issuedAt.getTime() + GRACE_TTL_MS).toISOString(),
+      });
+      await publish({ revision: binding.revision, pairingId: binding.pairingId });
+      await ensureDinkyMcp(ensureMcp, binding);
       return publicBinding(binding);
     },
 
@@ -256,6 +300,8 @@ export const dataOpsPairingService = {
   createPairingCode: (actorUserId: number) => productionService().createPairingCode(actorUserId),
   revokePairingCodes: () => productionService().revokePairingCodes(),
   pair: (input: unknown) => productionService().pair(input),
+  connect: (input: unknown, bearerSecret: string) =>
+    productionService().connect(input, bearerSecret),
   confirm: (pairingId: string, revision: number, bearerSecret: string) =>
     productionService().confirm(pairingId, revision, bearerSecret),
   finalize: (pairingId: string, revision: number, bearerSecret: string) =>
