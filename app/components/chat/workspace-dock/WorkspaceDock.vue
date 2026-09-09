@@ -103,6 +103,9 @@ const toolCatalog = computed(() =>
     canOpenGitReview:
       workspaceActions.canOpenGitReview.value && fileWorkspaceRoot.value.trim() !== "",
     canLaunchRemoteTools: workspaceActions.canLaunch.value,
+    terminalUnavailableReasonKey: workspaceActions.isManagedRuntime.value
+      ? "app.workspaceToolUnavailableManagedTerminal"
+      : undefined,
     canOpenBrowser: workspaceActions.canLaunch.value || workspaceActions.isManagedRuntime.value,
     canOpenTmux: tmuxLauncher.canOpen.value,
     canMonitorHost: workspaceActions.canMonitorHost.value,

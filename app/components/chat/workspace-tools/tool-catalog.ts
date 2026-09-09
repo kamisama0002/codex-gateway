@@ -18,6 +18,7 @@ export interface WorkspaceToolCatalogInput {
   canOpenFiles: boolean;
   canOpenGitReview: boolean;
   canLaunchRemoteTools: boolean;
+  terminalUnavailableReasonKey?: string;
   canOpenBrowser?: boolean;
   canOpenTmux: boolean;
   canMonitorHost: boolean;
@@ -44,6 +45,9 @@ export function createWorkspaceToolCatalog(
   const remoteUnavailable = input.canLaunchRemoteTools
     ? undefined
     : "app.workspaceToolUnavailableRemote";
+  const terminalUnavailable = input.canLaunchRemoteTools
+    ? undefined
+    : (input.terminalUnavailableReasonKey ?? remoteUnavailable);
   const browserUnavailable =
     (input.canOpenBrowser ?? input.canLaunchRemoteTools)
       ? undefined
@@ -70,7 +74,7 @@ export function createWorkspaceToolCatalog(
       kind: "terminal",
       labelKey: "app.openTerminal",
       descriptionKey: "app.workspaceToolTerminalDescription",
-      unavailableReasonKey: remoteUnavailable,
+      unavailableReasonKey: terminalUnavailable,
       action: input.actions.openTerminal,
     }),
     item({

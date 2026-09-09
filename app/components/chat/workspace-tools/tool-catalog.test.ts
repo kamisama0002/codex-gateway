@@ -90,6 +90,24 @@ describe("workspace tool catalog", () => {
     expect(catalog.find(({ id }) => id === "files")?.disabled).toBe(false);
     expect(catalog.find(({ id }) => id === "gitReview")?.disabled).toBe(true);
   });
+
+  it("uses the managed-runtime terminal reason when remote tools are unavailable", () => {
+    const catalog = createWorkspaceToolCatalog({
+      canOpenFiles: true,
+      canOpenGitReview: false,
+      canLaunchRemoteTools: false,
+      terminalUnavailableReasonKey: "app.workspaceToolUnavailableManagedTerminal",
+      canOpenTmux: false,
+      canMonitorHost: false,
+      subAgents: [],
+      actions: createActions(),
+    });
+
+    expect(catalog.find(({ id }) => id === "terminal")).toMatchObject({
+      disabled: true,
+      unavailableReasonKey: "app.workspaceToolUnavailableManagedTerminal",
+    });
+  });
 });
 
 function createActions(): WorkspaceToolCatalogActions {

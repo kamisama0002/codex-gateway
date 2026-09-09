@@ -123,7 +123,11 @@ export function useWorkspaceLaunchActions() {
   function openRuntimeBrowser() {
     if (selectedHostId.value === null || !isLocalAgentHost.value) return;
     const existing = Object.values(browser.panels).find(
-      (panel) => panel.targetType === "runtime" && panel.hostId === selectedHostId.value,
+      (panel) =>
+        panel.targetType === "runtime" &&
+        panel.hostId === selectedHostId.value &&
+        (panel.projectId ?? null) === selectedProjectId.value &&
+        (panel.threadId ?? null) === selectedThreadId.value,
     );
     if (existing !== undefined) {
       layout.requestPanelActivation(browserWorkspacePanelId(existing.panelId));
