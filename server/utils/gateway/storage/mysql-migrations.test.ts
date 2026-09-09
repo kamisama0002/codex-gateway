@@ -41,7 +41,7 @@ describe("MySQL gateway migrations", () => {
     );
     expect(
       await db.one("SELECT version, checksum FROM schema_migrations ORDER BY version DESC"),
-    ).toEqual(expect.objectContaining({ version: 17 }));
+    ).toEqual(expect.objectContaining({ version: 18 }));
   });
 
   it("rejects a changed checksum for an applied migration", async () => {
@@ -320,6 +320,7 @@ describe("MySQL gateway migrations", () => {
       { version: 15, count: 1 },
       { version: 16, count: 1 },
       { version: 17, count: 1 },
+      { version: 18, count: 1 },
     ]);
   });
 
@@ -352,7 +353,7 @@ describe("MySQL gateway migrations", () => {
   it("assigns the default browser capability to users that predate migration 14", async () => {
     const db = await freshMysqlTestDatabase();
     await migrateMysqlGatewayDatabase(db);
-    await db.execute("DELETE FROM schema_migrations WHERE version = ?", [14]);
+    await db.execute("DELETE FROM schema_migrations WHERE version IN (?, ?)", [14, 18]);
     await db.execute("DELETE FROM capability_assignments WHERE capability_id = ?", [
       "org__browser",
     ]);
@@ -371,14 +372,11 @@ describe("MySQL gateway migrations", () => {
         transport: "stdio",
         command: "playwright-mcp",
         args: [
-          "--headless",
           "--no-sandbox",
-          "--executable-path",
-          "/usr/bin/chromium",
+          "--cdp-endpoint",
+          "http://127.0.0.1:9222",
           "--output-dir",
           "/workspace/.agent/browser",
-          "--user-data-dir",
-          "/codex-home/browser-profile",
           "--caps",
           "vision,pdf",
         ],
@@ -394,6 +392,29 @@ describe("MySQL gateway migrations", () => {
         ["browser-user", "org__browser"],
       ),
     ).resolves.toEqual({ capability_id: "org__browser" });
+  });
+
+  it("does not overwrite a user-owned browser capability during the CDP migration", async () => {
+    const db = await freshMysqlTestDatabase();
+    await migrateMysqlGatewayDatabase(db);
+    await db.execute("DELETE FROM schema_migrations WHERE version = ?", [18]);
+    await db.execute(
+      "UPDATE capability_definitions SET source_json = ?, config_json = ?, version = ? WHERE id = ?",
+      [
+        JSON.stringify({ type: "upload", locator: "custom-browser" }),
+        JSON.stringify({ transport: "stdio", command: "node", args: ["custom-browser"] }),
+        "9.0.0",
+        "org__browser",
+      ],
+    );
+
+    await migrateMysqlGatewayDatabase(db);
+
+    await expect(createCapabilityStore(db).get("org__browser")).resolves.toMatchObject({
+      version: "9.0.0",
+      source: { type: "upload", locator: "custom-browser" },
+      config: { transport: "stdio", command: "node", args: ["custom-browser"] },
+    });
   });
 
   it("assigns the Infinity Dinky MCP to users that predate migration 15", async () => {

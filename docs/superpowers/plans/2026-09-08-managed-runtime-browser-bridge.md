@@ -38,7 +38,7 @@
 **Interfaces:**
 - Produces `RuntimeBrowserState = "not_started" | "starting" | "ready" | "failed"`.
 - Produces `RuntimeBrowserStatus = { runtimeId: string; status: "absent" | "stopped" | "running"; browser: RuntimeBrowserState }`.
-- Extends `ManagedRuntimeEndpoint` with `browserUrl: string`.
+- Extends `ManagedRuntimeEndpoint` with rolling-compatible `browserUrl?: string`; upgraded Runtime Managers always populate it.
 - Updates `org__browser` to run `playwright-mcp --cdp-endpoint http://127.0.0.1:9222 --output-dir /workspace/.agent/browser --caps vision,pdf`.
 
 - [ ] **Step 1: Add failing contract tests**

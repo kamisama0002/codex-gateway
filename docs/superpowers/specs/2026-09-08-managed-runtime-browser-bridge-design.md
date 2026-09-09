@@ -158,6 +158,8 @@ http://codex-runtime-<id>:6080
 
 两者都不发布宿主机端口。
 
+`browserUrl` 在共享 schema 中保持可选，以允许 Runtime 节点滚动升级；新版本 Runtime Manager 必须返回它，旧节点缺失时仅浏览器入口不可用，现有聊天和 App Server RPC 不受影响。
+
 ### 6.2 状态
 
 Runtime Manager 提供经过现有 HMAC 请求认证的浏览器状态读取：
