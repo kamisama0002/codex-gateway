@@ -55,6 +55,7 @@ const saveLabelKey = computed(() => {
   return managedHost.value ? "app.saveWorkspace" : "app.saveProject";
 });
 const defaultBrowsePath = computed(() => (managedHost.value ? MANAGED_WORKSPACE_PATH : "~"));
+const browseEnabled = computed(() => !managedHost.value || !editing.value);
 const canSave = computed(
   () =>
     props.host !== null &&
@@ -131,6 +132,9 @@ function chooseDirectory(entry: RemoteDirectoryEntry) {
   if (!projectForm.value.name) {
     projectForm.value.name = entry.name;
   }
+  if (managedHost.value) {
+    void browseDirectories();
+  }
 }
 
 function resetForm() {
@@ -157,7 +161,7 @@ function resetForm() {
       </DialogHeader>
 
       <div class="min-h-0 flex-1 space-y-3 overflow-y-auto">
-        <div v-if="!managedHost" class="grid grid-cols-[1fr_auto] gap-2">
+        <div v-if="browseEnabled" class="grid grid-cols-[1fr_auto] gap-2">
           <Input
             v-model="directoryPath"
             data-testid="project-browse-path-input"
@@ -170,7 +174,7 @@ function resetForm() {
           </Button>
         </div>
 
-        <div v-if="!managedHost && visibleDirectories.length" class="grid grid-cols-2 gap-1">
+        <div v-if="browseEnabled && visibleDirectories.length" class="grid grid-cols-2 gap-1">
           <Button
             v-for="entry in visibleDirectories"
             :key="entry.path"
@@ -184,13 +188,13 @@ function resetForm() {
         </div>
 
         <div
-          v-if="!managedHost && directoryError"
+          v-if="browseEnabled && directoryError"
           class="whitespace-pre-line rounded-md bg-destructive/10 p-3 text-sm text-destructive"
         >
           {{ directoryError }}
         </div>
 
-        <Separator v-if="!managedHost" />
+        <Separator v-if="browseEnabled || managedHost" />
 
         <div class="grid gap-3" :class="managedHost ? 'grid-cols-1' : 'md:grid-cols-2'">
           <Input
@@ -206,6 +210,14 @@ function resetForm() {
             :aria-label="t('app.remotePath')"
             :placeholder="t('app.remotePath')"
             @input="pathLocked = true"
+          />
+          <Input
+            v-else
+            v-model="projectForm.remotePath"
+            data-testid="workspace-path-input"
+            :aria-label="t('app.remotePath')"
+            :placeholder="t('app.remotePath')"
+            readonly
           />
         </div>
       </div>
