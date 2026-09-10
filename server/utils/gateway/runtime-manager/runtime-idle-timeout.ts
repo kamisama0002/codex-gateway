@@ -1,4 +1,4 @@
-export const DEFAULT_RUNTIME_IDLE_TIMEOUT_MINUTES = 30;
+export const DEFAULT_RUNTIME_IDLE_TIMEOUT_MINUTES = 0;
 
 export function runtimeIdleTimeoutMinutes(environment: NodeJS.ProcessEnv = process.env) {
   const raw = environment.RUNTIME_IDLE_TIMEOUT_MINUTES;

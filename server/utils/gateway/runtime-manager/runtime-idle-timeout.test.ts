@@ -6,9 +6,9 @@ import {
 } from "./runtime-idle-timeout";
 
 describe("runtime idle timeout", () => {
-  it("defaults to thirty minutes", () => {
+  it("defaults to zero (no automatic idle release)", () => {
     expect(runtimeIdleTimeoutMinutes({})).toBe(DEFAULT_RUNTIME_IDLE_TIMEOUT_MINUTES);
-    expect(runtimeIdleTimeoutMs({})).toBe(DEFAULT_RUNTIME_IDLE_TIMEOUT_MINUTES * 60_000);
+    expect(runtimeIdleTimeoutMs({})).toBe(0);
   });
 
   it("accepts zero to disable automatic release", () => {
