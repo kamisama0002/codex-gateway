@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckIcon, ChevronDownIcon } from "@lucide/vue";
+import { CheckIcon, ChevronDownIcon, StarIcon } from "@lucide/vue";
 import { ref, watch } from "vue";
 import type { ModelRecord, ReasoningEffort } from "~~/shared/types";
 import {
@@ -43,6 +43,12 @@ const navigation = useGatewayNavigationStore();
 function selectModel(model: string) {
   if (props.disabled) return;
   emit("selectModel", model);
+}
+
+function setAsDefault(model: string) {
+  if (props.disabled) return;
+  gatewayCatalog.setDefaultModel(model);
+  selectorOpen.value = false;
 }
 
 function selectEffort(effort: ReasoningEffort) {
@@ -143,6 +149,16 @@ watch(selectorOpen, (open) => {
             <span class="truncate">{{
               modelOption.displayName || modelOption.model || modelOption.id
             }}</span>
+            <button
+              class="ml-1 shrink-0 rounded p-0.5 hover:bg-muted"
+              :title="t('app.setAsDefaultModel')"
+              @click.stop="setAsDefault(modelOptionValue(modelOption))"
+            >
+              <StarIcon
+                :class="modelOptionValue(modelOption) === gatewayCatalog.defaultModel?.id || modelOptionValue(modelOption) === gatewayCatalog.defaultModel?.model ? 'text-yellow-400 fill-yellow-400' : 'text-ink-tertiary'"
+                class="size-3.5"
+              />
+            </button>
             <CheckIcon
               v-if="modelOptionValue(modelOption) === activeModel"
               class="ml-auto size-4 text-primary"
