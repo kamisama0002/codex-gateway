@@ -1,7 +1,7 @@
 import type { ThreadResponseUsage, ThreadTimelineItem, ThreadTimelineTurn } from "~~/shared/types";
 import type { DisplayedTurnTiming } from "@/utils/turn-timing";
 import { threadItemText } from "@/utils/thread-items";
-import { itemKey, userMessageVariant, type ThreadTurnSections } from "./thread-turn-sections";
+import { itemKey, statusValue, userMessageVariant, type ThreadTurnSections } from "./thread-turn-sections";
 import { messageTimestampMs, normalizedTimestampMs } from "@/utils/message-time";
 
 export type { ThreadTimelineTurn } from "~~/shared/types";
@@ -91,7 +91,18 @@ export function buildThreadTimelineRows(input: {
   turns: ThreadTimelineTurnState[];
   agentActionsAvailable: boolean;
 }) {
-  const activeTurnId = input.agentActionsAvailable ? null : input.turns.at(-1)?.turn.id;
+  const lastTurn = input.turns.at(-1)?.turn;
+  const lastTurnStatus = statusValue(lastTurn?.status);
+  // A terminal turn is authoritative for the timeline even when the thread runtime projection
+  // still reads "running" (its terminal event may have been lost across a reconnect). Never render
+  // "thinking" under a turn that already failed or was interrupted; the error row and banner own
+  // that state. Placeholder turns with a non-terminal status keep the status row while the
+  // submission waits for turn/started.
+  const lastTurnTerminal = lastTurnStatus === "failed" || lastTurnStatus === "interrupted";
+  const activeTurnId =
+    input.agentActionsAvailable || lastTurn === undefined || lastTurnTerminal
+      ? null
+      : lastTurn.id;
   return input.turns.flatMap(({ turn, sections, intermediateOpen, intermediateLoading }) => {
     const rows: ThreadTimelineRow[] = [];
     const showTurnStatus = turn.id === activeTurnId;

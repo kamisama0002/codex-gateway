@@ -8,6 +8,7 @@ import { useGatewayRealtimeStore } from "@/stores/gateway-realtime";
 import { setRealtimeRequestContextResolver } from "@/stores/gateway-realtime/request-context";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { useGatewayThreadQueueStore } from "@/stores/gateway-thread-queue";
+import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { useGatewayHostMetricsDataStore } from "@/stores/gateway-host-metrics/data";
 import { gatewayDomainEvents } from "../domain-events";
 
@@ -68,6 +69,15 @@ export function registerGatewayLifecycleSubscribers() {
       hostId: event.hostId,
       threadId: event.threadId,
     });
+    // An orphaned error (its originating request is no longer pending) can be the only signal
+    // that a turn-scoped request failed while the thread projection still reads "running".
+    // Resync the authoritative thread state instead of guessing the outcome locally.
+    if (event.hostId !== null && event.threadId !== null) {
+      const runtime = useGatewayThreadRuntimeStore();
+      if (runtime.statusFor(event.hostId, event.threadId) === "running") {
+        void useGatewayThreadViewStore().recoverThreadEventGap(event.hostId, event.threadId);
+      }
+    }
   });
   gatewayDomainEvents.on("realtime-host-lifecycle", ({ event }) => {
     const catalog = useGatewayCatalogStore();

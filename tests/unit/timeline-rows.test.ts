@@ -167,6 +167,58 @@ describe("running turn status", () => {
     );
   });
 
+  it("hides the status row on a failed turn even while the thread runtime still reads running", () => {
+    const turn: ThreadTimelineTurn = {
+      id: "turn-failed-stale-runtime",
+      status: "failed",
+      itemsView: "full",
+      items: [
+        {
+          id: "turn-failed-stale-user",
+          type: "userMessage",
+          content: [{ type: "text", text: "查询营业额" }],
+        },
+      ],
+      error: {
+        message: "Model unavailable",
+      },
+    };
+    const sections = buildThreadTurnSections(turn, { planModeActive: false });
+    const rows = buildThreadTimelineRows({
+      threadId: "thread-1",
+      turns: [{ turn, sections, intermediateOpen: false, intermediateLoading: false }],
+      agentActionsAvailable: false,
+    });
+
+    expect(rows.some((row) => row.type === "turnStatus")).toBe(false);
+    expect(rows).toContainEqual(
+      expect.objectContaining({ type: "turnError", message: "Model unavailable" }),
+    );
+  });
+
+  it("hides the status row on an interrupted turn while the runtime still reads running", () => {
+    const turn: ThreadTimelineTurn = {
+      id: "turn-interrupted-stale-runtime",
+      status: "interrupted",
+      itemsView: "full",
+      items: [
+        {
+          id: "turn-interrupted-user",
+          type: "userMessage",
+          content: [{ type: "text", text: "停下来" }],
+        },
+      ],
+    };
+    const sections = buildThreadTurnSections(turn, { planModeActive: false });
+    const rows = buildThreadTimelineRows({
+      threadId: "thread-1",
+      turns: [{ turn, sections, intermediateOpen: false, intermediateLoading: false }],
+      agentActionsAvailable: false,
+    });
+
+    expect(rows.some((row) => row.type === "turnStatus")).toBe(false);
+  });
+
   it("does not trust a stale in-progress Turn after the thread runtime is terminal", () => {
     const state = turnState({
       id: "turn-stale",
