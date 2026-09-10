@@ -20,6 +20,15 @@ export const MANAGED_RUNTIME_TURN_SANDBOX_POLICY = {
   networkAccess: "enabled",
 } as const;
 
+// Appended after Codex's own base instructions for every gateway-created thread. Operators use
+// it to restate the assistant identity (e.g. the product name) without replacing the model's
+// tool-use and safety rules. thread/resume ignores developerInstructions on a warm thread, so
+// thread/start is the only reliable injection point.
+function gatewayDeveloperInstructions() {
+  const value = process.env.GATEWAY_DEVELOPER_INSTRUCTIONS?.trim();
+  return value === undefined || value === "" ? null : value;
+}
+
 export function buildAppServerThreadStartParams(
   params: Record<string, unknown>,
   options: { managedRuntime?: boolean } = {},
@@ -30,12 +39,17 @@ export function buildAppServerThreadStartParams(
       : options.managedRuntime === true
         ? MANAGED_RUNTIME_THREAD_SANDBOX
         : DEFAULT_THREAD_SANDBOX;
+  const developerInstructions =
+    typeof params.developerInstructions === "string" && params.developerInstructions.trim() !== ""
+      ? params.developerInstructions
+      : gatewayDeveloperInstructions();
   return {
     ...params,
     sandbox,
     historyMode: "paginated",
     // Official opt-in fixed at thread creation; thread/resume cannot enable it later.
     experimentalRawEvents: true,
+    ...(developerInstructions === null ? {} : { developerInstructions }),
   };
 }
 

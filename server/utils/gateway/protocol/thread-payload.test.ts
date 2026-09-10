@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_THREAD_SANDBOX,
   MANAGED_RUNTIME_THREAD_SANDBOX,
@@ -37,6 +37,42 @@ describe("buildAppServerThreadStartParams", () => {
         sandbox: "read-only",
       }).sandbox,
     ).toBe("read-only");
+  });
+
+  it("omits developerInstructions when no gateway override is configured", () => {
+    expect(buildAppServerThreadStartParams({ cwd: "/workspace" })).not.toHaveProperty(
+      "developerInstructions",
+    );
+  });
+});
+
+describe("buildAppServerThreadStartParams developer instructions", () => {
+  const original = process.env.GATEWAY_DEVELOPER_INSTRUCTIONS;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.GATEWAY_DEVELOPER_INSTRUCTIONS;
+    else process.env.GATEWAY_DEVELOPER_INSTRUCTIONS = original;
+  });
+
+  it("injects the gateway-wide developer instructions on thread start", () => {
+    process.env.GATEWAY_DEVELOPER_INSTRUCTIONS = "  你是前呈科技 Agent 平台的助手。  ";
+    expect(buildAppServerThreadStartParams({ cwd: "/workspace" })).toMatchObject({
+      developerInstructions: "你是前呈科技 Agent 平台的助手。",
+    });
+  });
+
+  it("keeps a caller-provided developerInstructions over the gateway default", () => {
+    process.env.GATEWAY_DEVELOPER_INSTRUCTIONS = "global";
+    expect(
+      buildAppServerThreadStartParams({ cwd: "/workspace", developerInstructions: "per-thread" }),
+    ).toMatchObject({ developerInstructions: "per-thread" });
+  });
+
+  it("treats a blank gateway override as unconfigured", () => {
+    process.env.GATEWAY_DEVELOPER_INSTRUCTIONS = "   ";
+    expect(buildAppServerThreadStartParams({ cwd: "/workspace" })).not.toHaveProperty(
+      "developerInstructions",
+    );
   });
 });
 
