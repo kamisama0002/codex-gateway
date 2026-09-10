@@ -30,6 +30,7 @@ const ALLOWED_METADATA_KEYS = new Set([
   "attemptCount",
   "durationMs",
   "latencyMs",
+  "modelCount",
   "httpStatus",
   "usageInputTokens",
   "usageOutputTokens",
