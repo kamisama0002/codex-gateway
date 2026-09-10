@@ -1,6 +1,7 @@
 {
   "app": {
     "title": "Codex Gateway",
+    "browser": "Browser",
     "newChat": "New conversation",
     "untitledThread": "Untitled conversation",
     "loginTitle": "Sign in to Codex Gateway",

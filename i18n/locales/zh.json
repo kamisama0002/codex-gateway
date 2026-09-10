@@ -1,6 +1,7 @@
 {
   "app": {
     "title": "智能工作台",
+    "browser": "浏览器",
     "newChat": "新会话",
     "untitledThread": "未命名会话",
     "loginTitle": "登录 Codex Gateway",

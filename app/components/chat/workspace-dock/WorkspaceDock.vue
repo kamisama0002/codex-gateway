@@ -269,7 +269,7 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
    content by default, which makes a short tool label look disproportionately narrow beside the
    Agent tab. A responsive basis gives the default tab a little more breathing room without making
    the tab strip consume the entire viewport on smaller screens. */
-.gateway-dockview :deep(.dv-tabs-container.dv-horizontal > .dv-tab) {
+.gateway-dockview :deep(.dv-tab) {
   flex: 0 0 var(--gateway-dock-tab-width);
   width: var(--gateway-dock-tab-width) !important;
   min-width: var(--gateway-dock-tab-width) !important;
