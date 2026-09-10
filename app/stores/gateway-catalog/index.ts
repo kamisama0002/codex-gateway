@@ -21,14 +21,7 @@ export const useGatewayCatalogStore = defineStore("gateway-catalog", () => {
     Record<number, { status: HostConnectionStatus; message?: string | null; updatedAt?: number }>
   >({});
   const defaultModel = computed(
-    () => {
-      const userDefaultId = localStorage.getItem("gateway_default_model_id");
-      if (userDefaultId) {
-        const found = models.value.find((model) => model.id === userDefaultId || model.model === userDefaultId);
-        if (found) return found;
-      }
-      return models.value.find((model) => model.isDefault === true) ?? models.value[0] ?? null;
-    },
+    () => models.value.find((model) => model.isDefault === true) ?? models.value[0] ?? null,
   );
 
   function setHostConnectionStatus(
@@ -52,14 +45,6 @@ export const useGatewayCatalogStore = defineStore("gateway-catalog", () => {
     hostConnectionStatuses.value = {};
   }
 
-  function setDefaultModel(modelId: string | null) {
-    if (modelId === null) {
-      localStorage.removeItem("gateway_default_model_id");
-    } else {
-      localStorage.setItem("gateway_default_model_id", modelId);
-    }
-  }
-
   return {
     hosts,
     projects,
@@ -69,7 +54,6 @@ export const useGatewayCatalogStore = defineStore("gateway-catalog", () => {
     loadingModels,
     hostConnectionStatuses,
     defaultModel,
-    setDefaultModel,
     setHostConnectionStatus,
     resetState,
     ...createHostActions(),
