@@ -738,6 +738,7 @@
     "toggleModelAvailabilityNamed": "Toggle global availability for {name}",
     "enableAllModels": "Enable all",
     "enableAllModelsNamed": "Enable all models from {name}",
+    "disableAllModels": "Disable all",
     "disableAllModelsNamed": "Disable all models from {name}",
     "modelContextTokens": "Context {tokens}",
     "modelReasoningEffort": "Reasoning {effort}",

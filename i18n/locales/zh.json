@@ -738,6 +738,7 @@
     "toggleModelAvailabilityNamed": "切换模型 {name} 的全局可用状态",
     "enableAllModels": "全部启用",
     "enableAllModelsNamed": "启用 {name} 的全部模型",
+    "disableAllModels": "全部禁用",
     "disableAllModelsNamed": "禁用 {name} 的全部模型",
     "modelContextTokens": "上下文 {tokens}",
     "modelReasoningEffort": "思考 {effort}",
