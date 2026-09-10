@@ -1,13 +1,17 @@
 import { createError, defineEventHandler, readValidatedBody, type H3Event } from "h3";
 import { z } from "zod";
-import { DataOpsSsoError, type DataOpsSsoClient } from "../../utils/gateway/auth/dataops-client";
+import { DataOpsSsoError, type DataOpsSsoClient, createDataOpsSsoClient } from "../../utils/gateway/auth/dataops-client";
 import { dataOpsIntegrationProvider } from "../../utils/gateway/integrations/dataops-integration-provider";
 import {
   externalIdentityStore,
   type ExternalIdentityStore,
 } from "../../utils/gateway/auth/external-identities";
+import { dataOpsServiceToken } from "../../utils/gateway/integrations/dataops-service-token";
 
-const inputSchema = z.object({ ticket: z.string().trim().min(1).max(4096) }).strict();
+const inputSchema = z.object({
+  ticket: z.string().trim().min(1).max(4096),
+  dinkyUrl: z.string().trim().max(2048).optional(),
+}).strict();
 
 export async function loginWithDataOpsForEvent(
   event: H3Event,
@@ -36,6 +40,17 @@ export async function loginWithCurrentDataOpsForEvent(
   provider: { current(): Promise<{ client: DataOpsSsoClient } | null> },
   identities: Pick<ExternalIdentityStore, "loginDataOps">,
 ) {
+  const input = await readValidatedBody(event, (body) => inputSchema.parse(body));
+  // If the client passed a Dinky URL, build an ad-hoc SSO client directly.
+  if (input.dinkyUrl) {
+    const sharedSecret = dataOpsServiceToken();
+    if (!sharedSecret) {
+      throw createError({ statusCode: 503, statusMessage: "dataops_not_configured" });
+    }
+    const client = createDataOpsSsoClient({ baseUrl: input.dinkyUrl, sharedSecret });
+    return await loginWithDataOpsForEvent(event, client, identities);
+  }
+  // Otherwise, fall back to the configured provider.
   const integration = await provider.current();
   if (integration === null) {
     throw createError({

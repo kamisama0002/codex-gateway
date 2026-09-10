@@ -91,7 +91,7 @@ async function initializeAuthentication() {
     return;
   }
   try {
-    await auth.loginWithDataOps(parsed.ticket);
+    await auth.loginWithDataOps(parsed.ticket, parsed.dinkyUrl);
     embeddedAuthPhase.value = "authenticated";
     embeddedAuthMessage.value = "";
     reportEmbeddedStatus("authenticated");

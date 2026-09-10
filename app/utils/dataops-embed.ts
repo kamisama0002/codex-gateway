@@ -14,6 +14,7 @@ interface ParentMessenger {
 export function parseDataOpsEmbedUrl(input: string | URL) {
   const url = new URL(input);
   const embedded = url.searchParams.get("embedded") === "1";
+  const dinkyUrl = embedded ? (url.searchParams.get("dinky_url")?.trim() ?? null) : null;
   const fragment = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
   const rawTicket = fragment.get("dataops_ticket")?.trim() ?? "";
   fragment.delete("dataops_ticket");
@@ -21,6 +22,7 @@ export function parseDataOpsEmbedUrl(input: string | URL) {
   return {
     embedded,
     ticket: embedded && rawTicket !== "" ? rawTicket : null,
+    dinkyUrl,
     cleanUrl: url.toString(),
   };
 }

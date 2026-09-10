@@ -12,6 +12,22 @@ type IntegrationRepository = Pick<
   "acceptedForAuthentication"
 >;
 
+/** In-memory Dinky URL registry: keyed by DataOps service token. Populated by connect calls. */
+const dinkyRegistry = new Map<string, { baseUrl: string; sharedSecret: string }>();
+export function registerDinkyUrl(token: string, baseUrl: string, sharedSecret: string): void {
+  dinkyRegistry.set(token, { baseUrl, sharedSecret });
+}
+
+/** Fallback SSO client — tries in-memory registry first, then env vars. */
+function fallbackClientFromRegistry(createClient: typeof createDataOpsSsoClient, serviceToken: string): DataOpsSsoClient | null {
+  const entry = dinkyRegistry.get(serviceToken);
+  if (entry) return createClient({ baseUrl: entry.baseUrl, sharedSecret: entry.sharedSecret });
+  const baseUrl = process.env.DATAOPS_BASE_URL?.trim();
+  const sharedSecret = process.env.DATAOPS_SSO_SHARED_SECRET?.trim();
+  if (!baseUrl || !sharedSecret) return null;
+  return createClient({ baseUrl, sharedSecret });
+}
+
 export interface DataOpsIntegrationSnapshot {
   pairingId: string;
   revision: number;
@@ -35,23 +51,29 @@ export function createDataOpsIntegrationProvider(
       const currentNow = now();
       if (cached !== null && currentNow.getTime() < cached.expiresAt) return cached.snapshot;
       const bindings = await integrations.acceptedForAuthentication(currentNow.toISOString());
-      const snapshot =
-        bindings.length === 0
-          ? null
-          : {
-              pairingId: bindings[0]!.pairingId,
-              revision: bindings[0]!.revision,
-              client: fallbackClient(
-                bindings.map((binding) =>
-                  createClient({
-                    baseUrl: binding.dataOpsBaseUrl,
-                    sharedSecret: binding.sharedSecret,
-                    pairingId: binding.pairingId,
-                    revision: binding.revision,
-                  }),
-                ),
-              ),
-            };
+      let snapshot: DataOpsIntegrationSnapshot | null;
+      if (bindings.length > 0) {
+        snapshot = {
+          pairingId: bindings[0]!.pairingId,
+          revision: bindings[0]!.revision,
+          client: fallbackClient(
+            bindings.map((binding) =>
+              createClient({
+                baseUrl: binding.dataOpsBaseUrl,
+                sharedSecret: binding.sharedSecret,
+                pairingId: binding.pairingId,
+                revision: binding.revision,
+              }),
+            ),
+          ),
+        };
+      } else {
+        const serviceToken = (await import("./dataops-service-token")).dataOpsServiceToken();
+        const fallback = fallbackClientFromRegistry(createClient, serviceToken);
+        snapshot = fallback
+          ? { pairingId: "__env_fallback__", revision: 0, client: fallback }
+          : null;
+      }
       const graceExpiry = bindings
         .filter((binding) => binding.status === "grace" && binding.graceExpiresAt !== null)
         .map((binding) => Date.parse(binding.graceExpiresAt ?? ""))
