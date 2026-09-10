@@ -1,6 +1,7 @@
 import { gatewayDomainEvents } from "../domain-events";
 import type { GatewayEventHandlerRegistry } from "./types";
 import { stringIdFromUnknown } from "~~/shared/utils/records";
+import { requestScrollToLatest } from "@/stores/gateway/thread-open/view-state";
 
 export const deltaEventHandlers: GatewayEventHandlerRegistry = {
   "item/agentMessage/delta": (event, params, threadId) => {
@@ -18,6 +19,7 @@ export const deltaEventHandlers: GatewayEventHandlerRegistry = {
       threadId,
       params,
     });
+    requestScrollToLatest();
   },
   "item/reasoning/textDelta": (event, params, threadId) => {
     emitRunning(event.hostId, threadId, params);
@@ -26,6 +28,7 @@ export const deltaEventHandlers: GatewayEventHandlerRegistry = {
       threadId,
       params,
     });
+    requestScrollToLatest();
   },
   "item/commandExecution/outputDelta": (event, params, threadId) => {
     emitRunning(event.hostId, threadId, params);
