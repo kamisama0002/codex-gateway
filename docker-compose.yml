@@ -83,6 +83,7 @@ services:
       RUNTIME_AGENT_CPUS: ${RUNTIME_AGENT_CPUS:-4}
       RUNTIME_AGENT_PIDS: ${RUNTIME_AGENT_PIDS:-1024}
       RUNTIME_PROVIDER_PROXY_BASE_URL: ${RUNTIME_PROVIDER_PROXY_BASE_URL:-http://codex-gateway:3000/api/internal/providers}
+      GATEWAY_DEVELOPER_INSTRUCTIONS: ${GATEWAY_DEVELOPER_INSTRUCTIONS:-}
     depends_on:
       database-migrate:
         condition: service_completed_successfully
