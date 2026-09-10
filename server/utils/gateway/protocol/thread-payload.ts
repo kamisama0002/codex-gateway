@@ -39,17 +39,14 @@ export function buildAppServerThreadStartParams(
       : options.managedRuntime === true
         ? MANAGED_RUNTIME_THREAD_SANDBOX
         : DEFAULT_THREAD_SANDBOX;
-  const developerInstructions =
-    typeof params.developerInstructions === "string" && params.developerInstructions.trim() !== ""
-      ? params.developerInstructions
-      : gatewayDeveloperInstructions();
+  const { developerInstructions: _removed, ...rest } = params;
+  const baseInstructions = gatewayDeveloperInstructions();
   return {
-    ...params,
+    ...rest,
     sandbox,
     historyMode: "paginated",
-    // Official opt-in fixed at thread creation; thread/resume cannot enable it later.
     experimentalRawEvents: true,
-    ...(developerInstructions === null ? {} : { developerInstructions }),
+    ...(baseInstructions === null ? {} : { baseInstructions }),
   };
 }
 
