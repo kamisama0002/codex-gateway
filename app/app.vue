@@ -42,9 +42,9 @@ const embedded = computed(() => route.query.embedded === "1");
 const layoutName = computed(() => (device.isMobileOrTablet ? "mobile" : "default"));
 const pageTitle = computed(() => {
   if (!selectedThreadId.value || !currentThread.value) {
-    return "Codex Gateway";
+    return t("app.title", "智能工作台");
   }
-  return `${titleForThread(currentThread.value, threadTitleFallbacks(t), history.value)} - Codex Gateway`;
+  return `${titleForThread(currentThread.value, threadTitleFallbacks(t), history.value)} - ${t("app.title", "智能工作台")}`;
 });
 
 useHead({
