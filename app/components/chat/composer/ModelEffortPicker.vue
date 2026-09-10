@@ -45,12 +45,6 @@ function selectModel(model: string) {
   emit("selectModel", model);
 }
 
-function setAsDefault(model: string) {
-  if (props.disabled) return;
-  gatewayCatalog.setDefaultModel(model);
-  selectorOpen.value = false;
-}
-
 function selectEffort(effort: ReasoningEffort) {
   if (props.disabled) return;
   emit("selectEffort", effort);
