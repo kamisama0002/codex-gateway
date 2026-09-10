@@ -26,16 +26,24 @@ function parseDirectIdentity(raw: string, secret: string): DataOpsClaims | null 
     if (!timingSafeEqual(Buffer.from(parts[1]), Buffer.from(expectedSig))) return null;
     const claims = JSON.parse(claimsJson);
     if (!claims.sub || !claims.tenantId || !claims.projectId) return null;
+    const platformAdmin = claims.platformAdmin === true;
+    const iatEpoch = typeof claims.iat === "number" ? claims.iat : undefined;
     return {
-      subject: claims.sub,
-      tenantId: claims.tenantId,
-      userId: claims.userId,
-      username: claims.username,
-      projectId: claims.projectId,
-      platformAdmin: claims.platformAdmin === true,
-      permissions: claims.permissions || [],
       audience: "codex-gateway",
       contextType: "PROJECT",
+      externalSubject: claims.sub,
+      tenantId: claims.tenantId,
+      userId: claims.userId ?? claims.sub.split(":")[2] ?? claims.tenantId,
+      username: claims.username ?? String(claims.sub),
+      projectId: claims.projectId,
+      platformAdmin,
+      canDevelopAgents: platformAdmin,
+      canManageAgentStatus: platformAdmin,
+      canManageAgentRuntimeConfig: platformAdmin,
+      permissions: claims.permissions || [],
+      authzVersion: 1,
+      issuedAt: iatEpoch !== undefined ? new Date(iatEpoch * 1000).toISOString() : new Date().toISOString(),
+      runtimeProfile: "default",
     };
   } catch {
     return null;
