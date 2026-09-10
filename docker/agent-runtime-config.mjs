@@ -153,6 +153,7 @@ function providerArguments(provider) {
     "model_providers.codex_gateway.request_max_retries=1",
     "-c",
     "model_providers.codex_gateway.stream_max_retries=1",
+    "-c",
     "model_providers.codex_gateway.stream_idle_timeout_ms=120000",
   ];
 }
