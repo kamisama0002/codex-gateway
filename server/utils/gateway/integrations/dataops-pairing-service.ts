@@ -179,7 +179,9 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
         graceExpiresAt: new Date(issuedAt.getTime() + GRACE_TTL_MS).toISOString(),
       });
       await publish({ revision: binding.revision, pairingId: binding.pairingId });
-      await ensureDinkyMcp(ensureMcp, binding);
+      // Connecting the Gateway is independent from provisioning the optional business MCP.
+      // A capability-store outage must not prevent Dinky from saving a valid service binding;
+      // MCP reconciliation can run on a later confirmation/probe or user login.
       return publicBinding(binding);
     },
 

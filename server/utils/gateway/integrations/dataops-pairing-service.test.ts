@@ -87,6 +87,27 @@ describe("DataOpsPairingService", () => {
       }),
     );
     expect(fixture.publish).toHaveBeenCalledWith({ pairingId: "direct_pairing", revision: 1_000 });
+    expect(fixture.ensureMcp).not.toHaveBeenCalled();
+  });
+
+  it("saves the Gateway binding when MCP capability reconciliation is unavailable", async () => {
+    const fixture = createFixture();
+    fixture.integrations.connect.mockResolvedValue({
+      pairingId: "direct_pairing",
+      revision: 1_000,
+      status: "active",
+      dataOpsBaseUrl: "https://dinky.example.test",
+      sharedSecret: "service-token-that-is-at-least-32-characters",
+    });
+    fixture.ensureMcp.mockRejectedValue(new Error("capability store unavailable"));
+
+    await expect(
+      fixture.service.connect(
+        { dataOpsBaseUrl: "https://dinky.example.test" },
+        "service-token-that-is-at-least-32-characters",
+      ),
+    ).resolves.toMatchObject({ status: "active" });
+    expect(fixture.integrations.connect).toHaveBeenCalledOnce();
   });
 
   it("rejects a service token that does not match the Gateway configuration", async () => {
