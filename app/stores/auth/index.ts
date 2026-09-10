@@ -53,13 +53,18 @@ export const useAuthStore = defineStore("auth", () => {
     return session;
   }
 
-  async function loginWithDataOps(ticket: string, dinkyUrl?: string | null) {
+  async function loginWithDataOps(ticket: string | null, identity: string | null, extraDinkyUrl?: string | null) {
     storageMode.value = "embedded";
     clearStoredSession("embedded");
     replaceSession("", "");
     initialized.value = true;
-    const body: Record<string, string> = { ticket };
-    if (dinkyUrl) body.dinkyUrl = dinkyUrl;
+    const body: Record<string, string> = {};
+    if (identity) {
+      body.identity = identity;
+    } else if (ticket) {
+      body.ticket = ticket;
+    }
+    if (extraDinkyUrl) body.dinkyUrl = extraDinkyUrl;
     const session = await $fetch<{
       token: string;
       expiresAt: string;

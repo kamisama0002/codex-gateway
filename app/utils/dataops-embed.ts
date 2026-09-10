@@ -16,12 +16,16 @@ export function parseDataOpsEmbedUrl(input: string | URL) {
   const embedded = url.searchParams.get("embedded") === "1";
   const dinkyUrl = embedded ? (url.searchParams.get("dinky_url")?.trim() ?? null) : null;
   const fragment = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
-  const rawTicket = fragment.get("dataops_ticket")?.trim() ?? "";
-  fragment.delete("dataops_ticket");
+  // Support both new identity token and legacy dataops_ticket
+  const identity = fragment.get("identity")?.trim() ?? null;
+  const rawTicket = identity ? null : (fragment.get("dataops_ticket")?.trim() ?? "");
+  if (identity) fragment.delete("identity");
+  if (rawTicket) fragment.delete("dataops_ticket");
   url.hash = fragment.toString();
   return {
     embedded,
     ticket: embedded && rawTicket !== "" ? rawTicket : null,
+    identity: embedded && identity !== null ? identity : null,
     dinkyUrl,
     cleanUrl: url.toString(),
   };

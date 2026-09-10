@@ -1,4 +1,5 @@
 import { createError, defineEventHandler, readValidatedBody, type H3Event } from "h3";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { DataOpsSsoError, type DataOpsSsoClient, createDataOpsSsoClient } from "../../utils/gateway/auth/dataops-client";
 import { dataOpsIntegrationProvider } from "../../utils/gateway/integrations/dataops-integration-provider";
@@ -7,11 +8,39 @@ import {
   type ExternalIdentityStore,
 } from "../../utils/gateway/auth/external-identities";
 import { dataOpsServiceToken } from "../../utils/gateway/integrations/dataops-service-token";
+import type { DataOpsClaims } from "../../utils/gateway/auth/dataops-claims";
 
 const inputSchema = z.object({
-  ticket: z.string().trim().min(1).max(4096),
+  ticket: z.string().trim().min(1).max(4096).optional(),
+  identity: z.string().trim().min(1).max(4096).optional(),
   dinkyUrl: z.string().trim().max(2048).optional(),
 }).strict();
+
+/** Parse a Dinky-issued JWT-like identity token. Format: base64url(claims).base64url(signature) */
+function parseDirectIdentity(raw: string, secret: string): DataOpsClaims | null {
+  const parts = raw.split(".");
+  if (parts.length !== 2) return null;
+  try {
+    const claimsJson = Buffer.from(parts[0], "base64url").toString("utf8");
+    const expectedSig = createHmac("sha256", secret).update(parts[0]).digest("base64url");
+    if (!timingSafeEqual(Buffer.from(parts[1]), Buffer.from(expectedSig))) return null;
+    const claims = JSON.parse(claimsJson);
+    if (!claims.sub || !claims.tenantId || !claims.projectId) return null;
+    return {
+      subject: claims.sub,
+      tenantId: claims.tenantId,
+      userId: claims.userId,
+      username: claims.username,
+      projectId: claims.projectId,
+      platformAdmin: claims.platformAdmin === true,
+      permissions: claims.permissions || [],
+      audience: "codex-gateway",
+      contextType: "PROJECT",
+    };
+  } catch {
+    return null;
+  }
+}
 
 export async function loginWithDataOpsForEvent(
   event: H3Event,
@@ -41,8 +70,20 @@ export async function loginWithCurrentDataOpsForEvent(
   identities: Pick<ExternalIdentityStore, "loginDataOps">,
 ) {
   const input = await readValidatedBody(event, (body) => inputSchema.parse(body));
-  // If the client passed a Dinky URL, build an ad-hoc SSO client directly.
-  if (input.dinkyUrl) {
+  // Direct identity token: verify locally, no SSO callback needed.
+  if (input.identity) {
+    const sharedSecret = dataOpsServiceToken();
+    if (!sharedSecret) {
+      throw createError({ statusCode: 503, statusMessage: "dataops_not_configured" });
+    }
+    const claims = parseDirectIdentity(input.identity, sharedSecret);
+    if (!claims) {
+      throw createError({ statusCode: 401, statusMessage: "invalid_identity_token" });
+    }
+    return await identities.loginDataOps(claims);
+  }
+  // Legacy ticket exchange with dinkyUrl.
+  if (input.dinkyUrl && input.ticket) {
     const sharedSecret = dataOpsServiceToken();
     if (!sharedSecret) {
       throw createError({ statusCode: 503, statusMessage: "dataops_not_configured" });
@@ -50,16 +91,15 @@ export async function loginWithCurrentDataOpsForEvent(
     const client = createDataOpsSsoClient({ baseUrl: input.dinkyUrl, sharedSecret });
     return await loginWithDataOpsForEvent(event, client, identities);
   }
-  // Otherwise, fall back to the configured provider.
-  const integration = await provider.current();
-  if (integration === null) {
-    throw createError({
-      statusCode: 503,
-      statusMessage: "dataops_not_configured",
-      message: "dataops_not_configured",
-    });
+  // Fall back to the configured provider for traditional ticket exchange.
+  if (input.ticket) {
+    const integration = await provider.current();
+    if (integration === null) {
+      throw createError({ statusCode: 503, statusMessage: "dataops_not_configured" });
+    }
+    return await loginWithDataOpsForEvent(event, integration.client, identities);
   }
-  return await loginWithDataOpsForEvent(event, integration.client, identities);
+  throw createError({ statusCode: 400, statusMessage: "missing ticket or identity" });
 }
 
 export default defineEventHandler(async (event) => {
