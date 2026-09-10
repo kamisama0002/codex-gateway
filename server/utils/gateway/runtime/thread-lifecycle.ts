@@ -26,8 +26,10 @@ export class ThreadLifecycleService {
     try {
       await this.request(host, "thread/archive", { threadId });
     } catch (error: unknown) {
-      if (isMissingRolloutError(error)) throw new ThreadRolloutNotReadyError();
-      throw error;
+      // Empty threads and runtimes reclaimed after their last turn have no rollout file to
+      // archive. They are still valid Gateway-side conversations, so remove the local snapshot
+      // and catalog entry instead of turning a harmless cleanup into a user-visible failure.
+      if (!isMissingRolloutError(error)) throw error;
     }
     this.afterRemove(host, threadId, userId, "archived");
   }
