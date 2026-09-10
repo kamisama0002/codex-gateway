@@ -223,7 +223,7 @@ provide(WORKSPACE_DOCK_UI_CONTEXT, {
 
 <style scoped>
 .gateway-dockview {
-  --gateway-dock-tab-width: clamp(14rem, 18vw, 20rem);
+  --gateway-dock-tab-width: clamp(8rem, 12vw, 12rem);
   --dv-background-color: var(--surface);
   --dv-paneview-active-outline-color: transparent;
   --dv-tabs-and-actions-container-background-color: var(--surface);
