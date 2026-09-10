@@ -135,12 +135,12 @@ async function retryFailedTurn() {
         </div>
       </ChatPanelScrollArea>
 
-      <div
-        v-if="runtimeError"
-        data-testid="thread-runtime-error"
-        class="mx-3 mb-2 flex min-w-0 items-start gap-2 px-1 text-xs md:mx-6"
-        role="alert"
-      >
+      <div v-if="runtimeError" class="px-2 md:px-[clamp(1rem,3vw,2rem)]">
+        <div
+          data-testid="thread-runtime-error"
+          class="thread-column mb-2 flex min-w-0 items-start gap-2 px-1 text-xs"
+          role="alert"
+        >
         <details class="group min-w-0 flex-1">
           <summary
             class="flex min-w-0 cursor-pointer list-none items-center gap-2 rounded-md px-1 py-1 text-ink-muted hover:bg-fill-secondary [&::-webkit-details-marker]:hidden"
@@ -183,9 +183,12 @@ async function retryFailedTurn() {
           <RefreshCwIcon class="size-3.5" aria-hidden="true" />
           {{ t("app.retry") }}
         </button>
+        </div>
       </div>
 
-      <MisalignmentRecoveryCard v-if="selectedThreadId" />
+      <div v-if="selectedThreadId" class="px-2 md:px-[clamp(1rem,3vw,2rem)]">
+        <MisalignmentRecoveryCard />
+      </div>
       <ChatComposer v-if="selectedThreadId && historyTurns.length > 0" placement="docked" />
     </div>
   </div>

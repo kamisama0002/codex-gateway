@@ -41,7 +41,7 @@ async function confirmRecovery() {
     v-if="request"
     :approval="{ id: `misalignment-${request.turnId ?? 'turn'}` }"
     state="approval-requested"
-    class="mx-auto mb-2 w-[min(56rem,calc(100%-2rem))] border-destructive/30 bg-destructive/5 text-sm"
+    class="thread-column mb-2 border-destructive/30 bg-destructive/5 text-sm"
   >
     <ConfirmationTitle class="flex items-center gap-2 font-medium text-destructive">
       <AlertTriangleIcon class="size-4" />
