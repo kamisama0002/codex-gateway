@@ -5,7 +5,14 @@ import { createUuid } from "@/lib/uuid";
 import { parseRealtimeServerMessage } from "~~/shared/runtime/realtime";
 import { REALTIME_AUTHENTICATION_CLOSE_CODE } from "~~/shared/runtime/realtime/close-codes";
 
-const RESUME_PING_TIMEOUT_MS = 4_000;
+// A Managed Runtime cold start can block the Gateway event loop for 30 s while it waits for
+// the Docker container and App Server handshake.  Browsers that send a health-check ping during
+// that window must not interpret the delayed pong as a dead connection, because a premature
+// reconnect cancels in-flight thread.start requests and causes the message-disappear /
+// Reconnecting loop the user observes.  A 20 s timeout comfortably exceeds the worst-case
+// Gateway↔Runtime-Manager RPC deadline while still detecting true connection loss before the
+// 30 s reconnect caps expire.
+const RESUME_PING_TIMEOUT_MS = 20_000;
 const RECONNECT_DELAY_CAPS_MS = [500, 1_000, 2_000, 4_000, 8_000, 10_000] as const;
 
 interface RealtimeConnectionOptions {

@@ -40,9 +40,14 @@ export function createManagedRuntimeHost(
   return host;
 }
 
+const MANAGED_RPC_HEARTBEAT_INTERVAL_MS = 10_000;
+const MANAGED_RPC_HEARTBEAT_TIMEOUT_MS = 5_000;
+
 export class ManagedCodexRpcTransport implements RpcTransport {
   private closed = false;
   private ws: WebSocket | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private pongTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly host: HostRecord,
@@ -70,6 +75,7 @@ export class ManagedCodexRpcTransport implements RpcTransport {
         settled = true;
         this.closed = true;
         this.ws = null;
+        this.stopHeartbeat();
         ws.terminate();
         reject(new ManagedCodexRpcHandshakeTimeoutError());
       }, this.handshakeTimeoutMs);
@@ -78,9 +84,16 @@ export class ManagedCodexRpcTransport implements RpcTransport {
         settled = true;
         opened = true;
         clearTimeout(deadline);
+        this.startHeartbeat(ws);
         resolve();
       });
       ws.on("message", (data) => this.options.onMessage(rawWebSocketDataToString(data)));
+      ws.on("pong", () => {
+        if (this.pongTimer !== null) {
+          clearTimeout(this.pongTimer);
+          this.pongTimer = null;
+        }
+      });
       ws.on("error", () => {
         const detail = { code: null, signal: null };
         const error = managedTransportError(this.host, "websocketHandshake", detail);
@@ -88,6 +101,7 @@ export class ManagedCodexRpcTransport implements RpcTransport {
           settled = true;
           this.closed = true;
           clearTimeout(deadline);
+          this.stopHeartbeat();
           reject(error);
           return;
         }
@@ -100,6 +114,7 @@ export class ManagedCodexRpcTransport implements RpcTransport {
           settled = true;
           this.closed = true;
           clearTimeout(deadline);
+          this.stopHeartbeat();
           reject(error);
           return;
         }
@@ -118,6 +133,7 @@ export class ManagedCodexRpcTransport implements RpcTransport {
 
   close(): void {
     this.closed = true;
+    this.stopHeartbeat();
     const ws = this.ws;
     this.ws = null;
     if (ws === null) return;
@@ -125,9 +141,36 @@ export class ManagedCodexRpcTransport implements RpcTransport {
     else if (ws.readyState === WebSocket.OPEN) ws.close();
   }
 
+  private startHeartbeat(ws: WebSocket): void {
+    this.heartbeatTimer = setInterval(() => {
+      if (this.closed || this.ws !== ws) return;
+      ws.ping();
+      this.pongTimer = setTimeout(() => {
+        if (this.closed || this.ws !== ws) return;
+        this.stopHeartbeat();
+        this.closeFromRemote(
+          managedTransportError(this.host, "transport", { code: null, signal: null }),
+          { code: null, signal: null },
+        );
+      }, MANAGED_RPC_HEARTBEAT_TIMEOUT_MS);
+    }, MANAGED_RPC_HEARTBEAT_INTERVAL_MS);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer !== null) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    if (this.pongTimer !== null) {
+      clearTimeout(this.pongTimer);
+      this.pongTimer = null;
+    }
+  }
+
   private closeFromRemote(error: Error, detail: RpcTransportCloseDetail): void {
     if (this.closed) return;
     this.closed = true;
+    this.stopHeartbeat();
     this.ws = null;
     this.options.onClose(error, detail);
   }
