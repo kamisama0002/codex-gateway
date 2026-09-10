@@ -172,7 +172,8 @@ export function createDataOpsPairingService(options: DataOpsPairingServiceOption
       registerDinkyUrl(configuredToken, dataOpsBaseUrl, bearerSecret);
       const issuedAt = now();
       const revision = issuedAt.getTime() * 1000 + (randomBytes(2).readUInt16BE(0) % 1000);
-      return publicBinding({ pairingId: "__env_fallback__", revision, status: "active" });
+      const pairingId = `direct_${randomBytes(18).toString("base64url")}`;
+      return publicBinding({ pairingId, revision, status: "active" });
     },
 
     async confirm(pairingId: string, revision: number, bearerSecret: string) {
