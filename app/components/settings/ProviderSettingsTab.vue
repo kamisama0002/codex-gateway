@@ -278,6 +278,75 @@ function replaceProviderModel(updated: ProviderModelDefinition) {
   );
 }
 
+async function enableAllModels(provider: ProviderWithModels) {
+  error.value = "";
+  const disabledModels = provider.models.filter((m) => !m.enabled);
+  if (disabledModels.length === 0) return;
+  let saved = 0;
+  for (const model of disabledModels) {
+    replaceProviderModel({ ...model, enabled: true });
+    try {
+      await gatewayApi<ProviderModelDefinition>(
+        `/api/admin/providers/${encodeURIComponent(provider.id)}/models`,
+        {
+          method: "POST",
+          body: {
+            modelId: model.modelId,
+            displayName: model.displayName,
+            enabled: true,
+            capabilities: model.capabilities,
+          },
+        },
+      );
+      saved += 1;
+    } catch {
+      replaceProviderModel(model);
+    }
+  }
+  if (saved > 0) {
+    notice.value = t("app.modelsDiscovered", { count: saved });
+    await gatewayCatalog.listModels();
+  }
+}
+
+async function disableAllModels(provider: ProviderWithModels) {
+  error.value = "";
+  const enabledModels = provider.models.filter((m) => m.enabled);
+  if (enabledModels.length === 0) return;
+  let saved = 0;
+  for (const model of enabledModels) {
+    replaceProviderModel({ ...model, enabled: false });
+    try {
+      await gatewayApi<ProviderModelDefinition>(
+        `/api/admin/providers/${encodeURIComponent(provider.id)}/models`,
+        {
+          method: "POST",
+          body: {
+            modelId: model.modelId,
+            displayName: model.displayName,
+            enabled: false,
+            capabilities: model.capabilities,
+          },
+        },
+      );
+      saved += 1;
+    } catch {
+      replaceProviderModel(model);
+    }
+  }
+  if (saved > 0) await gatewayCatalog.listModels();
+}
+
+function allModelsEnabled(provider: ProviderWithModels) {
+  return provider.models.length > 0 && provider.models.every((m) => m.enabled);
+}
+
+function formatContextTokens(tokens: number | null | undefined): string {
+  if (tokens === null || tokens === undefined) return "";
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`;
+  return String(tokens);
+}
+
 async function confirmDeleteProvider() {
   const provider = deletingProvider.value;
   if (provider === null) return;
@@ -453,6 +522,40 @@ function emptyModelForm(providerId = ""): ModelForm {
 
         <div v-if="expandedProviderIds.has(provider.id)" class="ml-9 border-l border-hairline pl-3">
           <div
+            v-if="provider.models.length > 0"
+            class="flex items-center justify-between gap-2 py-2 text-xs"
+          >
+            <span class="text-ink-faint">
+              {{ provider.models.length }}
+              {{ t("app.modelAvailable") }}
+            </span>
+            <div class="flex gap-1">
+              <Button
+                v-if="!allModelsEnabled(provider)"
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="h-6 gap-1 px-2 text-xs text-accent-green"
+                :aria-label="t('app.enableAllModelsNamed', { name: provider.name })"
+                @click="enableAllModels(provider)"
+              >
+                <CheckCircle2Icon class="size-3" />
+                {{ t("app.enableAllModels") }}
+              </Button>
+              <Button
+                v-else
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="h-6 gap-1 px-2 text-xs text-ink-muted"
+                :aria-label="t('app.disableAllModelsNamed', { name: provider.name })"
+                @click="disableAllModels(provider)"
+              >
+                {{ t("app.disableAllModels") }}
+              </Button>
+            </div>
+          </div>
+          <div
             v-for="model in provider.models"
             :key="model.modelId"
             class="flex min-w-0 items-center gap-2 py-2 text-sm"
@@ -464,6 +567,18 @@ function emptyModelForm(providerId = ""): ModelForm {
             <span class="min-w-0 flex-1 truncate text-ink-secondary">
               {{ model.displayName }}
               <span class="text-ink-faint"> · {{ model.modelId }}</span>
+              <template v-if="model.capabilities.maxContextTokens">
+                <span class="text-ink-faint">
+                  ·
+                  {{ t("app.modelContextTokens", { tokens: formatContextTokens(model.capabilities.maxContextTokens) }) }}
+                </span>
+              </template>
+              <template v-if="model.capabilities.defaultReasoningEffort">
+                <span class="text-ink-faint">
+                  ·
+                  {{ t("app.modelReasoningEffort", { effort: model.capabilities.defaultReasoningEffort }) }}
+                </span>
+              </template>
             </span>
             <span class="shrink-0 text-xs text-ink-faint">
               {{ t(model.enabled ? "app.modelAvailable" : "app.modelUnavailable") }}
