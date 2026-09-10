@@ -1,6 +1,7 @@
 import { reactive, watch, type ComputedRef } from "vue";
 import { itemStatusSignature, statusValue } from "./thread-turn-sections";
 import type { ThreadTimelineItem } from "~~/shared/types";
+import { requestScrollToLatest } from "@/stores/gateway/thread-open/view-state";
 
 interface IntermediateDisclosureTurn {
   id: string;
@@ -42,7 +43,10 @@ export function useIntermediateStepsDisclosure(input: {
       for (const turn of input.turns.value) {
         if (input.threadIsRunning.value && turn.turnIsActive) {
           touchedByUser.delete(turn.id);
+          const wasOpen = openByTurnId.get(turn.id) === true;
           openByTurnId.set(turn.id, true);
+          // Trigger scroll when intermediate steps expand during an active turn.
+          if (!wasOpen) requestScrollToLatest();
           continue;
         }
         if (input.autoCollapseIntermediate.value && !touchedByUser.has(turn.id)) {

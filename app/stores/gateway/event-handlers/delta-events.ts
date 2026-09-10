@@ -37,6 +37,7 @@ export const deltaEventHandlers: GatewayEventHandlerRegistry = {
       threadId,
       params,
     });
+    requestScrollToLatest();
   },
 };
 
